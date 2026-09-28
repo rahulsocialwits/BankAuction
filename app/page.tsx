@@ -1,8 +1,8 @@
 const logoUrl = "https://bankauction.co/wp-content/uploads/2026/05/Logo-2.png";
 
 const stats = [
-  ["7", "Auction Sources"],
   ["24×7", "Property Discovery"],
+  ["6", "Property Categories"],
   ["100%", "Source-Backed Records"],
   ["1", "Central Search"]
 ];
