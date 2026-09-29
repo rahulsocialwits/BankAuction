@@ -1,8 +1,11 @@
 import Link from "next/link";
 import Image from "next/image";
 import { getSiteSettings } from "@/lib/queries/siteSettings";
+import { getCurrentUser } from "@/lib/auth/userSession";
+import { logoutUser } from "@/app/(site)/login/actions";
 import MobileNav from "./MobileNav";
 import SearchBar from "./SearchBar";
+import HideOnHome from "./HideOnHome";
 
 const NAV = [
   { href: "/", label: "Home" },
@@ -14,7 +17,7 @@ const NAV = [
 ];
 
 export default async function Header() {
-  const settings = await getSiteSettings();
+  const [settings, user] = await Promise.all([getSiteSettings(), getCurrentUser()]);
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-brand-border">
@@ -45,22 +48,35 @@ export default async function Header() {
           ))}
         </nav>
 
-        <div className="hidden md:block flex-1 max-w-sm ml-auto">
-          <SearchBar />
-        </div>
+        <HideOnHome>
+          <div className="hidden md:block flex-1 max-w-sm ml-auto">
+            <SearchBar />
+          </div>
+        </HideOnHome>
 
-        <Link
-          href="/login"
-          aria-label="Account"
-          className="hidden md:flex items-center justify-center w-9 h-9 rounded-full border border-brand-border hover:border-brand hover:text-brand shrink-0"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="8" r="4" />
-            <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
-          </svg>
-        </Link>
+        {user ? (
+          <div className="hidden md:flex items-center gap-2 shrink-0 ml-auto">
+            <span className="text-sm font-medium text-black/80 whitespace-nowrap">Hi, {user.name?.split(" ")[0] ?? "there"}</span>
+            <form action={logoutUser}>
+              <button type="submit" className="text-xs text-brand-muted hover:text-brand underline">
+                Sign out
+              </button>
+            </form>
+          </div>
+        ) : (
+          <Link
+            href="/login"
+            aria-label="Account"
+            className="hidden md:flex items-center justify-center w-9 h-9 rounded-full border border-brand-border hover:border-brand hover:text-brand shrink-0 ml-auto"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+            </svg>
+          </Link>
+        )}
 
-        <MobileNav navItems={NAV} />
+        <MobileNav navItems={NAV} isLoggedIn={!!user} logoutAction={logoutUser} />
       </div>
     </header>
   );

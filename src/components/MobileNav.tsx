@@ -2,10 +2,20 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import SearchBar from "./SearchBar";
 
-export default function MobileNav({ navItems }: { navItems: { href: string; label: string }[] }) {
+export default function MobileNav({
+  navItems,
+  isLoggedIn,
+  logoutAction,
+}: {
+  navItems: { href: string; label: string }[];
+  isLoggedIn: boolean;
+  logoutAction: () => void;
+}) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
 
   return (
     <div className="md:hidden ml-auto flex items-center gap-2">
@@ -27,9 +37,11 @@ export default function MobileNav({ navItems }: { navItems: { href: string; labe
 
       {open && (
         <div className="fixed inset-x-0 top-[89px] bottom-0 bg-white z-40 overflow-y-auto px-5 py-5">
-          <div className="mb-5">
-            <SearchBar />
-          </div>
+          {pathname !== "/" && (
+            <div className="mb-5">
+              <SearchBar />
+            </div>
+          )}
           <nav className="flex flex-col gap-1 text-sm font-medium">
             {navItems.map((item) => (
               <Link
@@ -41,9 +53,15 @@ export default function MobileNav({ navItems }: { navItems: { href: string; labe
                 {item.label}
               </Link>
             ))}
-            <Link href="/login" onClick={() => setOpen(false)} className="py-2.5">
-              Account / Login
-            </Link>
+            {isLoggedIn ? (
+              <form action={logoutAction}>
+                <button type="submit" className="py-2.5 text-left w-full">Sign out</button>
+              </form>
+            ) : (
+              <Link href="/login" onClick={() => setOpen(false)} className="py-2.5">
+                Account / Login
+              </Link>
+            )}
           </nav>
         </div>
       )}

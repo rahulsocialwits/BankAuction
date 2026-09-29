@@ -23,12 +23,16 @@ const TABS: { label: string; match: (c: PropertyCategory | null) => boolean }[] 
 ];
 
 function useCountdown(target: string | null) {
-  const [now, setNow] = useState(() => Date.now());
+  // Start null so server and client render the same "—" on first paint;
+  // the real clock only kicks in after mount, avoiding a hydration mismatch
+  // from SSR time vs. client time differing by seconds/minutes.
+  const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
+    setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(t);
   }, []);
-  if (!target) return null;
+  if (!target || now === null) return null;
   const diff = new Date(target).getTime() - now;
   if (diff <= 0) return { days: 0, hours: 0, mins: 0 };
   const days = Math.floor(diff / 86_400_000);

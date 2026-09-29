@@ -40,7 +40,12 @@ export default async function AdminPropertiesPage({
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-brand mb-1">Properties</h1>
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-2xl font-semibold text-brand">Properties</h1>
+        <Link href="/admin/properties/new" className="bg-brand text-white text-sm font-medium rounded-lg px-4 py-2 hover:bg-brand-dark">
+          + Add Property
+        </Link>
+      </div>
       <p className="text-sm text-brand-muted mb-5">
         Records pulled by the ingestion pipeline. Clean records auto-publish; uncertain ones wait here for review.
       </p>
