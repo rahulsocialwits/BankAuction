@@ -1,36 +1,4 @@
 @import "tailwindcss";
-
-:root {
-  /* Sampled from the real BankAuction.co logo (navy + gold gavel) */
-  --brand-navy: #14233d;
-  --brand-navy-dark: #0c172b;
-  --brand-gold: #a67c1e;
-  --brand-gold-dark: #8a6717;
-  --brand-black: #111111;
-  --brand-white: #ffffff;
-  --brand-bg: #f7f6f2;
-  --brand-border: #e7e4db;
-  --brand-muted: #68675f;
-
-  --background: var(--brand-white);
-  --foreground: var(--brand-black);
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-brand: var(--brand-navy);
-  --color-brand-dark: var(--brand-navy-dark);
-  --color-gold: var(--brand-gold);
-  --color-gold-dark: var(--brand-gold-dark);
-  --color-brand-bg: var(--brand-bg);
-  --color-brand-border: var(--brand-border);
-  --color-brand-muted: var(--brand-muted);
-  --font-sans: var(--font-poppins);
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-poppins), system-ui, sans-serif;
-}
+:root{--brand-navy:#10213d;--brand-navy-2:#18345b;--brand-gold:#c79a3b;--brand-gold-2:#e2bc6b;--brand-ink:#18202b;--brand-bg:#f5f7fa;--brand-card:#fff;--brand-border:#e5e9ef;--brand-muted:#667085;--brand-green:#16835b;--background:#fff;--foreground:var(--brand-ink)}
+@theme inline{--color-background:var(--background);--color-foreground:var(--foreground);--color-brand:var(--brand-navy);--color-brand-dark:#0b172c;--color-gold:var(--brand-gold);--color-gold-dark:#9d7425;--color-brand-bg:var(--brand-bg);--color-brand-border:var(--brand-border);--color-brand-muted:var(--brand-muted);--font-sans:var(--font-poppins)}
+html{background:var(--brand-bg)}body{margin:0;background:var(--brand-bg);color:var(--foreground);font-family:var(--font-poppins),system-ui,sans-serif}.ba-card{background:#fff;border:1px solid var(--brand-border);border-radius:18px;box-shadow:0 8px 28px rgba(16,33,61,.06)}.ba-section{max-width:1240px;margin:0 auto;padding-left:20px;padding-right:20px}.ba-kicker{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--brand-gold)}.ba-btn{display:inline-flex;align-items:center;justify-content:center;border-radius:10px;font-weight:700;transition:.18s}.ba-btn-primary{background:var(--brand-navy);color:#fff}.ba-btn-primary:hover{background:#0b172c}.ba-btn-gold{background:var(--brand-gold);color:#fff}.ba-btn-gold:hover{background:#a77d27}.ba-muted{color:var(--brand-muted)}
