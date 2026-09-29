@@ -11,7 +11,7 @@ export default function PropertyCard({property}:{property:PropertyCardData}){
  return <Link href={`/property/${property.slug}`} className="group block ba-card overflow-hidden hover:-translate-y-0.5 hover:shadow-xl transition-all">
   <div className="relative h-44 bg-gradient-to-br from-[#eef2f7] to-[#dfe6ef] overflow-hidden">
    <div className="absolute inset-0 opacity-40" style={{backgroundImage:"radial-gradient(circle at 20% 20%,#fff 0 2px,transparent 3px),linear-gradient(135deg,transparent 50%,rgba(16,33,61,.08) 50%)",backgroundSize:"24px 24px,100% 100%"}}/>
-   <div className="absolute left-4 top-4 flex items-center gap-2"><span className={`text-[11px] font800 px-2.5 py-1 rounded-full ${s.cls}`}>{s.label}</span></div>
+   <div className="absolute left-4 top-4 flex items-center gap-2"><span className={`text-[11px] font-extrabold px-2.5 py-1 rounded-full ${s.cls}`}>{s.label}</span></div>
    <div className="absolute right-4 top-4 w-11 h-11 rounded-xl bg-white/90 border border-white flex items-center justify-center text-xl text-brand shadow-sm">{ICON[property.category??""]??"⌂"}</div>
    <div className="absolute bottom-4 left-4 right-4"><span className="inline-flex rounded-lg bg-white/90 backdrop-blur px-3 py-1.5 text-xs font-semibold text-brand shadow-sm">{property.category?.replace("_"," ")??"Property Auction"}</span></div>
   </div>
@@ -19,7 +19,7 @@ export default function PropertyCard({property}:{property:PropertyCardData}){
    <h3 className="font-bold text-[15px] leading-6 text-brand line-clamp-2 group-hover:text-gold transition-colors">{property.title}</h3>
    <p className="mt-2 text-xs text-brand-muted line-clamp-2">{property.addressText??"Location not specified"}</p>
    <div className="mt-4 pt-4 border-t border-brand-border grid grid-cols-2 gap-4">
-    <div><div className="text-[10px] uppercase tracking-wide text-brand-muted">Reserve Price</div><div className="mt-1 text-sm font800 text-brand">{money(property.reservePrice)}</div></div>
+    <div><div className="text-[10px] uppercase tracking-wide text-brand-muted">Reserve Price</div><div className="mt-1 text-sm font-extrabold text-brand">{money(property.reservePrice)}</div></div>
     <div className="text-right"><div className="text-[10px] uppercase tracking-wide text-brand-muted">Auction Date</div><div className="mt-1 text-sm font-semibold text-brand">{date(property.auctionStart)}</div></div>
    </div>
    <div className="mt-4 flex items-center justify-between text-[11px]"><span className="text-brand-muted">{property.bankName??"Bank not specified"}</span><span className="font-bold text-brand group-hover:translate-x-0.5 transition-transform">View details →</span></div>
