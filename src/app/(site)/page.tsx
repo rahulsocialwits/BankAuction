@@ -72,12 +72,22 @@ export default async function Home() {
 
   return (
     <main>
-      <section className="bg-gradient-to-b from-brand-bg to-white">
-        <div className="max-w-6xl mx-auto px-5 pt-16 pb-10 text-center">
-          <h1 className="text-3xl sm:text-4xl font-bold text-black max-w-2xl mx-auto">
+      <section className="relative bg-brand overflow-hidden">
+        <div
+          className="absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage: "radial-gradient(circle, #fff 1px, transparent 1px)",
+            backgroundSize: "22px 22px",
+          }}
+        />
+        <div className="relative max-w-6xl mx-auto px-5 pt-20 pb-16 text-center">
+          <span className="inline-block text-xs font-semibold tracking-wide text-gold bg-white/10 px-3 py-1 rounded-full mb-5">
+            INDIA&apos;S BANK AUCTION DISCOVERY PLATFORM
+          </span>
+          <h1 className="text-3xl sm:text-5xl font-bold text-white max-w-3xl mx-auto leading-tight">
             Find Bank Auction Properties With Confidence
           </h1>
-          <p className="text-brand-muted mt-4 max-w-xl mx-auto">
+          <p className="text-white/70 mt-4 max-w-xl mx-auto">
             Residential, commercial, industrial, agricultural and land auctions from banks across India —
             discovered, verified, and kept up to date automatically.
           </p>
@@ -86,27 +96,27 @@ export default async function Home() {
             <SearchBar size="lg" />
           </div>
 
-          <div className="flex items-center justify-center gap-3 mt-5">
+          <div className="flex items-center justify-center gap-3 mt-6">
             <Link href="/properties" className="bg-gold text-white px-6 py-2.5 rounded-lg font-medium hover:bg-gold-dark">
               Explore Auctions
             </Link>
-            <Link href="/how-it-works" className="border border-brand-border px-6 py-2.5 rounded-lg font-medium hover:bg-brand-bg">
+            <Link href="/how-it-works" className="border border-white/30 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-white/10">
               How It Works
             </Link>
           </div>
         </div>
-
-        <div className="max-w-4xl mx-auto px-5 pb-14 grid grid-cols-3 gap-4">
-          {stats.map((s) => (
-            <div key={s.label} className="bg-white border border-brand-border rounded-2xl py-5 text-center">
-              <div className="text-2xl font-bold text-brand">{s.value}</div>
-              <div className="text-xs text-brand-muted mt-1">{s.label}</div>
-            </div>
-          ))}
-        </div>
       </section>
 
-      <section className="max-w-6xl mx-auto px-5 py-12">
+      <div className="relative max-w-4xl mx-auto px-5 -mt-10 grid grid-cols-3 gap-4">
+        {stats.map((s) => (
+          <div key={s.label} className="bg-white border border-brand-border rounded-2xl py-5 text-center shadow-sm">
+            <div className="text-2xl font-bold text-brand">{s.value}</div>
+            <div className="text-xs text-brand-muted mt-1">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <section className="max-w-6xl mx-auto px-5 pt-14 pb-12">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl font-semibold">Featured Bank Auction Properties</h2>
           <Link href="/properties" className="text-sm text-brand font-medium">View all →</Link>

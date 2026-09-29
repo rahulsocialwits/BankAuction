@@ -93,7 +93,19 @@ export default async function PropertyPage({
               <Field label="Application Deadline" value={formatDate(auction?.applicationDeadline ?? null)} />
               <Field label="Auction Method" value={auction?.auctionMethod ?? "Not Available"} />
               <Field label="Possession Status" value={auction?.possessionStatus ?? "Not Available"} />
-              <Field label="Borrower" value={auction?.borrower ?? "Not Available"} />
+              <div>
+                <dt className="text-xs text-brand-muted mb-0.5">Borrower</dt>
+                <dd className="text-sm font-medium">
+                  {auction?.borrower ? (
+                    <Link href="/pricing" className="inline-flex items-center gap-2 group">
+                      <span className="blur-[5px] select-none group-hover:blur-[6px]">{auction.borrower}</span>
+                      <span className="text-[11px] text-gold font-semibold whitespace-nowrap">Unlock →</span>
+                    </Link>
+                  ) : (
+                    "Not Available"
+                  )}
+                </dd>
+              </div>
             </dl>
           </section>
 
@@ -125,37 +137,36 @@ export default async function PropertyPage({
               </ul>
             </section>
           )}
-
-          <section className="bg-white border border-brand-border rounded-2xl p-5">
-            <h2 className="font-semibold mb-1">Interested in this property?</h2>
-            <p className="text-xs text-brand-muted mb-4">Send an enquiry and our team will get back to you.</p>
-
-            {leadSent && <div className="bg-green-50 text-green-700 text-sm rounded-lg px-4 py-3 mb-4">Thanks — we&apos;ll be in touch shortly.</div>}
-            {leadError && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">Please enter your name.</div>}
-
-            <form action={submitPropertyLead} className="grid sm:grid-cols-2 gap-3">
-              <input type="hidden" name="propertyId" value={property.id} />
-              <input type="hidden" name="slug" value={property.slug} />
-              <input name="name" required placeholder="Your name" className="border border-brand-border rounded-lg px-3 py-2 text-sm" />
-              <input name="phone" placeholder="Phone" className="border border-brand-border rounded-lg px-3 py-2 text-sm" />
-              <input name="email" type="email" placeholder="Email" className="sm:col-span-2 border border-brand-border rounded-lg px-3 py-2 text-sm" />
-              <textarea name="message" placeholder="Message (optional)" rows={3} className="sm:col-span-2 border border-brand-border rounded-lg px-3 py-2 text-sm" />
-              <button type="submit" className="sm:col-span-2 bg-brand text-white font-medium rounded-lg py-2.5 hover:bg-brand-dark">
-                Send Enquiry
-              </button>
-            </form>
-          </section>
         </div>
 
         <aside className="lg:col-span-1">
           <div className="bg-white border border-brand-border rounded-2xl p-5 sticky top-24">
-            <h2 className="font-semibold mb-3">Verify Before You Act</h2>
-            <p className="text-xs text-brand-muted mb-4">
-              Always confirm auction details against the official documents above before participating.
-            </p>
-            <Link href="/contact" className="block text-center bg-brand text-white font-medium rounded-lg py-2.5 hover:bg-brand-dark">
-              Contact Us
-            </Link>
+            <h2 className="font-semibold mb-1">Interested in this property?</h2>
+            <p className="text-xs text-brand-muted mb-4">Send an enquiry and our team will get back to you.</p>
+
+            {leadSent && <div className="bg-green-50 text-green-700 text-sm rounded-lg px-3 py-2.5 mb-4">Thanks — we&apos;ll be in touch shortly.</div>}
+            {leadError && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2.5 mb-4">Please enter your name.</div>}
+
+            <form action={submitPropertyLead} className="space-y-3">
+              <input type="hidden" name="propertyId" value={property.id} />
+              <input type="hidden" name="slug" value={property.slug} />
+              <input name="name" required placeholder="Your name" className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
+              <input name="phone" placeholder="Phone" className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
+              <input name="email" type="email" placeholder="Email" className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
+              <textarea name="message" placeholder="Message (optional)" rows={3} className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
+              <button type="submit" className="w-full bg-brand text-white font-medium rounded-lg py-2.5 hover:bg-brand-dark">
+                Send Enquiry
+              </button>
+            </form>
+
+            <div className="border-t border-brand-border mt-5 pt-4">
+              <p className="text-xs text-brand-muted mb-3">
+                Always confirm auction details against the official documents above before participating.
+              </p>
+              <Link href="/contact" className="block text-center border border-brand-border font-medium rounded-lg py-2 text-sm hover:border-brand">
+                Contact Us
+              </Link>
+            </div>
           </div>
         </aside>
       </div>

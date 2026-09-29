@@ -17,87 +17,80 @@ const SOCIAL_ICONS: { key: "facebookUrl" | "instagramUrl" | "linkedinUrl" | "you
   { key: "youtubeUrl", label: "YouTube", path: "M21.6 7.2s-.2-1.5-.8-2.1c-.8-.8-1.7-.8-2.1-.9C15.9 4 12 4 12 4s-3.9 0-6.7.2c-.4 0-1.3.1-2.1.9-.6.6-.8 2.1-.8 2.1S2.2 9 2.2 10.7v1.6c0 1.7.2 3.5.2 3.5s.2 1.5.8 2.1c.8.8 1.9.8 2.3.9 1.7.1 7.5.2 7.5.2s3.9 0 6.7-.2c.4-.1 1.3-.1 2.1-.9.6-.6.8-2.1.8-2.1s.2-1.8.2-3.5v-1.6c0-1.7-.2-3.5-.2-3.5M9.9 14.6V8.7l5.6 3-5.6 3" },
 ];
 
+function FooterColumn({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="font-semibold mb-3 text-sm">{title}</div>
+      <ul className="space-y-1.5 text-sm text-brand-muted">{children}</ul>
+    </div>
+  );
+}
+
 export default async function Footer() {
   const s = await getSiteSettings();
 
   return (
     <footer className="bg-brand-bg border-t border-brand-border mt-16">
-      <div className="max-w-6xl mx-auto px-5 py-10 grid grid-cols-2 sm:grid-cols-4 gap-8 text-sm">
-        <div className="col-span-2 sm:col-span-1">
+      <div className="max-w-6xl mx-auto px-5 py-12 grid grid-cols-2 lg:grid-cols-5 gap-x-6 gap-y-10">
+        <div className="col-span-2">
           <Image src="/brand/logo.png" alt="BankAuction.co" width={140} height={55} className="h-9 w-auto mb-3" />
-          <p className="text-brand-muted">
+          <p className="text-sm text-brand-muted max-w-xs mb-5">
             India&apos;s trusted platform for bank auction properties. Explore residential, commercial, industrial, and
             land auction listings at the best prices.
           </p>
+          <div className="flex items-center gap-3">
+            {SOCIAL_ICONS.map((social) => {
+              const url = s[social.key];
+              if (!url) return null;
+              return (
+                <a
+                  key={social.key}
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={social.label}
+                  className="w-9 h-9 flex items-center justify-center rounded-full border border-brand-border hover:border-brand hover:text-brand transition-colors"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d={social.path} />
+                  </svg>
+                </a>
+              );
+            })}
+          </div>
         </div>
 
-        <div>
-          <div className="font-semibold mb-3">Property Type</div>
-          <ul className="space-y-1.5 text-brand-muted">
-            {PROPERTY_TYPES.map((t) => (
-              <li key={t.value}>
-                <Link href={`/property-type/${t.value}`} className="hover:text-brand">{t.label}</Link>
-              </li>
-            ))}
-            <li><Link href="/properties" className="hover:text-brand font-medium">All Properties</Link></li>
-            <li><Link href="/property-types" className="hover:text-brand font-medium">All Property Type</Link></li>
-          </ul>
-        </div>
+        <FooterColumn title="Property Type">
+          {PROPERTY_TYPES.map((t) => (
+            <li key={t.value}><Link href={`/property-type/${t.value}`} className="hover:text-brand">{t.label}</Link></li>
+          ))}
+          <li><Link href="/property-types" className="hover:text-brand font-medium">All Property Type</Link></li>
+        </FooterColumn>
 
-        <div>
-          <div className="font-semibold mb-3">Banks</div>
-          <ul className="space-y-1.5 text-brand-muted">
-            {["SBI Bank", "HDFC Bank", "IDBI Bank", "PNB Bank", "ICICI Bank", "Bank of Baroda"].map((b) => (
-              <li key={b}>
-                <Link href={`/properties?q=${encodeURIComponent(b)}`} className="hover:text-brand">{b}</Link>
-              </li>
-            ))}
-            <li><Link href="/banks" className="hover:text-brand font-medium">All Bank</Link></li>
-          </ul>
-        </div>
+        <FooterColumn title="Banks">
+          {["SBI Bank", "HDFC Bank", "IDBI Bank", "PNB Bank", "ICICI Bank", "Bank of Baroda"].map((b) => (
+            <li key={b}><Link href={`/properties?q=${encodeURIComponent(b)}`} className="hover:text-brand">{b}</Link></li>
+          ))}
+          <li><Link href="/banks" className="hover:text-brand font-medium">All Bank</Link></li>
+        </FooterColumn>
 
-        <div>
-          <div className="font-semibold mb-3">Top Cities</div>
-          <ul className="space-y-1.5 text-brand-muted">
+        <div className="col-span-2 lg:col-span-1 grid grid-cols-2 lg:block gap-x-6">
+          <FooterColumn title="Top Cities">
             {["Mumbai", "Pune", "Delhi", "Ahmedabad", "Bangalore", "Chennai"].map((c) => (
-              <li key={c}>
-                <Link href={`/properties?q=${encodeURIComponent(c)}`} className="hover:text-brand">{c}</Link>
-              </li>
+              <li key={c}><Link href={`/properties?q=${encodeURIComponent(c)}`} className="hover:text-brand">{c}</Link></li>
             ))}
             <li><Link href="/cities" className="hover:text-brand font-medium">All City</Link></li>
-          </ul>
-        </div>
-      </div>
+          </FooterColumn>
 
-      <div className="max-w-6xl mx-auto px-5 pb-8 grid sm:grid-cols-2 gap-6 border-t border-brand-border pt-6">
-        <div className="text-sm">
-          <div className="font-semibold mb-2">Contact Info.</div>
-          <ul className="space-y-1 text-brand-muted">
-            <li>Call: {s.phone}</li>
-            <li>General: {s.generalEmail}</li>
-            <li>Listings: {s.listingsEmail}</li>
-            <li>Partnerships: {s.partnershipsEmail}</li>
-          </ul>
-        </div>
-        <div className="flex sm:justify-end items-start gap-3">
-          {SOCIAL_ICONS.map((social) => {
-            const url = s[social.key];
-            if (!url) return null;
-            return (
-              <a
-                key={social.key}
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={social.label}
-                className="w-9 h-9 flex items-center justify-center rounded-full border border-brand-border hover:border-brand hover:text-brand"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d={social.path} />
-                </svg>
-              </a>
-            );
-          })}
+          <div className="lg:mt-8">
+            <div className="font-semibold mb-3 text-sm">Contact Info.</div>
+            <ul className="space-y-1.5 text-sm text-brand-muted">
+              <li>Call: {s.phone}</li>
+              <li className="break-all">General: {s.generalEmail}</li>
+              <li className="break-all">Listings: {s.listingsEmail}</li>
+              <li className="break-all">Partnerships: {s.partnershipsEmail}</li>
+            </ul>
+          </div>
         </div>
       </div>
 
