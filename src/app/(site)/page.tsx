@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
-import PropertyCard from "@/components/PropertyCard";
+import PropertyCarousel from "@/components/PropertyCarousel";
+import { toPropertyCardData } from "@/lib/queries/listProperties";
 import SearchBar from "@/components/SearchBar";
 import BlogCarousel from "@/components/BlogCarousel";
 import AuctionCountdownTable, { CountdownRow } from "@/components/AuctionCountdownTable";
@@ -30,9 +31,9 @@ export default async function Home() {
     prisma.bank.count({ where: { auctions: { some: { property: { status: "PUBLISHED" } } } } }),
     prisma.auction.count({ where: { status: { in: ["UPCOMING", "LIVE", "AUCTION_TODAY"] }, property: { status: "PUBLISHED" } } }),
     prisma.property.findMany({
-      where: { status: "PUBLISHED" },
+      where: { status: "PUBLISHED", auctions: { some: { status: { in: ["UPCOMING", "LIVE", "AUCTION_TODAY"] } } } },
       orderBy: { createdAt: "desc" },
-      take: 8,
+      take: 12,
       include: { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 } },
     }),
     prisma.property.groupBy({
@@ -60,15 +61,24 @@ export default async function Home() {
   ];
 
   const cityCountMap = new Map(cityGroups.map((g) => [g.addressText, g._count]));
-  const countdownRows: CountdownRow[] = countdownAuctions.map((a) => ({
-    id: a.id,
-    slug: a.property.slug,
-    title: a.property.title,
-    bankName: a.bank?.name ?? null,
-    location: a.property.addressText,
-    category: a.property.category,
-    auctionStart: a.auctionStart ? a.auctionStart.toISOString() : null,
-  }));
+  // One row per property (soonest auction) -- a property can legitimately
+  // have multiple auction events (re-listings), but listing each separately
+  // here reads as a duplicate bug rather than useful information.
+  const seenPropertyIds = new Set<string>();
+  const countdownRows: CountdownRow[] = [];
+  for (const a of countdownAuctions) {
+    if (seenPropertyIds.has(a.propertyId)) continue;
+    seenPropertyIds.add(a.propertyId);
+    countdownRows.push({
+      id: a.id,
+      slug: a.property.slug,
+      title: a.property.title,
+      bankName: a.bank?.name ?? null,
+      location: a.property.addressText,
+      category: a.property.category,
+      auctionStart: a.auctionStart ? a.auctionStart.toISOString() : null,
+    });
+  }
 
   return (
     <main>
@@ -121,29 +131,7 @@ export default async function Home() {
           <h2 className="text-xl font-semibold">Featured Bank Auction Properties</h2>
           <Link href="/properties" className="text-sm text-brand font-medium">View all →</Link>
         </div>
-        {featured.length === 0 ? (
-          <p className="text-brand-muted text-sm">
-            No published listings yet — the ingestion pipeline hasn&apos;t run, or nothing has cleared review.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {featured.map((p) => (
-              <PropertyCard
-                key={p.id}
-                property={{
-                  slug: p.slug,
-                  title: p.title,
-                  addressText: p.addressText,
-                  category: p.category,
-                  bankName: p.auctions[0]?.bank?.name ?? null,
-                  reservePrice: p.auctions[0]?.reservePrice ?? null,
-                  auctionStart: p.auctions[0]?.auctionStart ?? null,
-                  status: p.auctions[0]?.status ?? null,
-                }}
-              />
-            ))}
-          </div>
-        )}
+        <PropertyCarousel properties={featured.map(toPropertyCardData)} />
       </section>
 
       <section className="max-w-6xl mx-auto px-5 py-12">

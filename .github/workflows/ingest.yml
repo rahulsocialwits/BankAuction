@@ -34,4 +34,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_BASE_URL: ${{ secrets.AI_BASE_URL }}
+          AI_EXTRACTOR_MODEL: ${{ secrets.AI_EXTRACTOR_MODEL }}
         run: npm run ingest -- ${{ github.event.inputs.source || 'bankauctions' }} ${{ github.event.inputs.limit || '100' }}

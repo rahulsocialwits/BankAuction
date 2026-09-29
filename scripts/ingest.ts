@@ -1,3 +1,9 @@
+import { config } from "dotenv";
+// tsx doesn't auto-load .env.local the way Next.js does; without this the
+// AI_API_KEY/AI_BASE_URL vars are silently missing for local/manual runs.
+config({ path: ".env.local" });
+config({ path: ".env" });
+
 import { runBankAuctionsIngestion } from "@/data-sources/bankauctions/adapter";
 
 const ADAPTERS: Record<string, (limit: number) => Promise<unknown>> = {

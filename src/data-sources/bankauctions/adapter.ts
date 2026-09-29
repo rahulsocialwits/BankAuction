@@ -6,6 +6,7 @@ import { normalizeBankAuctionsRecord } from "./normalize";
 import { validateAuctionRecord } from "@/lib/validation/validateAuctionRecord";
 import { sha256 } from "@/lib/hash";
 import { deriveAuctionStatusFromDates } from "@/lib/domain/deriveAuctionStatus";
+import { findDuplicatePropertyViaAI } from "@/lib/deduplication/aiDuplicateCheck";
 
 const SOURCE_KEY = "bankauctions";
 const SITEMAP_PATH = "/wp-sitemap-auctions-1.xml";
@@ -19,6 +20,8 @@ export interface IngestionSummary {
   updatedAuctions: number;
   documentsFound: number;
   duplicatesFound: number;
+  aiDuplicatesCaught: number;
+  aiCalls: number;
   failures: number;
   errors: { url: string; message: string }[];
 }
@@ -87,6 +90,8 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
     updatedAuctions: 0,
     documentsFound: 0,
     duplicatesFound: 0,
+    aiDuplicatesCaught: 0,
+    aiCalls: 0,
     failures: 0,
     errors: [],
   };
@@ -123,6 +128,7 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
       updatedAuctions: summary.updatedAuctions,
       documentsFound: summary.documentsFound,
       duplicatesFound: summary.duplicatesFound,
+      aiCalls: summary.aiCalls,
       failures: summary.failures,
       errorLog: summary.errors.length > 0 ? summary.errors : undefined,
     },
@@ -247,6 +253,82 @@ async function ingestOnePage(
     summary.updatedProperties++;
     summary.updatedAuctions++;
   } else {
+    // Dedup priority #3-5 (spec §20): no exact ID match, but the same bank
+    // plus similar title/address/description can still mean the same
+    // physical property re-listed under a new auction ID (e.g. after a
+    // postponement or corrigendum). Only calls the AI when a plausible
+    // textual overlap exists -- never on every fresh, genuinely-new listing.
+    const dupCheck = await findDuplicatePropertyViaAI(bank?.id, {
+      title: normalized.title,
+      addressText: normalized.cityRaw,
+      description: normalized.description,
+    });
+    if (dupCheck.aiCallMade) summary.aiCalls++;
+
+    if (dupCheck.match) {
+      summary.aiDuplicatesCaught++;
+      summary.duplicatesFound++;
+      propertyId = dupCheck.match.propertyId;
+
+      await prisma.propertyChange.create({
+        data: {
+          propertyId,
+          field: "ai_duplicate_merge",
+          oldValue: null,
+          newValue: `Merged as same property (confidence ${dupCheck.match.confidence.toFixed(2)}); new auction recorded under existing property instead of creating a duplicate.`,
+        },
+      });
+
+      const auction = await prisma.auction.create({
+        data: {
+          propertyId,
+          bankId: bank?.id,
+          branchId: branch?.id,
+          externalAuctionId: normalized.externalAuctionId,
+          auctionType: normalized.auctionType,
+          auctionMethod: normalized.auctionMethod,
+          borrower: normalized.borrower,
+          officerPhone: extractPhone(normalized.contactDetailsRaw),
+          inspectionContact: normalized.inspectionContactRaw,
+          possessionStatus: normalized.possessionStatus,
+          reservePrice: normalized.reservePrice ?? undefined,
+          emd: normalized.emd ?? undefined,
+          minimumIncrement: normalized.minimumIncrement ?? undefined,
+          dscRequired: normalized.dscRequired,
+          acceptReserveAsFirstBid: normalized.acceptReserveAsFirstBid,
+          auctionStart: normalized.auctionStart,
+          auctionEnd: normalized.auctionEnd,
+          applicationDeadline: normalized.applicationDeadline,
+          autoExtension: normalized.autoExtension,
+          extensionDurationMins: normalized.extensionDurationMins,
+          extensionTrigger: normalized.extensionTrigger,
+          status: derivedStatus,
+          statusSource: "date_derived",
+          sourceUrl: url,
+        },
+      });
+      auctionId = auction.id;
+      summary.updatedProperties++;
+      summary.newAuctions++;
+
+      for (const doc of normalized.documents) {
+        const document = await prisma.document.upsert({
+          where: { sourceUrl: doc.sourceUrl },
+          update: { title: doc.title, type: doc.type },
+          create: { sourceUrl: doc.sourceUrl, title: doc.title, type: doc.type },
+        });
+        await prisma.propertyDocument.upsert({
+          where: { propertyId_documentId: { propertyId, documentId: document.id } },
+          update: {},
+          create: { propertyId, documentId: document.id },
+        });
+        summary.documentsFound++;
+      }
+
+      await upsertSourceRecord(sourceId, url, contentHash, normalized, validation.needsReview ? "PENDING_REVIEW" : "PROCESSED", propertyId, auctionId);
+      return;
+    }
+
     const slug = await uniqueSlug(normalized.slugSeed, normalized.externalAuctionId ?? Date.now().toString());
     // Auto-approve records that passed validation with no uncertainty flags
     // (clear category, price, and date). Genuinely ambiguous extractions
