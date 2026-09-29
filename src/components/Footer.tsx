@@ -31,8 +31,8 @@ export default async function Footer() {
 
   return (
     <footer className="bg-brand-bg border-t border-brand-border mt-16">
-      <div className="max-w-6xl mx-auto px-5 py-12 grid grid-cols-2 lg:grid-cols-5 gap-x-6 gap-y-10">
-        <div className="col-span-2">
+      <div className="max-w-6xl mx-auto px-5 py-12 grid grid-cols-2 lg:grid-cols-6 gap-x-8 gap-y-10">
+        <div className="col-span-2 lg:col-span-2">
           <Image src="/brand/logo.png" alt="BankAuction.co" width={140} height={55} className="h-9 w-auto mb-3" />
           <p className="text-sm text-brand-muted max-w-xs mb-5">
             India&apos;s trusted platform for bank auction properties. Explore residential, commercial, industrial, and
@@ -74,23 +74,21 @@ export default async function Footer() {
           <li><Link href="/banks" className="hover:text-brand font-medium">All Bank</Link></li>
         </FooterColumn>
 
-        <div className="col-span-2 lg:col-span-1 grid grid-cols-2 lg:block gap-x-6">
-          <FooterColumn title="Top Cities">
-            {["Mumbai", "Pune", "Delhi", "Ahmedabad", "Bangalore", "Chennai"].map((c) => (
-              <li key={c}><Link href={`/properties?q=${encodeURIComponent(c)}`} className="hover:text-brand">{c}</Link></li>
-            ))}
-            <li><Link href="/cities" className="hover:text-brand font-medium">All City</Link></li>
-          </FooterColumn>
+        <FooterColumn title="Top Cities">
+          {["Mumbai", "Pune", "Delhi", "Ahmedabad", "Bangalore", "Chennai"].map((c) => (
+            <li key={c}><Link href={`/properties?q=${encodeURIComponent(c)}`} className="hover:text-brand">{c}</Link></li>
+          ))}
+          <li><Link href="/cities" className="hover:text-brand font-medium">All City</Link></li>
+        </FooterColumn>
 
-          <div className="lg:mt-8">
-            <div className="font-semibold mb-3 text-sm">Contact Info.</div>
-            <ul className="space-y-1.5 text-sm text-brand-muted">
-              <li>Call: {s.phone}</li>
-              <li className="break-all">General: {s.generalEmail}</li>
-              <li className="break-all">Listings: {s.listingsEmail}</li>
-              <li className="break-all">Partnerships: {s.partnershipsEmail}</li>
-            </ul>
-          </div>
+        <div className="col-span-2 lg:col-span-1">
+          <div className="font-semibold mb-3 text-sm">Contact Info.</div>
+          <ul className="space-y-1.5 text-sm text-brand-muted">
+            <li>Call: {s.phone}</li>
+            <li className="break-words">General: {s.generalEmail}</li>
+            <li className="break-words">Listings: {s.listingsEmail}</li>
+            <li className="break-words">Partnerships: {s.partnershipsEmail}</li>
+          </ul>
         </div>
       </div>
 

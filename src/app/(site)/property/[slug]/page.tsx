@@ -129,9 +129,10 @@ export default async function PropertyPage({
                 {property.documents.map((pd) => (
                   <li key={pd.documentId} className="flex items-center justify-between px-4 py-2.5">
                     <span>{pd.document.title ?? pd.document.type}</span>
-                    <a href={pd.document.storedUrl ?? pd.document.sourceUrl} target="_blank" rel="noreferrer" className="text-brand font-medium hover:underline">
-                      View Official Document
-                    </a>
+                    <Link href="/pricing" className="inline-flex items-center gap-2 group">
+                      <span className="blur-[4px] select-none text-brand font-medium group-hover:blur-[5px]">View Official Document</span>
+                      <span className="text-xs text-gold font-semibold whitespace-nowrap">Unlock →</span>
+                    </Link>
                   </li>
                 ))}
               </ul>
