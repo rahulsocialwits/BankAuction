@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+:root {
+  /* Sampled from the real BankAuction.co logo (navy + gold gavel) */
+  --brand-navy: #14233d;
+  --brand-navy-dark: #0c172b;
+  --brand-gold: #a67c1e;
+  --brand-gold-dark: #8a6717;
+  --brand-black: #111111;
+  --brand-white: #ffffff;
+  --brand-bg: #f7f6f2;
+  --brand-border: #e7e4db;
+  --brand-muted: #68675f;
+
+  --background: var(--brand-white);
+  --foreground: var(--brand-black);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-brand: var(--brand-navy);
+  --color-brand-dark: var(--brand-navy-dark);
+  --color-gold: var(--brand-gold);
+  --color-gold-dark: var(--brand-gold-dark);
+  --color-brand-bg: var(--brand-bg);
+  --color-brand-border: var(--brand-border);
+  --color-brand-muted: var(--brand-muted);
+  --font-sans: var(--font-poppins);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-poppins), system-ui, sans-serif;
+}

@@ -1,0 +1,35 @@
+name: Ingest bank auction listings
+
+on:
+  schedule:
+    # Every 30 minutes, per the platform spec.
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Source key to ingest"
+        default: "bankauctions"
+      limit:
+        description: "Max pages to process this run"
+        default: "25"
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      - name: Run ingestion
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: npm run ingest -- ${{ github.event.inputs.source || 'bankauctions' }} ${{ github.event.inputs.limit || '25' }}
