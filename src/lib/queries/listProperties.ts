@@ -6,15 +6,27 @@ export interface PropertyFilters {
   bankId?: string;
   addressText?: string;
   keyword?: string;
+  priceMin?: number;
+  priceMax?: number;
 }
 
 export async function listPublishedProperties(filters: PropertyFilters = {}, take = 24) {
+  const priceFilter =
+    filters.priceMin !== undefined || filters.priceMax !== undefined
+      ? { gte: filters.priceMin, lte: filters.priceMax }
+      : undefined;
+
   return prisma.property.findMany({
     where: {
       status: "PUBLISHED",
       category: filters.category,
       addressText: filters.addressText,
-      auctions: filters.bankId ? { some: { bankId: filters.bankId } } : undefined,
+      auctions: {
+        some: {
+          bankId: filters.bankId,
+          reservePrice: priceFilter,
+        },
+      },
       OR: filters.keyword
         ? [
             { title: { contains: filters.keyword, mode: "insensitive" } },

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import PropertyCard from "@/components/PropertyCard";
 import { toPropertyCardData } from "@/lib/queries/listProperties";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 120;
 
 export default async function BankDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;

@@ -66,6 +66,14 @@ export const SOURCE_REGISTRY: SourceDefinition[] = [
       "robots.txt explicitly disallows ClaudeBot / anthropic-ai. Must never be crawled by this system.",
   },
   {
+    key: "baanknet",
+    name: "Baanknet.com",
+    baseUrl: "https://baanknet.com",
+    accessStatus: "ALLOWED",
+    accessNotes:
+      "robots.txt allows all (\"Disallow:\" empty). Verified allowed; adapter not implemented yet.",
+  },
+  {
     key: "bankauction_co",
     name: "BankAuction.co (reference site)",
     baseUrl: "https://bankauction.co",

@@ -612,3 +612,50 @@ model Review {
 
   @@map("reviews")
 }
+
+// ---------------------------------------------------------------------------
+// Site-wide settings (singleton row) — admin-editable contact info, social
+// links and policy page content, so none of this is hardcoded in the UI.
+// ---------------------------------------------------------------------------
+
+model SiteSettings {
+  id                 String   @id @default(cuid())
+  phone              String?
+  generalEmail       String?
+  listingsEmail      String?
+  partnershipsEmail  String?
+  workingHours       String?
+  facebookUrl        String?
+  instagramUrl       String?
+  linkedinUrl        String?
+  youtubeUrl         String?
+  privacyPolicy      String?  @db.Text
+  termsAndConditions String?  @db.Text
+  disclaimer         String?  @db.Text
+  updatedAt          DateTime @updatedAt
+
+  @@map("site_settings")
+}
+
+// ---------------------------------------------------------------------------
+// Blog
+// ---------------------------------------------------------------------------
+
+enum BlogPostStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model BlogPost {
+  id          String         @id @default(cuid())
+  slug        String         @unique
+  title       String
+  excerpt     String?
+  body        String         @db.Text
+  coverImageUrl String?
+  status      BlogPostStatus @default(DRAFT)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@map("blog_posts")
+}

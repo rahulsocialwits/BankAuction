@@ -1,10 +1,28 @@
-export default function BlogPage() {
+import Link from "next/link";
+import { prisma } from "@/lib/db/prisma";
+
+export const revalidate = 120;
+
+export default async function BlogPage() {
+  const posts = await prisma.blogPost.findMany({ where: { status: "PUBLISHED" }, orderBy: { createdAt: "desc" } });
+
   return (
-    <main className="max-w-3xl mx-auto px-5 py-14 text-center">
+    <main className="max-w-4xl mx-auto px-5 py-14">
       <h1 className="text-2xl font-semibold mb-2">Bank Auction Insights</h1>
-      <p className="text-brand-muted text-sm">
-        No articles published yet. This section will carry guides on EMD, verification, and auction terminology.
-      </p>
+      <p className="text-brand-muted text-sm mb-8">Guides on EMD, verification, and auction terminology.</p>
+
+      {posts.length === 0 ? (
+        <p className="text-brand-muted text-sm py-10 text-center">No articles published yet.</p>
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-5">
+          {posts.map((p) => (
+            <Link key={p.id} href={`/blog/${p.slug}`} className="bg-white border border-brand-border rounded-xl p-5 hover:border-brand transition-colors">
+              <div className="font-semibold mb-1">{p.title}</div>
+              {p.excerpt && <p className="text-sm text-brand-muted">{p.excerpt}</p>}
+            </Link>
+          ))}
+        </div>
+      )}
     </main>
   );
 }

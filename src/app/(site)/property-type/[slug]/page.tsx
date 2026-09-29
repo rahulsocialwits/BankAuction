@@ -3,7 +3,7 @@ import { listPublishedProperties, toPropertyCardData } from "@/lib/queries/listP
 import { PropertyCategory } from "@prisma/client";
 import { notFound } from "next/navigation";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 120;
 
 const LABELS: Record<PropertyCategory, string> = {
   RESIDENTIAL: "Residential",

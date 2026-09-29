@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { slugify } from "@/lib/normalization/parsers";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 120;
 
 export default async function CitiesPage() {
   const groups = await prisma.property.groupBy({

@@ -11,7 +11,7 @@ on:
         default: "bankauctions"
       limit:
         description: "Max pages to process this run"
-        default: "25"
+        default: "100"
 
 jobs:
   ingest:
@@ -21,7 +21,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
 
       - run: npm ci
@@ -32,4 +32,4 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
-        run: npm run ingest -- ${{ github.event.inputs.source || 'bankauctions' }} ${{ github.event.inputs.limit || '25' }}
+        run: npm run ingest -- ${{ github.event.inputs.source || 'bankauctions' }} ${{ github.event.inputs.limit || '100' }}

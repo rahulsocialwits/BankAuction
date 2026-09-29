@@ -1,5 +1,7 @@
 import Link from "next/link";
+import Image from "next/image";
 import { AuctionStatus, PropertyCategory } from "@prisma/client";
+import { PLACEHOLDER_IMAGE_URL } from "@/lib/constants";
 
 export interface PropertyCardData {
   slug: string;
@@ -38,8 +40,8 @@ export default function PropertyCard({ property }: { property: PropertyCardData 
       href={`/property/${property.slug}`}
       className="block bg-white border border-brand-border rounded-2xl overflow-hidden hover:shadow-md transition-shadow"
     >
-      <div className="h-36 bg-gradient-to-br from-brand-bg to-brand-border flex items-center justify-center text-xs text-brand-muted">
-        No image provided by source
+      <div className="relative h-36 bg-brand-bg">
+        <Image src={PLACEHOLDER_IMAGE_URL} alt={property.title} fill unoptimized className="object-contain p-6 opacity-70" />
       </div>
       <div className="p-4">
         <span

@@ -4,7 +4,7 @@ import PropertyCard from "@/components/PropertyCard";
 import { auctionToCardData, listAuctionsByStatus } from "@/lib/queries/listAuctions";
 import { AuctionStatus } from "@prisma/client";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 120;
 
 const STATUS_MAP: Record<string, AuctionStatus[]> = {
   upcoming: ["UPCOMING"],

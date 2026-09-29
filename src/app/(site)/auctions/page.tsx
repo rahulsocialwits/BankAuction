@@ -2,7 +2,7 @@ import Link from "next/link";
 import PropertyCard from "@/components/PropertyCard";
 import { auctionToCardData, listAuctionsByStatus } from "@/lib/queries/listAuctions";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 120;
 
 const TABS = [
   { label: "All", href: "/auctions" },

@@ -1,8 +1,12 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import PropertyCard from "@/components/PropertyCard";
+import SearchBar from "@/components/SearchBar";
+import BlogCarousel from "@/components/BlogCarousel";
+import AuctionCountdownTable, { CountdownRow } from "@/components/AuctionCountdownTable";
+import { PRIORITY_CITIES } from "@/lib/constants";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 120;
 
 const PROPERTY_TYPES = [
   { label: "Residential", category: "RESIDENTIAL" },
@@ -13,8 +17,15 @@ const PROPERTY_TYPES = [
   { label: "Vehicles", category: "VEHICLE" },
 ];
 
+const WHY_CHOOSE = [
+  { title: "Source-backed information", body: "Every figure and fact traces back to an official auction notice — nothing is invented." },
+  { title: "Broad coverage", body: "Residential, commercial, industrial, agricultural, land and vehicle auctions from banks across India." },
+  { title: "Always up to date", body: "Listings refresh automatically, so prices, dates and statuses stay current." },
+  { title: "Full documents", body: "Sale notices, bid forms and terms are linked directly on every listing." },
+];
+
 export default async function Home() {
-  const [activeListings, banksCovered, upcomingAuctions, featured] = await Promise.all([
+  const [activeListings, banksCovered, upcomingAuctions, featured, cityGroups, topBanks, countdownAuctions] = await Promise.all([
     prisma.property.count({ where: { status: "PUBLISHED" } }),
     prisma.bank.count({ where: { auctions: { some: { property: { status: "PUBLISHED" } } } } }),
     prisma.auction.count({ where: { status: { in: ["UPCOMING", "LIVE", "AUCTION_TODAY"] }, property: { status: "PUBLISHED" } } }),
@@ -24,6 +35,22 @@ export default async function Home() {
       take: 8,
       include: { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 } },
     }),
+    prisma.property.groupBy({
+      by: ["addressText"],
+      where: { status: "PUBLISHED", addressText: { in: PRIORITY_CITIES } },
+      _count: true,
+    }),
+    prisma.bank.findMany({
+      include: { _count: { select: { auctions: { where: { property: { status: "PUBLISHED" } } } } } },
+      orderBy: { auctions: { _count: "desc" } },
+      take: 6,
+    }),
+    prisma.auction.findMany({
+      where: { status: { in: ["UPCOMING", "LIVE", "AUCTION_TODAY"] }, property: { status: "PUBLISHED" } },
+      orderBy: { auctionStart: "asc" },
+      take: 40,
+      include: { bank: true, property: true },
+    }),
   ]);
 
   const stats = [
@@ -32,10 +59,21 @@ export default async function Home() {
     { label: "Upcoming Auctions", value: upcomingAuctions },
   ];
 
+  const cityCountMap = new Map(cityGroups.map((g) => [g.addressText, g._count]));
+  const countdownRows: CountdownRow[] = countdownAuctions.map((a) => ({
+    id: a.id,
+    slug: a.property.slug,
+    title: a.property.title,
+    bankName: a.bank?.name ?? null,
+    location: a.property.addressText,
+    category: a.property.category,
+    auctionStart: a.auctionStart ? a.auctionStart.toISOString() : null,
+  }));
+
   return (
     <main>
       <section className="bg-gradient-to-b from-brand-bg to-white">
-        <div className="max-w-6xl mx-auto px-5 py-16 text-center">
+        <div className="max-w-6xl mx-auto px-5 pt-16 pb-10 text-center">
           <h1 className="text-3xl sm:text-4xl font-bold text-black max-w-2xl mx-auto">
             Find Bank Auction Properties With Confidence
           </h1>
@@ -43,8 +81,13 @@ export default async function Home() {
             Residential, commercial, industrial, agricultural and land auctions from banks across India —
             discovered, verified, and kept up to date automatically.
           </p>
-          <div className="flex items-center justify-center gap-3 mt-6">
-            <Link href="/properties" className="bg-brand text-white px-6 py-2.5 rounded-lg font-medium hover:bg-brand-dark">
+
+          <div className="max-w-xl mx-auto mt-8">
+            <SearchBar size="lg" />
+          </div>
+
+          <div className="flex items-center justify-center gap-3 mt-5">
+            <Link href="/properties" className="bg-gold text-white px-6 py-2.5 rounded-lg font-medium hover:bg-gold-dark">
               Explore Auctions
             </Link>
             <Link href="/how-it-works" className="border border-brand-border px-6 py-2.5 rounded-lg font-medium hover:bg-brand-bg">
@@ -94,6 +137,14 @@ export default async function Home() {
       </section>
 
       <section className="max-w-6xl mx-auto px-5 py-12">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-xl font-semibold">Upcoming Auctions</h2>
+          <Link href="/auctions" className="text-sm text-brand font-medium">View all auctions →</Link>
+        </div>
+        <AuctionCountdownTable rows={countdownRows} />
+      </section>
+
+      <section className="max-w-6xl mx-auto px-5 py-12">
         <h2 className="text-xl font-semibold mb-5">Browse by Property Type</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {PROPERTY_TYPES.map((t) => (
@@ -108,11 +159,69 @@ export default async function Home() {
         </div>
       </section>
 
+      <section className="max-w-6xl mx-auto px-5 py-12">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-xl font-semibold">Browse by Location</h2>
+          <Link href="/cities" className="text-sm text-brand font-medium">All cities →</Link>
+        </div>
+        <div className="grid grid-cols-3 sm:grid-cols-3 gap-4">
+          {PRIORITY_CITIES.map((city) => (
+            <Link
+              key={city}
+              href={`/properties?q=${encodeURIComponent(city)}`}
+              className="bg-white border border-brand-border rounded-xl py-5 text-center hover:border-brand transition-colors"
+            >
+              <div className="font-semibold text-sm">{city}</div>
+              <div className="text-xs text-brand-muted mt-1">{cityCountMap.get(city) ?? 0} listings</div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="max-w-6xl mx-auto px-5 py-12">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-xl font-semibold">Browse by Bank</h2>
+          <Link href="/banks" className="text-sm text-brand font-medium">All banks →</Link>
+        </div>
+        {topBanks.filter((b) => b._count.auctions > 0).length === 0 ? (
+          <p className="text-brand-muted text-sm">No banks with published listings yet.</p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {topBanks.filter((b) => b._count.auctions > 0).map((b) => (
+              <Link key={b.id} href={`/bank/${b.slug}`} className="bg-white border border-brand-border rounded-xl p-4 hover:border-brand transition-colors">
+                <div className="font-semibold text-sm">{b.name}</div>
+                <div className="text-xs text-brand-muted mt-1">{b._count.auctions} listing(s)</div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="max-w-6xl mx-auto px-5 py-12">
+        <h2 className="text-xl font-semibold mb-5">Why Choose BankAuction.co?</h2>
+        <div className="grid sm:grid-cols-2 gap-5">
+          {WHY_CHOOSE.map((w) => (
+            <div key={w.title} className="bg-white border border-brand-border rounded-xl p-5">
+              <div className="font-semibold mb-1.5">{w.title}</div>
+              <p className="text-sm text-brand-muted">{w.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="max-w-6xl mx-auto px-5 py-12">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-xl font-semibold">Bank Auction Insights</h2>
+          <Link href="/blog" className="text-sm text-brand font-medium">View all →</Link>
+        </div>
+        <BlogCarousel />
+      </section>
+
       <section className="bg-brand text-white">
         <div className="max-w-6xl mx-auto px-5 py-14 text-center">
           <h2 className="text-2xl font-bold mb-2">Ready to find your next property?</h2>
           <p className="text-white/80 mb-6">Search verified, source-backed bank auction listings across India.</p>
-          <Link href="/properties" className="bg-white text-brand px-6 py-2.5 rounded-lg font-medium inline-block">
+          <Link href="/properties" className="bg-gold text-white px-6 py-2.5 rounded-lg font-medium inline-block hover:bg-gold-dark">
             Explore Auctions
           </Link>
         </div>

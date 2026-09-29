@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { PropertyCategory } from "@prisma/client";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 120;
 
 const CATEGORIES: { label: string; value: PropertyCategory; description: string }[] = [
   { label: "Residential", value: "RESIDENTIAL", description: "Flats, houses, villas, residential plots" },

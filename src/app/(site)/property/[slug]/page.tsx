@@ -1,8 +1,11 @@
 import { prisma } from "@/lib/db/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
+import { PLACEHOLDER_IMAGE_URL } from "@/lib/constants";
+import { submitPropertyLead } from "./actions";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 120;
 
 const STATUS_STYLES: Record<string, string> = {
   UPCOMING: "bg-blue-50 text-blue-700",
@@ -33,8 +36,15 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-export default async function PropertyPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function PropertyPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ leadSent?: string; leadError?: string }>;
+}) {
   const { slug } = await params;
+  const { leadSent, leadError } = await searchParams;
 
   const property = await prisma.property.findUnique({
     where: { slug },
@@ -42,7 +52,6 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
       auctions: { include: { bank: true, branch: true }, orderBy: { createdAt: "desc" }, take: 1 },
       documents: { include: { document: true } },
       attributes: true,
-      sourceRecords: { include: { source: true }, take: 1 },
     },
   });
 
@@ -51,7 +60,6 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
   const auction = property.auctions[0];
   const legalSchedule = property.attributes.find((a) => a.key === "legal_schedule")?.value;
   const rawType = property.attributes.find((a) => a.key === "source_property_type")?.value;
-  const source = property.sourceRecords[0]?.source;
 
   return (
     <main className="max-w-5xl mx-auto px-5 py-10">
@@ -59,8 +67,8 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
         <Link href="/" className="hover:text-brand">Home</Link> / <Link href="/properties" className="hover:text-brand">Properties</Link> / <span>{property.title}</span>
       </nav>
 
-      <div className="h-56 sm:h-72 bg-gradient-to-br from-brand-bg to-brand-border rounded-2xl flex items-center justify-center text-sm text-brand-muted mb-6">
-        No image provided by source
+      <div className="relative h-56 sm:h-72 rounded-2xl overflow-hidden mb-6 bg-brand-bg">
+        <Image src={PLACEHOLDER_IMAGE_URL} alt={property.title} fill unoptimized className="object-contain p-10 opacity-70" />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">
@@ -70,7 +78,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
           </span>
           <h1 className="text-2xl font-semibold mb-1">{property.title}</h1>
           <p className="text-brand-muted text-sm mb-6">
-            {property.addressText ?? "Location not specified by source"}
+            {property.addressText ?? "Location not specified"}
             {auction?.bank ? ` · ${auction.bank.name}` : ""}
             {auction?.branch ? ` (${auction.branch.name})` : ""}
           </p>
@@ -91,8 +99,8 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
 
           <section className="mb-6">
             <h2 className="font-semibold mb-2">Property Overview</h2>
-            <p className="text-sm leading-6 text-black/80">{property.description ?? "No description provided by source."}</p>
-            {rawType && <p className="text-xs text-brand-muted mt-2">Source-listed type: {rawType}</p>}
+            <p className="text-sm leading-6 text-black/80">{property.description ?? "No description provided."}</p>
+            {rawType && <p className="text-xs text-brand-muted mt-2">Listed type: {rawType}</p>}
           </section>
 
           {legalSchedule && (
@@ -117,24 +125,35 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
               </ul>
             </section>
           )}
+
+          <section className="bg-white border border-brand-border rounded-2xl p-5">
+            <h2 className="font-semibold mb-1">Interested in this property?</h2>
+            <p className="text-xs text-brand-muted mb-4">Send an enquiry and our team will get back to you.</p>
+
+            {leadSent && <div className="bg-green-50 text-green-700 text-sm rounded-lg px-4 py-3 mb-4">Thanks — we&apos;ll be in touch shortly.</div>}
+            {leadError && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">Please enter your name.</div>}
+
+            <form action={submitPropertyLead} className="grid sm:grid-cols-2 gap-3">
+              <input type="hidden" name="propertyId" value={property.id} />
+              <input type="hidden" name="slug" value={property.slug} />
+              <input name="name" required placeholder="Your name" className="border border-brand-border rounded-lg px-3 py-2 text-sm" />
+              <input name="phone" placeholder="Phone" className="border border-brand-border rounded-lg px-3 py-2 text-sm" />
+              <input name="email" type="email" placeholder="Email" className="sm:col-span-2 border border-brand-border rounded-lg px-3 py-2 text-sm" />
+              <textarea name="message" placeholder="Message (optional)" rows={3} className="sm:col-span-2 border border-brand-border rounded-lg px-3 py-2 text-sm" />
+              <button type="submit" className="sm:col-span-2 bg-brand text-white font-medium rounded-lg py-2.5 hover:bg-brand-dark">
+                Send Enquiry
+              </button>
+            </form>
+          </section>
         </div>
 
         <aside className="lg:col-span-1">
           <div className="bg-white border border-brand-border rounded-2xl p-5 sticky top-24">
-            <h2 className="font-semibold mb-3">Contact &amp; Source</h2>
+            <h2 className="font-semibold mb-3">Verify Before You Act</h2>
             <p className="text-xs text-brand-muted mb-4">
-              This listing was discovered from a public source. Verify all details officially before acting.
+              Always confirm auction details against the official documents above before participating.
             </p>
-            <div className="text-sm mb-4">
-              <div className="text-brand-muted text-xs mb-0.5">Source</div>
-              <div className="font-medium">{source?.name ?? "Unknown"}</div>
-            </div>
-            {auction?.sourceUrl && (
-              <a href={auction.sourceUrl} target="_blank" rel="noreferrer" className="block text-center bg-brand text-white font-medium rounded-lg py-2.5 mb-2 hover:bg-brand-dark">
-                View Original Listing
-              </a>
-            )}
-            <Link href="/contact" className="block text-center border border-brand-border font-medium rounded-lg py-2.5 hover:border-brand">
+            <Link href="/contact" className="block text-center bg-brand text-white font-medium rounded-lg py-2.5 hover:bg-brand-dark">
               Contact Us
             </Link>
           </div>

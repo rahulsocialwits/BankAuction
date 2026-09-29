@@ -5,7 +5,10 @@ import { logoutAdmin } from "@/app/admin/login/actions";
 const NAV = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/properties", label: "Properties" },
+  { href: "/admin/leads", label: "Leads" },
+  { href: "/admin/blog", label: "Blog" },
   { href: "/admin/sources", label: "Sources" },
+  { href: "/admin/settings", label: "Settings" },
 ];
 
 export default function AdminSidebar() {
