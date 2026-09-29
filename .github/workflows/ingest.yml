@@ -2,8 +2,10 @@ name: Ingest bank auction listings
 
 on:
   schedule:
-    # Every 30 minutes, per the platform spec.
-    - cron: "*/30 * * * *"
+    # Every 30 minutes, offset a few minutes past :00/:30 to avoid GitHub's
+    # busiest queue times (top/bottom of the hour), which can otherwise
+    # delay or drop scheduled runs for hours on free-tier repos.
+    - cron: "7,37 * * * *"
   workflow_dispatch:
     inputs:
       source:
