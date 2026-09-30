@@ -9,6 +9,7 @@ const NAV = [
   { href: "/admin", label: "Dashboard", exact: true },
   { href: "/admin/properties", label: "Properties" },
   { href: "/admin/properties/new", label: "Add Property" },
+  { href: "/admin/properties/import", label: "Bulk Import" },
   { href: "/admin/leads", label: "Leads" },
   { href: "/admin/blog", label: "Blog" },
   { href: "/admin/localities", label: "Locations" },
@@ -22,7 +23,7 @@ export default function AdminSidebar() {
 
   function isActive(item: { href: string; exact?: boolean }) {
     if (item.exact) return pathname === item.href;
-    if (item.href === "/admin/properties") return pathname === item.href;
+    if (item.href === "/admin/properties" || item.href === "/admin/properties/new") return pathname === item.href;
     return pathname === item.href || pathname.startsWith(item.href + "/");
   }
 
