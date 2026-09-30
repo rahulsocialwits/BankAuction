@@ -150,6 +150,19 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
               <Link href="/contact" className="block text-center border border-brand-border font-medium rounded-lg py-2 text-sm hover:border-brand">
                 Contact Us
               </Link>
+              <a
+                href={`https://wa.me/918160144606?text=${encodeURIComponent(
+                  `Hi, I am interested in this property: ${property.title}\nhttps://auction.bizsocio.com/property/${property.slug}`,
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 flex items-center justify-center gap-2 bg-[#25D366] text-white font-medium rounded-lg py-2 text-sm hover:bg-[#1ebe5a]"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M20.5 3.5A11.8 11.8 0 0 0 12 0C5.4 0 .1 5.3.1 11.9c0 2.1.5 4.1 1.6 5.9L0 24l6.4-1.7a11.9 11.9 0 0 0 5.6 1.4c6.6 0 11.9-5.3 11.9-11.9 0-3.2-1.2-6.200-3.400-8.300ZM12 21.700c-1.800 0-3.500-.5-5-1.400l-.4-.2-3.800 1 1-3.700-.2-.4a9.800 9.800 0 0 1-1.500-5.200C2.100 6.500 6.600 2.100 12 2.100c2.600 0 5.100 1 6.900 2.900a9.700 9.700 0 0 1 2.900 6.900c0 5.400-4.400 9.800-9.800 9.800Zm5.400-7.300c-.3-.1-1.700-.9-2-1s-.5-.1-.7.100-.8 1-.9 1.100-.3.200-.6.100a8 8 0 0 1-2.400-1.500 9 9 0 0 1-1.600-2c-.2-.3 0-.5.100-.6l.4-.5.3-.5c.1-.2 0-.4 0-.5l-.9-2.200c-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.400s-1 1-1 2.400 1 2.800 1.200 3 2 3.100 4.900 4.300c.7.300 1.200.5 1.600.6.700.2 1.300.2 1.800.1.600-.1 1.700-.7 1.900-1.400.2-.7.2-1.200.2-1.400l-.5-.3Z" />
+                </svg>
+                I&apos;m interested — WhatsApp
+              </a>
             </div>
           </div>
         </aside>
