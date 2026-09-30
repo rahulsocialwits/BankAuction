@@ -3,7 +3,10 @@ import { importCsvText, importRecords, type ImportResult } from "@/lib/import/cs
 import { robotsAllows, scanWebPage, UA } from "./webScan";
 
 // Sites whose terms or robots.txt disallow copying; never accept these as links.
-const BLOCKED_HOSTS = ["baanknet.com", "auctionbazaar.com", "bankauction.co"];
+const BLOCKED_HOSTS = ["baanknet.com", "auctionbazaar.com", "bankauction.co", "eauctionsindia.com"];
+
+/** Access is refused by the site (robots.txt, terms, anti-bot). We never retry or work around it; the feed is auto-paused. */
+class BlockedError extends Error {}
 const MIN_INTERVAL_MS = 55 * 60 * 1000; // scheduled runs are hourly
 
 export function validateFeedUrl(raw: string): { ok: true; url: string } | { ok: false; reason: string } {
@@ -40,7 +43,7 @@ export async function runFeedSource(id: string) {
     // Plain web pages must be allowed by the site's robots.txt; Sheets/CSV links are data the owner shared.
     const looksCsv = isSheet || /\.csv(\?|$)/i.test(target);
     if (!looksCsv && !(await robotsAllows(target))) {
-      throw new Error("Blocked: this site's robots.txt does not allow automated access to this page");
+      throw new BlockedError("Blocked: this site's robots.txt does not allow automated access to this page. Paused automatically.");
     }
 
     let res: Response;
@@ -49,6 +52,9 @@ export async function runFeedSource(id: string) {
     } catch (e) {
       const cause = (e as { cause?: { code?: string; message?: string } }).cause;
       throw new Error(`Could not reach the site (${cause?.code ?? cause?.message ?? "network error"})`);
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new BlockedError(`Blocked: the site refuses automated access (HTTP ${res.status}, likely anti-bot protection). Paused automatically.`);
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
@@ -70,7 +76,16 @@ export async function runFeedSource(id: string) {
     return { name: feed.name, message };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    await prisma.feedSource.update({ where: { id }, data: { lastRunAt: new Date(), lastStatus: "error", lastMessage: message } });
+    const blocked = e instanceof BlockedError || message === "This site does not permit copying its content";
+    await prisma.feedSource.update({
+      where: { id },
+      data: {
+        lastRunAt: new Date(),
+        lastStatus: "error",
+        lastMessage: blocked && !message.startsWith("Blocked") ? `Blocked: ${message}. Paused automatically.` : message,
+        ...(blocked && { active: false }),
+      },
+    });
     return { name: feed.name, error: message };
   }
 }

@@ -98,7 +98,13 @@ export default async function DataEnginePage() {
                 <div className="text-xs text-brand-muted break-all">{f.url}</div>
               </div>
               <div className="flex items-center gap-2">
-                {f.active ? <Badge tone="green">Live</Badge> : <Badge tone="gray">Paused</Badge>}
+                {f.active ? (
+                  <Badge tone="green">Live</Badge>
+                ) : f.lastMessage?.startsWith("Blocked") ? (
+                  <Badge tone="red">Blocked</Badge>
+                ) : (
+                  <Badge tone="gray">Paused</Badge>
+                )}
                 <form action={runFeedSourceNow}>
                   <input type="hidden" name="id" value={f.id} />
                   <SubmitButton className={btn}>Run now</SubmitButton>

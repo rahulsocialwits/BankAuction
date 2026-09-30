@@ -4,10 +4,14 @@
  * different OpenAI-compatible provider later needs no code change.
  */
 export async function chatJSON<T>(systemPrompt: string, userPrompt: string): Promise<T | null> {
-  const apiKey = process.env.AI_API_KEY;
-  const baseUrl = process.env.AI_BASE_URL;
-  const model = process.env.AI_EXTRACTOR_MODEL || "glm-5.3-cursor";
+  const apiKey = process.env.AI_API_KEY?.trim();
+  const baseUrl = process.env.AI_BASE_URL?.trim().replace(/\/+$/, "");
+  const model = process.env.AI_EXTRACTOR_MODEL?.trim() || "glm-5.3-cursor";
   if (!apiKey || !baseUrl) return null;
+  // A masked/placeholder value (e.g. "sk-••••") pasted into the env var breaks the HTTP header.
+  if (/[^\x20-\x7E]/.test(apiKey)) {
+    throw new Error("AI_API_KEY contains invalid characters (looks like a masked value). Re-paste the real key in the environment settings.");
+  }
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
