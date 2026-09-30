@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 const STEPS = [
   {
     title: "Search",
@@ -16,6 +17,12 @@ const STEPS = [
     body: "Contact the authorized officer or bank branch listed on the auction to participate, following the official process described in the sale notice.",
   },
 ];
+
+export const metadata: Metadata = {
+  title: "How Bank Auction Properties Work",
+  description: "Step-by-step guide to buying a bank auction property: find a listing, check documents, pay EMD, bid in the e-auction and take possession.",
+  alternates: { canonical: "/how-it-works" },
+};
 
 export default function HowItWorksPage() {
   return (

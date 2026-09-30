@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { PropertyCategory } from "@prisma/client";
@@ -12,6 +13,12 @@ const CATEGORIES: { label: string; value: PropertyCategory; description: string 
   { label: "Agricultural", value: "AGRICULTURAL", description: "Farmland, orchards, agricultural buildings" },
   { label: "Vehicles", value: "VEHICLE", description: "Cars, commercial vehicles, heavy machinery" },
 ];
+
+export const metadata: Metadata = {
+  title: "Property Types for Bank Auctions",
+  description: "Browse bank auction properties by type: residential, commercial, industrial, land and plots, and agricultural.",
+  alternates: { canonical: "/property-types" },
+};
 
 export default async function PropertyTypesPage() {
   const counts = await prisma.property.groupBy({

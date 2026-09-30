@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
 import { submitContactLead } from "./actions";
+
+export const metadata: Metadata = {
+  title: "Contact Us",
+  description: "Questions about a bank auction listing or the platform? Send us a message and our team will get back to you.",
+  alternates: { canonical: "/contact" },
+};
 
 export default async function ContactPage({
   searchParams,
@@ -8,7 +15,7 @@ export default async function ContactPage({
   const { sent, error } = await searchParams;
 
   return (
-    <main className="max-w-xl mx-auto px-5 py-14">
+    <main className="w-full px-5 lg:px-10 xl:px-16 py-14">
       <h1 className="text-2xl font-semibold mb-2">Contact Us</h1>
       <p className="text-brand-muted text-sm mb-8">
         Questions about a listing or the platform? Send us a message.
@@ -23,7 +30,7 @@ export default async function ContactPage({
         <div className="bg-red-50 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">Please enter your name.</div>
       )}
 
-      <form action={submitContactLead} className="space-y-4 bg-white border border-brand-border rounded-xl p-6">
+      <form action={submitContactLead} className="space-y-4 bg-white border border-brand-border rounded-xl p-6 max-w-2xl">
         <div>
           <label className="block text-sm font-medium mb-1" htmlFor="name">Name</label>
           <input id="name" name="name" required className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />

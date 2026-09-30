@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import PropertyCard from "@/components/PropertyCard";
 import { auctionToCardData, listAuctionsByStatus } from "@/lib/queries/listAuctions";
@@ -12,6 +13,12 @@ const TABS = [
   { label: "Postponed", href: "/auctions/postponed" },
   { label: "Cancelled", href: "/auctions/cancelled" },
 ];
+
+export const metadata: Metadata = {
+  title: "Bank Auctions in India",
+  description: "Live, upcoming, completed, postponed and cancelled bank auctions across India, with reserve price, EMD and auction date.",
+  alternates: { canonical: "/auctions" },
+};
 
 export default async function AuctionsPage() {
   const auctions = await listAuctionsByStatus(["UPCOMING", "LIVE", "AUCTION_TODAY", "COMPLETED", "POSTPONED", "CANCELLED"]);

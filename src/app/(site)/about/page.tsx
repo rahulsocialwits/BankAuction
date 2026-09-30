@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
+export const metadata: Metadata = {
+  title: "About BankAuction.co",
+  description: "BankAuction.co helps buyers discover verified bank auction properties across India from public auction notices, in one searchable place.",
+  alternates: { canonical: "/about" },
+};
+
 export default function AboutPage() {
   return (
-    <main className="max-w-3xl mx-auto px-5 py-14">
+    <main className="w-full px-5 lg:px-10 xl:px-16 py-14">
       <h1 className="text-2xl font-semibold mb-4">About BankAuction.co</h1>
       <div className="space-y-4 text-sm leading-7 text-black/80">
         <p>

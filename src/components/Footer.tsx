@@ -8,7 +8,6 @@ const PROPERTY_TYPES = [
   { label: "Residential", value: "RESIDENTIAL" },
   { label: "Commercial", value: "COMMERCIAL" },
   { label: "Plots", value: "LAND_PLOT" },
-  { label: "Vehicles", value: "VEHICLE" },
   { label: "Industrial", value: "INDUSTRIAL" },
 ];
 
@@ -21,9 +20,9 @@ const SOCIAL_ICONS: { key: "facebookUrl" | "instagramUrl" | "linkedinUrl" | "you
 
 function FooterColumn({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="font-semibold mb-3 text-sm">{title}</div>
-      <ul className="space-y-1.5 text-sm text-brand-muted">{children}</ul>
+      <ul className="space-y-1.5 text-sm text-brand-muted [&_li]:truncate">{children}</ul>
     </div>
   );
 }
@@ -34,8 +33,8 @@ export default async function Footer() {
 
   return (
     <footer className="bg-brand-bg border-t border-brand-border mt-16">
-      <div className="w-full px-5 lg:px-10 xl:px-16 py-12 grid grid-cols-2 lg:grid-cols-6 gap-x-8 gap-y-10">
-        <div className="col-span-2 lg:col-span-2">
+      <div className="w-full px-5 lg:px-10 xl:px-16 py-12 grid grid-cols-2 lg:grid-cols-[1.4fr_1fr_1.5fr_1fr_1.7fr] gap-x-10 gap-y-10">
+        <div className="col-span-2 lg:col-span-1 min-w-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={s.footerLogoUrl} alt="BankAuction.co" height={36} loading="lazy" className="h-9 w-auto mb-3" />
           <p className="text-sm text-brand-muted max-w-xs mb-5">
@@ -73,7 +72,7 @@ export default async function Footer() {
 
         <FooterColumn title="Banks">
           {topBanks.map((b) => (
-            <li key={b.id}><Link href={`/properties?bank=${b.id}&status=all`} className="hover:text-brand">{b.name}</Link></li>
+            <li key={b.id}><Link href={`/properties?bank=${b.id}&status=all`} title={b.name} className="hover:text-brand">{b.name}</Link></li>
           ))}
           <li><Link href="/banks" className="hover:text-brand font-medium">All Bank</Link></li>
         </FooterColumn>
@@ -85,13 +84,13 @@ export default async function Footer() {
           <li><Link href="/cities" className="hover:text-brand font-medium">All City</Link></li>
         </FooterColumn>
 
-        <div className="col-span-2 lg:col-span-1">
+        <div className="col-span-2 lg:col-span-1 min-w-0">
           <div className="font-semibold mb-3 text-sm">Contact Info.</div>
-          <ul className="space-y-1.5 text-sm text-brand-muted">
+          <ul className="space-y-1.5 text-sm text-brand-muted [&_li]:truncate">
             <li>Call: {s.phone}</li>
-            <li className="break-words">General: {s.generalEmail}</li>
-            <li className="break-words">Listings: {s.listingsEmail}</li>
-            <li className="break-words">Partnerships: {s.partnershipsEmail}</li>
+            <li title={s.generalEmail}>General: {s.generalEmail}</li>
+            <li title={s.listingsEmail}>Listings: {s.listingsEmail}</li>
+            <li title={s.partnershipsEmail}>Partnerships: {s.partnershipsEmail}</li>
           </ul>
         </div>
       </div>

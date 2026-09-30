@@ -2,6 +2,7 @@ import PropertyCard from "@/components/PropertyCard";
 import { listPublishedProperties, toPropertyCardData } from "@/lib/queries/listProperties";
 import { PropertyCategory } from "@prisma/client";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 
 export const revalidate = 120;
 
@@ -13,6 +14,16 @@ const LABELS: Record<PropertyCategory, string> = {
   AGRICULTURAL: "Agricultural",
   VEHICLE: "Vehicles",
 };
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const category = slug.toUpperCase().replace(/-/g, "_") as PropertyCategory;
+  if (!LABELS[category]) return { title: "Property type not found", robots: { index: false } };
+  const label = LABELS[category];
+  const title = `${label} Bank Auction Properties`;
+  const description = `Browse ${label.toLowerCase()} bank auction properties across India with reserve prices, EMD, auction dates and the bank conducting each sale.`;
+  return { title, description, alternates: { canonical: `/property-type/${slug}` }, openGraph: { title, description } };
+}
 
 export default async function PropertyTypeDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;

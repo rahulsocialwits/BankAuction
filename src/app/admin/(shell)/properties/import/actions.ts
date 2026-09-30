@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { importCsvText } from "@/lib/import/csvImport";
 import { logRun } from "@/lib/pipeline/runLog";
+import { syncLocationsFromProperties } from "@/lib/pipeline/locations";
 
 export async function importProperties(formData: FormData) {
   const file = formData.get("file");
@@ -25,6 +26,7 @@ export async function importProperties(formData: FormData) {
     startedAt,
   });
   if (res.error) redirect("/admin/properties/import?error=header");
+  if (res.created > 0) await syncLocationsFromProperties().catch(() => 0);
 
   revalidatePath("/admin/properties");
   revalidatePath("/");

@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 
 export const revalidate = 120;
+
+export const metadata: Metadata = {
+  title: "Banks Conducting Auctions",
+  description: "All banks and financial institutions with live and upcoming auction properties on BankAuction.co, with listing counts for each.",
+  alternates: { canonical: "/banks" },
+};
 
 export default async function BanksPage() {
   const banks = await prisma.bank.findMany({

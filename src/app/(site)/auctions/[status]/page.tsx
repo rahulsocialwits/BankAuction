@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import PropertyCard from "@/components/PropertyCard";
 import { auctionToCardData, listAuctionsByStatus } from "@/lib/queries/listAuctions";
 import { AuctionStatus } from "@prisma/client";
@@ -22,6 +23,15 @@ const TABS = [
   { label: "Postponed", href: "/auctions/postponed" },
   { label: "Cancelled", href: "/auctions/cancelled" },
 ];
+
+export async function generateMetadata({ params }: { params: Promise<{ status: string }> }): Promise<Metadata> {
+  const { status } = await params;
+  if (!STATUS_MAP[status]) return { title: "Auctions not found", robots: { index: false } };
+  const label = status.charAt(0).toUpperCase() + status.slice(1);
+  const title = `${label} Bank Auctions`;
+  const description = `${label} bank auctions in India: reserve price, EMD, auction date and bank for every property, updated regularly.`;
+  return { title, description, alternates: { canonical: `/auctions/${status}` }, openGraph: { title, description } };
+}
 
 export default async function AuctionsStatusPage({ params }: { params: Promise<{ status: string }> }) {
   const { status } = await params;

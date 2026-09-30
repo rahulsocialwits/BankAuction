@@ -1,9 +1,21 @@
 import { prisma } from "@/lib/db/prisma";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import { clip } from "@/lib/seo";
 import PropertyCard from "@/components/PropertyCard";
 import { toPropertyCardData } from "@/lib/queries/listProperties";
 
 export const revalidate = 120;
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const bank = await prisma.bank.findUnique({ where: { slug }, select: { name: true } });
+  if (!bank) return { title: "Bank not found", robots: { index: false } };
+  const count = await prisma.property.count({ where: { status: "PUBLISHED", auctions: { some: { bank: { slug } } } } });
+  const title = `${bank.name} Auction Properties`;
+  const description = clip(`${count} ${bank.name} bank auction propert${count === 1 ? "y" : "ies"} with reserve prices, EMD and auction dates. Flats, houses, plots and commercial assets under SARFAESI.`, 158);
+  return { title, description, alternates: { canonical: `/bank/${slug}` }, openGraph: { title, description } };
+}
 
 export default async function BankDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;

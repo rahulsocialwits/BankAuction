@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 const PLANS = [
@@ -15,6 +16,12 @@ const FEATURES = [
   "Multiple city email alert",
   "Email support",
 ];
+
+export const metadata: Metadata = {
+  title: "Pricing and Premium Access",
+  description: "Plans for unlocking borrower details and official auction documents on BankAuction.co.",
+  alternates: { canonical: "/pricing" },
+};
 
 export default function PricingPage() {
   return (

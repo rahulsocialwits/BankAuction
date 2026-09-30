@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { loginUser } from "./actions";
+
+export const metadata: Metadata = {
+  title: "Sign in",
+  description: "Sign in to your BankAuction.co account.",
+  robots: { index: false, follow: false },
+};
 
 export default async function LoginPage({
   searchParams,

@@ -14,7 +14,6 @@ const CATEGORIES: { label: string; value: PropertyCategory }[] = [
   { label: "Industrial", value: "INDUSTRIAL" },
   { label: "Land & Plot", value: "LAND_PLOT" },
   { label: "Agricultural", value: "AGRICULTURAL" },
-  { label: "Vehicles", value: "VEHICLE" },
 ];
 
 type SP = { category?: string; q?: string; bank?: string; city?: string; locality?: string; status?: string; priceMin?: string; priceMax?: string };
@@ -27,11 +26,21 @@ function placeLabel(sp: SP) {
 export async function generateMetadata({ searchParams }: { searchParams: Promise<SP> }): Promise<Metadata> {
   const sp = await searchParams;
   const place = placeLabel(sp);
+  const cat = CATEGORIES.find((c) => c.value === sp.category)?.label;
+  const bank = sp.bank ? await prisma.bank.findUnique({ where: { id: sp.bank }, select: { name: true } }).catch(() => null) : null;
+
+  const what = `${cat ? `${cat} ` : ""}Bank Auction Properties`;
+  const title = `${what}${place ? ` in ${place}` : " in India"}${bank ? ` – ${bank.name}` : ""}`;
+  const description =
+    `Browse live and upcoming ${cat ? cat.toLowerCase() + " " : ""}bank auction properties${place ? ` in ${place}` : " across India"}` +
+    `${bank ? ` from ${bank.name}` : ""} — SARFAESI and e-auction assets with reserve prices, EMD and auction dates.`;
   return {
-    title: place ? `Bank Auction Properties in ${place}` : "Bank Auction Properties in India",
-    description: place
-      ? `Browse live and upcoming bank auction properties in ${place} — SARFAESI, e-auction and distressed assets with reserve prices and auction dates.`
-      : "Browse live and upcoming bank auction properties across India — residential, commercial, industrial, land and vehicles.",
+    title,
+    description,
+    alternates: { canonical: "/properties" },
+    openGraph: { title, description },
+    // Filtered views are useful to visitors but should not compete with the main listing in search.
+    robots: sp.q || sp.priceMin || sp.priceMax ? { index: false, follow: true } : undefined,
   };
 }
 

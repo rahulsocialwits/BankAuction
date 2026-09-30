@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { registerUser } from "./actions";
+
+export const metadata: Metadata = {
+  title: "Create your account",
+  description: "Create a free BankAuction.co account to send enquiries and save properties.",
+  robots: { index: false, follow: false },
+};
 
 export default async function RegisterPage({
   searchParams,

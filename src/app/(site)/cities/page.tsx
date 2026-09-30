@@ -1,8 +1,15 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { slugify } from "@/lib/normalization/parsers";
 
 export const revalidate = 120;
+
+export const metadata: Metadata = {
+  title: "Bank Auction Properties by City",
+  description: "Find bank auction properties by city across India: Mumbai, Delhi, Pune, Bangalore, Hyderabad and more, with reserve prices and auction dates.",
+  alternates: { canonical: "/cities" },
+};
 
 export default async function CitiesPage() {
   const groups = await prisma.property.groupBy({

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { importCsvText, importRecords, type ImportResult } from "@/lib/import/csvImport";
 import { robotsAllows, scanWebPage, UA } from "./webScan";
 import { logRun } from "@/lib/pipeline/runLog";
+import { syncLocationsFromProperties } from "@/lib/pipeline/locations";
 
 // Sites whose terms or robots.txt disallow copying; never accept these as links.
 const BLOCKED_HOSTS = ["baanknet.com", "auctionbazaar.com", "bankauction.co", "eauctionsindia.com"];
@@ -92,6 +93,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
       where: { id },
       data: { lastRunAt: new Date(), lastStatus: "ok", lastMessage: message, ...(newHash && { contentHash: newHash }) },
     });
+    if (stats.created > 0) await syncLocationsFromProperties().catch(() => 0);
     await logRun({ source: feed.name, kind: "feed", trigger, status: "ok", created: stats.created, duplicates: stats.skipped, rejected: stats.failed, aiTokens: tokens, message, startedAt });
     return { name: feed.name, message };
   } catch (e) {

@@ -6,6 +6,9 @@ import { PLACEHOLDER_IMAGE_URL } from "@/lib/constants";
 import { Suspense } from "react";
 import PropertyEnquiry from "@/components/PropertyEnquiry";
 import { tidyText } from "@/lib/text";
+import type { Metadata } from "next";
+import { clip, dayLabel, inr } from "@/lib/seo";
+import { titleCase } from "@/lib/pipeline/locations";
 
 export const revalidate = 120;
 
@@ -36,6 +39,46 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
       <dd className="text-sm font-medium">{value}</dd>
     </div>
   );
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const p = await prisma.property.findUnique({
+    where: { slug },
+    select: {
+      title: true,
+      status: true,
+      description: true,
+      addressText: true,
+      category: true,
+      auctions: { select: { reservePrice: true, emd: true, auctionStart: true, auctionMethod: true, bank: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 1 },
+    },
+  });
+  if (!p || p.status !== "PUBLISHED") return { title: "Property not found", robots: { index: false } };
+
+  const a = p.auctions[0];
+  const reserve = inr(a?.reservePrice);
+  const date = dayLabel(a?.auctionStart);
+  const place = p.addressText ? titleCase(p.addressText) : null;
+  const title = clip(`${tidyText(p.title).replace(/\.$/, "")}${reserve ? ` – Reserve ${reserve}` : ""}`, 70);
+  const facts = [
+    reserve && `Reserve price ${reserve}`,
+    inr(a?.emd) && `EMD ${inr(a?.emd)}`,
+    date && `auction on ${date}`,
+    a?.bank?.name && `by ${a.bank.name}`,
+    place && `in ${place}`,
+  ].filter(Boolean);
+  const description = clip(
+    `${tidyText(p.title).replace(/\.$/, "")}. ${facts.length ? facts.join(", ") + "." : ""} ${a?.auctionMethod ? a.auctionMethod + ". " : ""}See full details, legal schedule and documents, and send an enquiry.`,
+    158,
+  );
+  return {
+    title,
+    description,
+    alternates: { canonical: `/property/${slug}` },
+    openGraph: { title, description, type: "article", url: `/property/${slug}` },
+    twitter: { card: "summary", title, description },
+  };
 }
 
 export default async function PropertyPage({ params }: { params: Promise<{ slug: string }> }) {

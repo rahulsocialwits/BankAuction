@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 
 export const revalidate = 120;
+
+export const metadata: Metadata = {
+  title: "Bank Auction Insights",
+  description: "Guides and updates on buying bank auction properties in India: SARFAESI, EMD, e-auction process, due diligence and more.",
+  alternates: { canonical: "/blog" },
+};
 
 export default async function BlogPage() {
   const posts = await prisma.blogPost.findMany({ where: { status: "PUBLISHED" }, orderBy: { createdAt: "desc" } });

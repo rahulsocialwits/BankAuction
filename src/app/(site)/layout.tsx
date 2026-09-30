@@ -3,6 +3,7 @@ import { Poppins } from "next/font/google";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { getSiteSettings } from "@/lib/queries/siteSettings";
+import { SITE_URL } from "@/lib/seo";
 import "../globals.css";
 
 const poppins = Poppins({
@@ -14,8 +15,12 @@ const poppins = Poppins({
 export async function generateMetadata(): Promise<Metadata> {
   const s = await getSiteSettings();
   return {
-    title: s.homeTitle,
+    metadataBase: new URL(SITE_URL),
+    // Every page sets its own title; the site name is appended automatically.
+    title: { default: s.homeTitle, template: "%s | BankAuction.co" },
     description: s.homeDescription,
+    openGraph: { siteName: "BankAuction.co", type: "website", locale: "en_IN", title: s.homeTitle, description: s.homeDescription },
+    twitter: { card: "summary", title: s.homeTitle, description: s.homeDescription },
     keywords: s.homeKeywords ? s.homeKeywords.split(",").map((k) => k.trim()).filter(Boolean) : undefined,
     icons: s.faviconUrl
       ? { icon: s.faviconUrl, shortcut: s.faviconUrl, apple: s.faviconUrl }
