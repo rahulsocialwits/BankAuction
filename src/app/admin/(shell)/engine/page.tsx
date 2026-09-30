@@ -43,9 +43,24 @@ export default async function DataEnginePage() {
   const pausedCount = (builtInPaused ? 1 : 0) + feeds.filter((f) => !f.active).length;
   const blocked = SOURCE_REGISTRY.filter((s) => s.key !== "bankauctions" && s.accessStatus !== "ALLOWED");
 
+  // Never reveals the key: only whether it is present and usable in this deployment.
+  const rawKey = process.env.AI_API_KEY ?? "";
+  const key = rawKey.trim();
+  const keyBad = /[^\x20-\x7E]/.test(key);
+  const aiStatus = !key
+    ? { tone: "red" as const, text: "AI key is missing — website scanning is off." }
+    : keyBad
+      ? { tone: "red" as const, text: `AI key is invalid: it contains non-standard characters (${key.length} chars, starts with "${key.slice(0, 3)}"). Re-paste the real key in Vercel and redeploy.` }
+      : { tone: "green" as const, text: `AI key looks valid (${key.length} characters, starts with "${key.slice(0, 3)}"). Model: ${process.env.AI_EXTRACTOR_MODEL?.trim() || "glm-5.3-cursor"}.` };
+  const deployed = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7);
+
   return (
     <div className="max-w-4xl">
       <h1 className="text-2xl font-semibold text-brand mb-1">Data Engine</h1>
+      <div className={`text-xs rounded-lg px-3 py-2 mb-4 ${aiStatus.tone === "green" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+        {aiStatus.text}
+        {deployed && <span className="opacity-70"> · Deployment {deployed}</span>}
+      </div>
       <p className="text-sm text-brand-muted mb-6">
         Every source that feeds listings into the site. Pause a source to stop it from importing; resume whenever you
         want. Sources run automatically every 30–60 minutes.
