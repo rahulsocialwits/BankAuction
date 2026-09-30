@@ -70,7 +70,7 @@ export default async function PropertyPage({
       </nav>
 
       <div className="relative h-56 sm:h-72 rounded-2xl overflow-hidden mb-6 bg-brand-bg">
-        <Image src={PLACEHOLDER_IMAGE_URL} alt={property.title} fill unoptimized className="object-contain p-10 opacity-70" />
+        <Image src={PLACEHOLDER_IMAGE_URL} alt={property.title} fill unoptimized priority className="object-cover" />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">

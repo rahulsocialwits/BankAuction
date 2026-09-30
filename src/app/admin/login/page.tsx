@@ -15,12 +15,23 @@ export default async function AdminLoginPage({
 
         {error && (
           <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2 mb-4">
-            Incorrect password. Try again.
+            Incorrect email or password. Try again.
           </div>
         )}
 
         <form action={loginAdmin} className="space-y-4">
           <input type="hidden" name="next" value={next ?? "/admin"} />
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium mb-1">
+              Email <span className="text-brand-muted font-normal">(leave blank for the master password)</span>
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+            />
+          </div>
           <div>
             <label htmlFor="password" className="block text-sm font-medium mb-1">
               Password
@@ -30,7 +41,6 @@ export default async function AdminLoginPage({
               name="password"
               type="password"
               required
-              autoFocus
               className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
             />
           </div>

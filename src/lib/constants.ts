@@ -1,4 +1,4 @@
-export const PLACEHOLDER_IMAGE_URL = "https://bankauction.co/wp-content/themes/houzez/img/placeholder.png";
+export const PLACEHOLDER_IMAGE_URL = "/placeholder-property.svg";
 
 export const PRIORITY_CITIES = ["Mumbai", "Delhi", "Surat", "Pune", "Ahmedabad", "Bangalore"];
 

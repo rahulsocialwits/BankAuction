@@ -12,7 +12,7 @@ export default function PropertyCarousel({ properties }: { properties: PropertyC
   return (
     <div className="flex gap-5 overflow-x-auto pb-2 snap-x snap-mandatory">
       {properties.map((p) => (
-        <div key={p.slug} className="snap-start shrink-0 w-72">
+        <div key={p.slug} className="snap-start shrink-0 w-72 sm:w-80 flex [&>a]:w-full">
           <PropertyCard property={p} />
         </div>
       ))}

@@ -660,3 +660,31 @@ model BlogPost {
 
   @@map("blog_posts")
 }
+
+// ---------------------------------------------------------------------------
+// Admin-managed search localities (SEO / search suggestions) and admin users
+// ---------------------------------------------------------------------------
+
+model Locality {
+  id        String   @id @default(cuid())
+  city      String
+  name      String
+  slug      String
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([city, slug])
+  @@map("localities")
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@map("admin_users")
+}

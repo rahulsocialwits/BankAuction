@@ -1,26 +1,51 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import { logoutAdmin } from "@/app/admin/login/actions";
 
 const NAV = [
-  { href: "/admin", label: "Dashboard" },
+  { href: "/admin", label: "Dashboard", exact: true },
   { href: "/admin/properties", label: "Properties" },
+  { href: "/admin/properties/new", label: "Add Property" },
   { href: "/admin/leads", label: "Leads" },
   { href: "/admin/blog", label: "Blog" },
+  { href: "/admin/localities", label: "Locations" },
   { href: "/admin/sources", label: "Sources" },
+  { href: "/admin/admins", label: "Admin Users" },
   { href: "/admin/settings", label: "Settings" },
 ];
 
 export default function AdminSidebar() {
+  const pathname = usePathname();
+
+  function isActive(item: { href: string; exact?: boolean }) {
+    if (item.exact) return pathname === item.href;
+    if (item.href === "/admin/properties") return pathname === item.href;
+    return pathname === item.href || pathname.startsWith(item.href + "/");
+  }
+
   return (
-    <aside className="w-56 shrink-0 bg-brand min-h-screen text-white flex flex-col">
-      <div className="p-5 border-b border-white/10">
-        <Image src="/brand/logo.png" alt="BankAuction.co" width={140} height={55} className="h-8 w-auto brightness-0 invert" />
-        <div className="text-[11px] text-white/50 mt-1">Admin</div>
+    <aside className="w-full lg:w-60 shrink-0 bg-brand text-white flex flex-col lg:sticky lg:top-0 lg:h-screen">
+      <div className="p-5 border-b border-white/10 flex items-center justify-between lg:block">
+        <div>
+          <Image src="/brand/logo.png" alt="BankAuction.co" width={140} height={55} className="h-8 w-auto brightness-0 invert" />
+          <div className="text-[11px] text-white/50 mt-1">Admin Console</div>
+        </div>
+        <Link href="/" target="_blank" className="text-xs text-white/60 hover:text-white lg:mt-3 lg:inline-block">
+          View site ↗
+        </Link>
       </div>
-      <nav className="flex-1 p-3 space-y-1 text-sm">
+      <nav className="flex lg:flex-col gap-1 p-3 text-sm overflow-x-auto lg:overflow-y-auto lg:flex-1">
         {NAV.map((item) => (
-          <Link key={item.href} href={item.href} className="block px-3 py-2 rounded-lg text-white/80 hover:bg-white/10 hover:text-white transition-colors">
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`whitespace-nowrap px-3 py-2 rounded-lg transition-colors ${
+              isActive(item) ? "bg-gold text-white font-medium" : "text-white/80 hover:bg-white/10 hover:text-white"
+            }`}
+          >
             {item.label}
           </Link>
         ))}

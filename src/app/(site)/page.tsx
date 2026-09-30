@@ -6,6 +6,7 @@ import SearchBar from "@/components/SearchBar";
 import BlogCarousel from "@/components/BlogCarousel";
 import AuctionCountdownTable, { CountdownRow } from "@/components/AuctionCountdownTable";
 import { PRIORITY_CITIES } from "@/lib/constants";
+import { getLocalityMap } from "@/lib/queries/localities";
 
 export const revalidate = 120;
 
@@ -26,7 +27,7 @@ const WHY_CHOOSE = [
 ];
 
 export default async function Home() {
-  const [activeListings, banksCovered, upcomingAuctions, featured, cityGroups, topBanks, countdownAuctions] = await Promise.all([
+  const [activeListings, banksCovered, upcomingAuctions, featured, cityGroups, topBanks, countdownAuctions, localityMap] = await Promise.all([
     prisma.property.count({ where: { status: "PUBLISHED" } }),
     prisma.bank.count({ where: { auctions: { some: { property: { status: "PUBLISHED" } } } } }),
     prisma.auction.count({ where: { status: { in: ["UPCOMING", "LIVE", "AUCTION_TODAY"] }, property: { status: "PUBLISHED" } } }),
@@ -52,6 +53,7 @@ export default async function Home() {
       take: 40,
       include: { bank: true, property: true },
     }),
+    getLocalityMap(),
   ]);
 
   const stats = [
@@ -128,7 +130,7 @@ export default async function Home() {
 
       <section className="max-w-6xl mx-auto px-5 pt-14 pb-12">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl font-semibold">Featured Bank Auction Properties</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-brand">Featured Bank Auction Properties</h2>
           <Link href="/properties" className="text-sm text-brand font-medium">View all →</Link>
         </div>
         <PropertyCarousel properties={featured.map(toPropertyCardData)} />
@@ -136,14 +138,14 @@ export default async function Home() {
 
       <section className="max-w-6xl mx-auto px-5 py-12">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl font-semibold">Upcoming Auctions</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-brand">Upcoming Auctions</h2>
           <Link href="/auctions" className="text-sm text-brand font-medium">View all auctions →</Link>
         </div>
         <AuctionCountdownTable rows={countdownRows} />
       </section>
 
       <section className="max-w-6xl mx-auto px-5 py-12">
-        <h2 className="text-xl font-semibold mb-5">Browse by Property Type</h2>
+        <h2 className="text-xl sm:text-2xl font-bold text-brand mb-5">Browse by Property Type</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {PROPERTY_TYPES.map((t) => (
             <Link
@@ -159,26 +161,37 @@ export default async function Home() {
 
       <section className="max-w-6xl mx-auto px-5 py-12">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl font-semibold">Browse by Location</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-brand">Browse by Location</h2>
           <Link href="/cities" className="text-sm text-brand font-medium">All cities →</Link>
         </div>
-        <div className="grid grid-cols-3 sm:grid-cols-3 gap-4">
-          {PRIORITY_CITIES.map((city) => (
-            <Link
-              key={city}
-              href={`/properties?q=${encodeURIComponent(city)}`}
-              className="bg-white border border-brand-border rounded-xl py-5 text-center hover:border-brand transition-colors"
-            >
-              <div className="font-semibold text-sm">{city}</div>
-              <div className="text-xs text-brand-muted mt-1">{cityCountMap.get(city) ?? 0} listings</div>
-            </Link>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Object.entries(localityMap).map(([city, areas]) => (
+            <div key={city} className="bg-white border border-brand-border rounded-2xl p-5">
+              <div className="flex items-center justify-between mb-3">
+                <Link href={`/properties?city=${encodeURIComponent(city)}`} className="font-semibold text-brand hover:underline">
+                  {city}
+                </Link>
+                <span className="text-xs text-brand-muted">{cityCountMap.get(city) ?? 0} listings</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {areas.slice(0, 8).map((a) => (
+                  <Link
+                    key={a}
+                    href={`/properties?city=${encodeURIComponent(city)}&locality=${encodeURIComponent(a)}`}
+                    className="text-xs px-2.5 py-1 rounded-full bg-brand-bg text-black/70 hover:bg-brand hover:text-white transition-colors"
+                  >
+                    {a}
+                  </Link>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </section>
 
       <section className="max-w-6xl mx-auto px-5 py-12">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl font-semibold">Browse by Bank</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-brand">Browse by Bank</h2>
           <Link href="/banks" className="text-sm text-brand font-medium">All banks →</Link>
         </div>
         {topBanks.filter((b) => b._count.auctions > 0).length === 0 ? (
@@ -196,7 +209,7 @@ export default async function Home() {
       </section>
 
       <section className="max-w-6xl mx-auto px-5 py-12">
-        <h2 className="text-xl font-semibold mb-5">Why Choose BankAuction.co?</h2>
+        <h2 className="text-xl sm:text-2xl font-bold text-brand mb-5">Why Choose BankAuction.co?</h2>
         <div className="grid sm:grid-cols-2 gap-5">
           {WHY_CHOOSE.map((w) => (
             <div key={w.title} className="bg-white border border-brand-border rounded-xl p-5">
@@ -209,7 +222,7 @@ export default async function Home() {
 
       <section className="max-w-6xl mx-auto px-5 py-12">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl font-semibold">Bank Auction Insights</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-brand">Bank Auction Insights</h2>
           <Link href="/blog" className="text-sm text-brand font-medium">View all →</Link>
         </div>
         <BlogCarousel />
