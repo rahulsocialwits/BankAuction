@@ -1,5 +1,6 @@
 "use server";
 
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
@@ -12,8 +13,9 @@ export async function addFeed(formData: FormData) {
   if (!check.ok) redirect("/admin/feeds?error=" + encodeURIComponent(check.reason));
   if (await prisma.feedSource.findUnique({ where: { name } })) redirect("/admin/feeds?error=" + encodeURIComponent("Name already exists"));
 
-  const feed = await prisma.feedSource.create({ data: { name, url: check.url } });
-  await runFeedSource(feed.id);
+  const feed = await prisma.feedSource.create({ data: { name, url: check.url, lastMessage: "Fetching…" } });
+  // Import can take a while for big sheets; run after the response so the page never hangs.
+  after(() => runFeedSource(feed.id));
   revalidatePath("/admin/feeds");
   redirect("/admin/feeds");
 }
@@ -31,7 +33,8 @@ export async function deleteFeed(formData: FormData) {
 }
 
 export async function runFeedNow(formData: FormData) {
-  await runFeedSource(String(formData.get("id")));
+  const id = String(formData.get("id"));
+  await prisma.feedSource.update({ where: { id }, data: { lastMessage: "Fetching…" } });
+  after(() => runFeedSource(id));
   revalidatePath("/admin/feeds");
-  revalidatePath("/admin/properties");
 }

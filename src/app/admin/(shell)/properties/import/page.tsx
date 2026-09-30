@@ -5,6 +5,8 @@ const TEMPLATE =
   "title,bank,category,location,description,borrower,reserve_price,emd,auction_start,auction_method,possession_status\n" +
   '"3 BHK flat, Ghatkopar West",State Bank of India,RESIDENTIAL,Mumbai,"Flat on 5th floor",Mr. Sharma,8500000,850000,2026-11-10T11:00,E-Auction,Symbolic\n';
 
+export const maxDuration = 300;
+
 export default async function ImportPage({
   searchParams,
 }: {

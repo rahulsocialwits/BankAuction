@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/db/prisma";
 import { addFeed, toggleFeed, deleteFeed, runFeedNow } from "./actions";
 
+import SubmitButton from "@/components/admin/SubmitButton";
+
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export default async function FeedsPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
@@ -27,7 +30,7 @@ export default async function FeedsPage({ searchParams }: { searchParams: Promis
           <label className="block text-xs font-semibold mb-1">CSV / Google Sheet link</label>
           <input name="url" type="url" required placeholder="https://docs.google.com/spreadsheets/d/..." className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
         </div>
-        <button className="bg-brand text-white font-medium rounded-lg px-5 py-2 text-sm hover:bg-brand-dark">Add &amp; fetch</button>
+        <SubmitButton className="bg-brand text-white font-medium rounded-lg px-5 py-2 text-sm hover:bg-brand-dark">Add &amp; fetch</SubmitButton>
       </form>
 
       <div className="space-y-3 max-w-4xl">
@@ -44,6 +47,7 @@ export default async function FeedsPage({ searchParams }: { searchParams: Promis
               <div className="text-xs text-brand-muted truncate">{f.url}</div>
               <div className={`text-xs mt-1 ${f.lastStatus === "error" ? "text-red-600" : "text-brand-muted"}`}>
                 {f.lastRunAt ? `Last run ${f.lastRunAt.toLocaleString("en-IN")} — ${f.lastMessage}` : "Not run yet"}
+                {f.lastMessage === "Fetching…" && " (refresh in a few seconds)"}
               </div>
             </div>
             <div className="flex gap-2 text-xs">
