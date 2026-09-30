@@ -72,7 +72,7 @@ export default function SearchBar({ size = "md" }: { size?: "md" | "lg" }) {
           onChange={(e) => setQ(e.target.value)}
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
-          placeholder="Search city, locality (Kurla, Ghatkopar...), bank or title"
+          placeholder={size === "lg" ? "Search city, area (Kurla, Ghatkopar), bank or title" : "Search city, area, bank..."}
           aria-label="Search auction properties"
           className={`flex-1 min-w-0 outline-none px-4 text-black ${size === "lg" ? "py-3.5 text-base" : "py-2 text-sm"}`}
         />

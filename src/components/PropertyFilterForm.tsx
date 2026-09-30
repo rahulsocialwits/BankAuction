@@ -23,13 +23,24 @@ const label = "block text-[11px] font-semibold text-brand-muted mb-1 uppercase t
 
 export default function PropertyFilterForm({ localities, banks, categories, initial }: Props) {
   const [city, setCity] = useState(initial.city ?? "");
+  const activeCount = [initial.q, initial.city, initial.locality, initial.category, initial.bank, initial.priceMin, initial.priceMax].filter(Boolean).length;
+  const [open, setOpen] = useState(activeCount > 0);
   const cities = Object.keys(localities);
   const areas = city ? (localities[city] ?? []) : [];
 
   return (
     <form action="/properties" className="bg-white border border-brand-border rounded-2xl p-4 sm:p-5 mb-6 shadow-sm">
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="sm:col-span-2">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="md:hidden w-full flex items-center justify-between text-sm font-semibold text-brand"
+      >
+        <span>Filters{activeCount ? ` (${activeCount})` : ""}</span>
+        <span className={`transition-transform ${open ? "rotate-180" : ""}`}>▾</span>
+      </button>
+      <div className={`${open ? "grid mt-4" : "hidden"} md:mt-0 md:grid grid-cols-2 lg:grid-cols-4 gap-3`}>
+        <div className="col-span-2">
           <label className={label}>Keyword</label>
           <input type="text" name="q" defaultValue={initial.q} placeholder="Title, address, keyword..." className={field} />
         </div>
@@ -83,7 +94,7 @@ export default function PropertyFilterForm({ localities, banks, categories, init
             <option value="all">All</option>
           </select>
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="col-span-2 lg:col-span-1 grid grid-cols-2 gap-2">
           <div>
             <label className={label}>Min ₹</label>
             <input type="number" name="priceMin" defaultValue={initial.priceMin} placeholder="0" className={field} />
@@ -94,8 +105,8 @@ export default function PropertyFilterForm({ localities, banks, categories, init
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-3 mt-4">
-        <button type="submit" className="bg-brand text-white text-sm font-medium px-6 py-2.5 rounded-lg hover:bg-brand-dark">
+      <div className={`${open ? "flex" : "hidden"} md:flex items-center gap-3 mt-4`}>
+        <button type="submit" className="flex-1 md:flex-none bg-brand text-white text-sm font-medium px-6 py-2.5 rounded-lg hover:bg-brand-dark">
           Search properties
         </button>
         <a href="/properties" className="text-sm text-brand-muted hover:text-brand">Reset</a>
