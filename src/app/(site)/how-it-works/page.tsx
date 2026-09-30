@@ -19,7 +19,7 @@ const STEPS = [
 
 export default function HowItWorksPage() {
   return (
-    <main className="max-w-4xl mx-auto px-5 py-14">
+    <main className="w-full px-5 lg:px-10 xl:px-16 py-14">
       <h1 className="text-2xl font-semibold mb-2">How BankAuction.co works</h1>
       <p className="text-brand-muted mb-10">
         We automatically discover public bank-auction listings, extract their details, and publish them here with

@@ -11,7 +11,7 @@ export default async function BanksPage() {
   const withListings = banks.filter((b) => b._count.auctions > 0);
 
   return (
-    <main className="max-w-6xl mx-auto px-5 py-10">
+    <main className="w-full px-5 lg:px-10 xl:px-16 py-10">
       <h1 className="text-2xl font-semibold mb-1">Browse by Bank</h1>
       <p className="text-brand-muted text-sm mb-6">Banks and financial institutions with published auction listings.</p>
 

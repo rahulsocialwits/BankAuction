@@ -57,7 +57,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
   const rawType = property.attributes.find((a) => a.key === "source_property_type")?.value;
 
   return (
-    <main className="max-w-5xl mx-auto px-5 py-10">
+    <main className="w-full px-5 lg:px-10 xl:px-16 py-10">
       <nav className="text-xs text-brand-muted mb-4">
         <Link href="/" className="hover:text-brand">Home</Link> / <Link href="/properties" className="hover:text-brand">Properties</Link> / <span>{property.title}</span>
       </nav>

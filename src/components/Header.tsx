@@ -23,7 +23,7 @@ export default async function Header() {
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-brand-border">
       <div className="bg-brand text-white">
-        <div className="max-w-[1240px] mx-auto px-5 py-2 flex items-center justify-between text-[11px]">
+        <div className="w-full px-5 lg:px-10 xl:px-16 py-2 flex items-center justify-between text-[11px]">
           <div className="flex gap-5">
             <a href={`tel:${settings.phone.replace(/\s/g, "")}`}>{settings.phone}</a>
             <a className="hidden sm:inline text-white/75" href={`mailto:${settings.generalEmail}`}>{settings.generalEmail}</a>
@@ -31,7 +31,7 @@ export default async function Header() {
           <span className="hidden md:block text-white/70">{settings.workingHours}</span>
         </div>
       </div>
-      <div className="max-w-[1240px] mx-auto px-5 py-3.5 flex items-center gap-4 xl:gap-5">
+      <div className="w-full px-5 lg:px-10 xl:px-16 py-3.5 flex items-center gap-4 xl:gap-5">
         <Link href="/" className="shrink-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={settings.headerLogoUrl} alt="BankAuction.co" height={44} className="h-11 w-auto" fetchPriority="high" />

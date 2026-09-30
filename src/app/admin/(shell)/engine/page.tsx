@@ -4,7 +4,7 @@ import { SOURCE_REGISTRY } from "@/data-sources/registry";
 import { getAiConfig } from "@/lib/ai/aiConfig";
 import SubmitButton from "@/components/admin/SubmitButton";
 import EngineTabs from "@/components/admin/EngineTabs";
-import { toggleBuiltIn, toggleFeedSource, runFeedSourceNow } from "./actions";
+import { toggleBuiltIn, toggleFeedSource } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -140,8 +140,8 @@ export default async function DataEnginePage() {
 
       <h2 className="font-semibold mb-1">Sources</h2>
       <p className="text-xs text-brand-muted mb-3">
-        <b>Live</b> means the source runs by itself, automatically, about every hour. You never need to press Run now —
-        it only forces an immediate extra run. Press <b>Pause</b> to stop a source; <b>Resume</b> puts it back on automatic.
+        Press <b>Run</b> once: the source starts now and then keeps running by itself, about every hour, until you press <b>Pause</b>.
+        There is no need to press anything again.
       </p>
       <div className="grid gap-3 mb-8">
         <div className="bg-white border border-brand-border rounded-xl p-4">
@@ -153,7 +153,7 @@ export default async function DataEnginePage() {
             <div className="flex items-center gap-2">
               {builtInPaused ? <Badge tone="gray">Paused</Badge> : <Badge tone="green">Live</Badge>}
               <form action={toggleBuiltIn}>
-                <SubmitButton className={btn}>{builtInPaused ? "Resume" : "Pause"}</SubmitButton>
+                <SubmitButton className={builtInPaused ? "text-xs bg-brand text-white rounded-lg px-4 py-1.5 hover:bg-brand-dark" : btn}>{builtInPaused ? "Run" : "Pause"}</SubmitButton>
               </form>
             </div>
           </div>
@@ -182,13 +182,9 @@ export default async function DataEnginePage() {
                 ) : (
                   <Badge tone="gray">Paused</Badge>
                 )}
-                <form action={runFeedSourceNow}>
-                  <input type="hidden" name="id" value={f.id} />
-                  <SubmitButton className={btn}>Run extra now</SubmitButton>
-                </form>
                 <form action={toggleFeedSource}>
                   <input type="hidden" name="id" value={f.id} />
-                  <SubmitButton className={btn}>{f.active ? "Pause" : "Resume"}</SubmitButton>
+                  <SubmitButton className={f.active ? btn : "text-xs bg-brand text-white rounded-lg px-4 py-1.5 hover:bg-brand-dark"}>{f.active ? "Pause" : "Run"}</SubmitButton>
                 </form>
               </div>
             </div>

@@ -18,7 +18,7 @@ const FEATURES = [
 
 export default function PricingPage() {
   return (
-    <main className="max-w-5xl mx-auto px-5 py-14">
+    <main className="w-full px-5 lg:px-10 xl:px-16 py-14">
       <div className="text-center mb-10">
         <h1 className="text-2xl font-semibold mb-2">BankAuction Premium</h1>
         <p className="text-brand-muted text-sm max-w-xl mx-auto">

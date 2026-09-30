@@ -7,7 +7,7 @@ export default async function BlogPage() {
   const posts = await prisma.blogPost.findMany({ where: { status: "PUBLISHED" }, orderBy: { createdAt: "desc" } });
 
   return (
-    <main className="max-w-4xl mx-auto px-5 py-14">
+    <main className="w-full px-5 lg:px-10 xl:px-16 py-14">
       <h1 className="text-2xl font-semibold mb-2">Bank Auction Insights</h1>
       <p className="text-brand-muted text-sm mb-8">Guides on EMD, verification, and auction terminology.</p>
 

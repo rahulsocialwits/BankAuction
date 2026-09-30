@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { addFeed, toggleFeed, deleteFeed, runFeedNow } from "./actions";
+import { addFeed, toggleFeed, deleteFeed } from "./actions";
 
 import SubmitButton from "@/components/admin/SubmitButton";
 import EngineTabs from "@/components/admin/EngineTabs";
@@ -38,7 +38,8 @@ export default async function FeedsPage({ searchParams }: { searchParams: Promis
         <SubmitButton className="bg-brand text-white font-medium rounded-lg px-5 py-2 text-sm hover:bg-brand-dark">Add &amp; fetch</SubmitButton>
       </form>
 
-      <div className="space-y-3 max-w-4xl">
+      <p className="text-xs text-brand-muted mb-3">Press <b>Run</b> once — the source then runs by itself about every hour until you press <b>Pause</b>.</p>
+      <div className="space-y-3">
         {feeds.length === 0 && <p className="text-sm text-brand-muted">No link sources yet.</p>}
         {feeds.map((f) => (
           <div key={f.id} className="bg-white border border-brand-border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -46,7 +47,7 @@ export default async function FeedsPage({ searchParams }: { searchParams: Promis
               <div className="font-medium text-brand flex items-center gap-2">
                 {f.name}
                 <span className={`text-[10px] px-2 py-0.5 rounded-full ${f.active ? "bg-green-100 text-green-800" : "bg-slate-100 text-slate-600"}`}>
-                  {f.active ? "Active" : "Paused"}
+                  {f.active ? "Running automatically" : "Paused"}
                 </span>
               </div>
               <div className="text-xs text-brand-muted truncate">{f.url}</div>
@@ -56,8 +57,12 @@ export default async function FeedsPage({ searchParams }: { searchParams: Promis
               </div>
             </div>
             <div className="flex gap-2 text-xs">
-              <form action={runFeedNow}><input type="hidden" name="id" value={f.id} /><button className="border border-brand-border rounded-lg px-3 py-1.5 hover:bg-brand-bg">Run now</button></form>
-              <form action={toggleFeed}><input type="hidden" name="id" value={f.id} /><button className="border border-brand-border rounded-lg px-3 py-1.5 hover:bg-brand-bg">{f.active ? "Pause" : "Resume"}</button></form>
+              <form action={toggleFeed}>
+                <input type="hidden" name="id" value={f.id} />
+                <SubmitButton className={f.active ? "border border-brand-border rounded-lg px-4 py-1.5 hover:bg-brand-bg" : "bg-brand text-white rounded-lg px-4 py-1.5 hover:bg-brand-dark"}>
+                  {f.active ? "Pause" : "Run"}
+                </SubmitButton>
+              </form>
               <form action={deleteFeed}><input type="hidden" name="id" value={f.id} /><button className="border border-red-200 text-red-600 rounded-lg px-3 py-1.5 hover:bg-red-50">Delete</button></form>
             </div>
           </div>

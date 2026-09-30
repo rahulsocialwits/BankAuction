@@ -31,7 +31,7 @@ export default async function AuctionsStatusPage({ params }: { params: Promise<{
   const auctions = await listAuctionsByStatus(statuses);
 
   return (
-    <main className="max-w-6xl mx-auto px-5 py-10">
+    <main className="w-full px-5 lg:px-10 xl:px-16 py-10">
       <h1 className="text-2xl font-semibold mb-1 capitalize">{status} Auctions</h1>
       <p className="text-brand-muted text-sm mb-5">{auctions.length} auction(s)</p>
 

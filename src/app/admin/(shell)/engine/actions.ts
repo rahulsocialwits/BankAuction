@@ -24,7 +24,11 @@ export async function toggleBuiltIn() {
 export async function toggleFeedSource(formData: FormData) {
   const id = String(formData.get("id"));
   const feed = await prisma.feedSource.findUnique({ where: { id } });
-  if (feed) await prisma.feedSource.update({ where: { id }, data: { active: !feed.active } });
+  if (feed) {
+    const active = !feed.active;
+    await prisma.feedSource.update({ where: { id }, data: { active, ...(active && { lastMessage: "Fetching…" }) } });
+    if (active) after(() => runFeedSource(id)); // "Run" = start now, then automatic until paused
+  }
   refresh();
 }
 

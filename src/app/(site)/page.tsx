@@ -92,7 +92,7 @@ export default async function Home() {
             backgroundSize: "22px 22px",
           }}
         />
-        <div className="relative max-w-6xl mx-auto px-5 pt-20 pb-16 text-center">
+        <div className="relative w-full px-5 lg:px-10 xl:px-16 pt-20 pb-16 text-center">
           <span className="inline-block text-xs font-semibold tracking-wide text-gold bg-white/10 px-3 py-1 rounded-full mb-5">
             INDIA&apos;S BANK AUCTION DISCOVERY PLATFORM
           </span>
@@ -128,7 +128,7 @@ export default async function Home() {
         ))}
       </div>
 
-      <section className="max-w-6xl mx-auto px-5 pt-14 pb-12">
+      <section className="w-full px-5 lg:px-10 xl:px-16 pt-14 pb-12">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl sm:text-2xl font-bold text-brand">Featured Bank Auction Properties</h2>
           <Link href="/properties" className="text-sm text-brand font-medium">View all →</Link>
@@ -136,7 +136,7 @@ export default async function Home() {
         <PropertyCarousel properties={featured.map(toPropertyCardData)} />
       </section>
 
-      <section className="max-w-6xl mx-auto px-5 py-12">
+      <section className="w-full px-5 lg:px-10 xl:px-16 py-12">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl sm:text-2xl font-bold text-brand">Upcoming Auctions</h2>
           <Link href="/auctions" className="text-sm text-brand font-medium">View all auctions →</Link>
@@ -144,7 +144,7 @@ export default async function Home() {
         <AuctionCountdownTable rows={countdownRows} />
       </section>
 
-      <section className="max-w-6xl mx-auto px-5 py-12">
+      <section className="w-full px-5 lg:px-10 xl:px-16 py-12">
         <h2 className="text-xl sm:text-2xl font-bold text-brand mb-5">Browse by Property Type</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {PROPERTY_TYPES.map((t) => (
@@ -159,7 +159,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="max-w-6xl mx-auto px-5 py-12">
+      <section className="w-full px-5 lg:px-10 xl:px-16 py-12">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl sm:text-2xl font-bold text-brand">Browse by Location</h2>
           <Link href="/cities" className="text-sm text-brand font-medium">All cities →</Link>
@@ -189,7 +189,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="max-w-6xl mx-auto px-5 py-12">
+      <section className="w-full px-5 lg:px-10 xl:px-16 py-12">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl sm:text-2xl font-bold text-brand">Browse by Bank</h2>
           <Link href="/banks" className="text-sm text-brand font-medium">All banks →</Link>
@@ -208,7 +208,7 @@ export default async function Home() {
         )}
       </section>
 
-      <section className="max-w-6xl mx-auto px-5 py-12">
+      <section className="w-full px-5 lg:px-10 xl:px-16 py-12">
         <h2 className="text-xl sm:text-2xl font-bold text-brand mb-5">Why Choose BankAuction.co?</h2>
         <div className="grid sm:grid-cols-2 gap-5">
           {WHY_CHOOSE.map((w) => (
@@ -220,7 +220,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="max-w-6xl mx-auto px-5 py-12">
+      <section className="w-full px-5 lg:px-10 xl:px-16 py-12">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl sm:text-2xl font-bold text-brand">Bank Auction Insights</h2>
           <Link href="/blog" className="text-sm text-brand font-medium">View all →</Link>
@@ -229,7 +229,7 @@ export default async function Home() {
       </section>
 
       <section className="bg-brand text-white">
-        <div className="max-w-6xl mx-auto px-5 py-14 text-center">
+        <div className="w-full px-5 lg:px-10 xl:px-16 py-14 text-center">
           <h2 className="text-2xl font-bold mb-2">Ready to find your next property?</h2>
           <p className="text-white/80 mb-6">Search verified, source-backed bank auction listings across India.</p>
           <Link href="/properties" className="bg-gold text-white px-6 py-2.5 rounded-lg font-medium inline-block hover:bg-gold-dark">

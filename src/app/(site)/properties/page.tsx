@@ -62,7 +62,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
   const place = placeLabel(sp);
 
   return (
-    <main className="max-w-6xl mx-auto px-5 py-10">
+    <main className="w-full px-5 lg:px-10 xl:px-16 py-10">
       <h1 className="text-2xl sm:text-3xl font-bold text-brand mb-1">
         {place ? `Bank Auction Properties in ${place}` : "Bank Auction Properties"}
       </h1>

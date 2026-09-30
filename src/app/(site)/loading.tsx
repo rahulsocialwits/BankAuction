@@ -1,6 +1,6 @@
 export default function Loading() {
   return (
-    <main className="max-w-[1240px] mx-auto px-5 py-10" aria-busy="true">
+    <main className="w-full px-5 lg:px-10 xl:px-16 py-10" aria-busy="true">
       <div className="h-8 w-64 rounded-lg bg-brand-bg animate-pulse mb-6" />
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {Array.from({ length: 8 }).map((_, i) => (

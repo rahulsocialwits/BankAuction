@@ -23,8 +23,14 @@ export async function addFeed(formData: FormData) {
 export async function toggleFeed(formData: FormData) {
   const id = String(formData.get("id"));
   const feed = await prisma.feedSource.findUnique({ where: { id } });
-  if (feed) await prisma.feedSource.update({ where: { id }, data: { active: !feed.active } });
+  if (feed) {
+    const active = !feed.active;
+    await prisma.feedSource.update({ where: { id }, data: { active, ...(active && { lastMessage: "Fetching…" }) } });
+    // "Run" starts it immediately; after that it stays on the automatic hourly schedule until paused.
+    if (active) after(() => runFeedSource(id));
+  }
   revalidatePath("/admin/feeds");
+  revalidatePath("/admin/engine");
 }
 
 export async function deleteFeed(formData: FormData) {

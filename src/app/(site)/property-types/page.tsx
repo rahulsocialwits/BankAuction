@@ -22,7 +22,7 @@ export default async function PropertyTypesPage() {
   const countMap = new Map(counts.map((c) => [c.category, c._count]));
 
   return (
-    <main className="max-w-6xl mx-auto px-5 py-10">
+    <main className="w-full px-5 lg:px-10 xl:px-16 py-10">
       <h1 className="text-2xl font-semibold mb-1">Browse by Property Type</h1>
       <p className="text-brand-muted text-sm mb-6">Explore auctions across residential, commercial, industrial, land, agricultural and vehicle categories.</p>
 

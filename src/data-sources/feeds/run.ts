@@ -6,7 +6,7 @@ import { logRun } from "@/lib/pipeline/runLog";
 // Sites whose terms or robots.txt disallow copying; never accept these as links.
 const BLOCKED_HOSTS = ["baanknet.com", "auctionbazaar.com", "bankauction.co", "eauctionsindia.com"];
 
-const BLOCKED_REASON = "This site's own terms or protection forbid automated copying (Baanknet, AuctionBazaar, eAuctionsIndia). Use its official notices, a Google Sheet or a CSV instead";
+const BLOCKED_REASON = "This website refuses automated access (its terms or anti-bot protection)";
 
 /** Access is refused by the site (robots.txt, terms, anti-bot). We never retry or work around it; the feed is auto-paused. */
 class BlockedError extends Error {}

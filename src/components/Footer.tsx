@@ -34,7 +34,7 @@ export default async function Footer() {
 
   return (
     <footer className="bg-brand-bg border-t border-brand-border mt-16">
-      <div className="max-w-6xl mx-auto px-5 py-12 grid grid-cols-2 lg:grid-cols-6 gap-x-8 gap-y-10">
+      <div className="w-full px-5 lg:px-10 xl:px-16 py-12 grid grid-cols-2 lg:grid-cols-6 gap-x-8 gap-y-10">
         <div className="col-span-2 lg:col-span-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={s.footerLogoUrl} alt="BankAuction.co" height={36} loading="lazy" className="h-9 w-auto mb-3" />
