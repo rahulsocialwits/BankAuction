@@ -77,3 +77,15 @@ export async function findDuplicateGroups(): Promise<DupGroup[]> {
   }
   return groups.sort((a, b) => b.similarity - a.similarity);
 }
+
+/**
+ * Automatic rule run after every scheduled tick: same bank + same reserve price + same auction day
+ * AND identical title => the later copies are hidden as DUPLICATE (oldest kept). Reversible from
+ * Admin → Properties → Duplicates → Restore. Returns how many listings were hidden.
+ */
+export async function autoCleanExactDuplicates(): Promise<number> {
+  const groups = await findDuplicateGroups();
+  const ids = groups.filter((g) => g.similarity >= 0.999).flatMap((g) => g.members.slice(1).map((m) => m.id));
+  if (ids.length) await prisma.property.updateMany({ where: { id: { in: ids } }, data: { status: "DUPLICATE" } });
+  return ids.length;
+}

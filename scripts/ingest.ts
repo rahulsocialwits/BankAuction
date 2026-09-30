@@ -7,6 +7,7 @@ config({ path: ".env" });
 import { runBankAuctionsIngestion } from "@/data-sources/bankauctions/adapter";
 import { runAllFeeds } from "@/data-sources/feeds/run";
 import { logRun } from "@/lib/pipeline/runLog";
+import { autoCleanExactDuplicates } from "@/lib/pipeline/duplicates";
 
 const ADAPTERS: Record<string, (limit: number) => Promise<unknown>> = {
   bankauctions: async (limit) => ({
@@ -25,12 +26,13 @@ async function main() {
   const limit = limitArg ? parseInt(limitArg, 10) : 250;
   const startedAt = new Date();
   const summary = await ADAPTERS[sourceKey](limit);
+  const hidden = await autoCleanExactDuplicates();
   await logRun({
     source: "Scheduler tick",
     kind: "cron",
     trigger: process.env.GITHUB_ACTIONS ? "cron" : "manual",
     status: "ok",
-    message: `via ${process.env.GITHUB_ACTIONS ? "GitHub Actions" : "command line"} (${sourceKey})`,
+    message: `via ${process.env.GITHUB_ACTIONS ? "GitHub Actions" : "command line"} (${sourceKey}); exact duplicates hidden: ${hidden}`,
     startedAt,
   });
   console.log(JSON.stringify(summary, null, 2));

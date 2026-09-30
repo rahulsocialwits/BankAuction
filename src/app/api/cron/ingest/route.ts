@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runBankAuctionsIngestion } from "@/data-sources/bankauctions/adapter";
 import { runAllFeeds } from "@/data-sources/feeds/run";
 import { logRun } from "@/lib/pipeline/runLog";
+import { autoCleanExactDuplicates } from "@/lib/pipeline/duplicates";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -24,12 +25,13 @@ export async function GET(request: NextRequest) {
   const limit = Number(request.nextUrl.searchParams.get("limit") ?? "100");
   const summary = await runBankAuctionsIngestion({ limit, triggeredBy: "http-cron" });
   const feeds = await runAllFeeds();
+  const hidden = await autoCleanExactDuplicates();
   await logRun({
     source: "Scheduler tick",
     kind: "cron",
     trigger: "cron",
     status: "ok",
-    message: `via HTTP; built-in: ${summary.skipped ? "paused" : `${summary.newProperties} new`}; feeds run: ${feeds.length}`,
+    message: `via HTTP; built-in: ${summary.skipped ? "paused" : `${summary.newProperties} new`}; feeds run: ${feeds.length}; exact duplicates hidden: ${hidden}`,
     startedAt,
   });
   return NextResponse.json({ ...summary, feeds });

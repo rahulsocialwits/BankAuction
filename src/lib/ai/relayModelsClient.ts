@@ -37,13 +37,16 @@ export async function chatJSONDetailed<T>(systemPrompt: string, userPrompt: stri
       signal: AbortSignal.timeout(120_000),
     });
 
-  let model = cfg.model;
+  // Try the configured model, then the fallback, then a couple of cheap models from other vendors.
+  // Moving on is only done for "model unavailable" and "provider content filter" errors: the vendor's
+  // safety filter sometimes rejects ordinary auction notices (borrower names, legal text), and a
+  // different vendor's model reads the same page fine.
+  const chain = [...new Set([cfg.model, cfg.fallbackModel, "deepseek-v4-flash", "qwen3.7-plus"])];
+  let model = chain[0];
   let res = await request(model);
   let errorBody = res.ok ? "" : await res.text();
-
-  // The configured model may not be enabled on this account; fall back once.
-  if (!res.ok && model !== cfg.fallbackModel && /model_not_found|No available channel/i.test(errorBody)) {
-    model = cfg.fallbackModel;
+  for (let i = 1; !res.ok && i < chain.length && /model_not_found|No available channel|unsafe or sensitive|"code":"?1301/i.test(errorBody); i++) {
+    model = chain[i];
     res = await request(model);
     errorBody = res.ok ? "" : await res.text();
   }
