@@ -3,7 +3,8 @@ import { getAiConfig } from "@/lib/ai/aiConfig";
 import { DEFAULT_EXTRACTION_PROMPT } from "@/data-sources/feeds/webScan";
 import { AiSettingsForm, TestButton, type Preset } from "@/components/admin/AiAdminForms";
 import AiChat from "@/components/admin/AiChat";
-import { saveAiSettings, testAi, chatWithAi, addAiRule, saveAiRules } from "./actions";
+import { parseRules } from "@/lib/ai/rules";
+import { saveAiSettings, testAi, chatWithAi, addAiRule, toggleAiRule, deleteAiRule } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -26,8 +27,10 @@ export default async function AiAdminPage() {
     prisma.sourceRunLog.aggregate({ where: { startedAt: { gte: new Date(Date.now() - 7 * 864e5) } }, _sum: { aiTokens: true }, _count: { _all: true } }),
   ]);
 
+  const rules = parseRules(row?.rules);
+
   return (
-    <div className="max-w-3xl">
+    <div className="w-full">
       <div className="inline-block text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 rounded px-2 py-0.5 mb-2">Developer only</div>
       <h1 className="text-2xl font-semibold text-brand mb-1">AI Admin</h1>
       <p className="text-sm text-brand-muted mb-6">
@@ -37,7 +40,7 @@ export default async function AiAdminPage() {
 
       <section className="bg-white border border-brand-border rounded-xl p-5 mb-6">
         <h2 className="font-semibold mb-3">Status</h2>
-        <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        <dl className="grid sm:grid-cols-2 lg:grid-cols-5 gap-x-6 gap-y-3 text-sm">
           <div><dt className="text-xs text-brand-muted">API key</dt><dd className={cfg.keyValid ? "text-green-700" : "text-red-600"}>{cfg.keyValid ? `Valid (${cfg.keyHint})` : `Problem: ${cfg.keyHint}`}</dd></div>
           <div><dt className="text-xs text-brand-muted">Base URL</dt><dd className="break-all">{cfg.baseUrl || <span className="text-red-600">missing (AI_BASE_URL)</span>}</dd></div>
           <div><dt className="text-xs text-brand-muted">Model in use</dt><dd>{cfg.model}</dd></div>
@@ -48,12 +51,11 @@ export default async function AiAdminPage() {
       </section>
 
       <section className="bg-white border border-brand-border rounded-xl p-5 mb-6">
-        <h2 className="font-semibold mb-1">Talk to your AI</h2>
-        <p className="text-xs text-brand-muted mb-3">Relay Models se seedha chat. Jo aap bologe wahi rules ban kar har source scan mein lagega.</p>
-        <AiChat initialRules={cfg.rules} chat={chatWithAi} addRule={addAiRule} saveRules={saveAiRules} />
+        <AiChat initialRules={rules} chat={chatWithAi} addRule={addAiRule} toggleRule={toggleAiRule} deleteRule={deleteAiRule} />
       </section>
 
-      <section className="bg-white border border-brand-border rounded-xl p-5 mb-6">
+      <div className="grid lg:grid-cols-2 gap-6 items-start">
+      <section className="bg-white border border-brand-border rounded-xl p-5">
         <h2 className="font-semibold mb-3">Settings</h2>
         <AiSettingsForm
           action={saveAiSettings}
@@ -87,6 +89,7 @@ export default async function AiAdminPage() {
           its price suggests. For extraction prefer the cheap non-reasoning ones. Architecture for developers: <code className="bg-brand-bg px-1 rounded">docs/DATA_PIPELINE.md</code>.
         </p>
       </section>
+      </div>
     </div>
   );
 }

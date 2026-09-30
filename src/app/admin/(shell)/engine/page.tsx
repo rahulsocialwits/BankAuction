@@ -77,7 +77,7 @@ export default async function DataEnginePage() {
   if (pending > 0) problems.push({ title: `${pending} properties wait for review`, detail: "They are not visible on the site yet.", fix: "Open Properties → Pending review and publish or remove them." });
 
   return (
-    <div className="max-w-4xl">
+    <div className="w-full">
       <h1 className="text-2xl font-semibold text-brand mb-1">Data Engine</h1>
       <EngineTabs />
 

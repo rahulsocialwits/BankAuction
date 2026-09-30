@@ -11,7 +11,7 @@ export default async function DuplicatesPage() {
   const obvious = groups.filter((g) => g.similarity >= 0.6);
 
   return (
-    <div className="max-w-4xl">
+    <div className="w-full">
       <h1 className="text-2xl font-semibold text-brand mb-1">Data Engine</h1>
       <EngineTabs />
       <p className="text-sm text-brand-muted mb-4">

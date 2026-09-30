@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { parseRules, rulesToPrompt } from "./rules";
 
 // Developer-facing AI configuration. Admin → AI Admin writes the `ai_settings` row; environment
 // variables (AI_API_KEY, AI_BASE_URL, AI_EXTRACTOR_MODEL) are the fallback and always supply the key.
@@ -46,7 +47,7 @@ export async function getAiConfig(): Promise<AiConfig> {
     model: row?.extractorModel?.trim() || process.env.AI_EXTRACTOR_MODEL?.trim() || DEFAULT_MODEL,
     fallbackModel: row?.fallbackModel?.trim() || DEFAULT_MODEL,
     extractionPrompt: row?.extractionPrompt?.trim() || null,
-    rules: row?.rules?.trim() ?? "",
+    rules: rulesToPrompt(parseRules(row?.rules)),
     maxPageChars: row?.maxPageChars && row.maxPageChars > 1000 ? row.maxPageChars : DEFAULT_MAX_PAGE_CHARS,
     fromDb: !!row,
   };
