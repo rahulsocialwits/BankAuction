@@ -14,9 +14,11 @@ export default async function FeedsPage({ searchParams }: { searchParams: Promis
     <div>
       <h1 className="text-2xl font-semibold text-brand mb-1">Link Sources</h1>
       <p className="text-sm text-brand-muted mb-6 max-w-2xl">
-        Paste a link to a CSV file or a Google Sheet (File → Share → Publish to web, or any share link). The site reads it
-        every 30 minutes and adds new listings; duplicates are skipped. Use the same columns as{" "}
-        <a href="/admin/properties/import" className="underline">Bulk Import</a>. Only add data you have the right to publish.
+        Paste a link to a website page that lists auctions, a Google Sheet or a CSV file. The site re-checks it every
+        hour and publishes new listings directly. Website pages are read with AI (only if the site&apos;s robots.txt allows
+        it); Sheets and CSV files use the same columns as <a href="/admin/properties/import" className="underline">Bulk Import</a>.
+        Duplicates are skipped by matching similar titles, and by bank + reserve price + auction date, across all
+        sources. Only add sources you have the right to use.
       </p>
 
       {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2 mb-4 max-w-2xl">{error}</div>}
@@ -27,8 +29,8 @@ export default async function FeedsPage({ searchParams }: { searchParams: Promis
           <input name="name" required placeholder="e.g. SBI partner sheet" className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
         </div>
         <div>
-          <label className="block text-xs font-semibold mb-1">CSV / Google Sheet link</label>
-          <input name="url" type="url" required placeholder="https://docs.google.com/spreadsheets/d/..." className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
+          <label className="block text-xs font-semibold mb-1">Website, Google Sheet or CSV link</label>
+          <input name="url" type="url" required placeholder="https://..." className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
         </div>
         <SubmitButton className="bg-brand text-white font-medium rounded-lg px-5 py-2 text-sm hover:bg-brand-dark">Add &amp; fetch</SubmitButton>
       </form>

@@ -1,4 +1,4 @@
-import { PropertyCategory } from "@prisma/client";
+import { PropertyCategory, PropertyStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { slugify } from "@/lib/normalization/parsers";
 
@@ -11,6 +11,9 @@ export interface ImportResult {
   failed: number;
   error?: "header";
 }
+
+/** One listing; keys match the CSV template columns (lower-case). */
+export type ListingRecord = Record<string, string | undefined>;
 
 export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
@@ -42,58 +45,118 @@ export async function importCsvText(text: string, statusSource: string): Promise
   const rows = parseCsv(text.replace(/^﻿/, ""));
   const header = rows.shift()?.map((h) => h.trim().toLowerCase()) ?? [];
   if (!header.includes("title")) return { created: 0, skipped: 0, failed: 0, error: "header" };
-  const col = (r: string[], name: string) => (r[header.indexOf(name)] ?? "").trim();
+  const records = rows.slice(0, MAX_ROWS).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i]])));
+  return importRecords(records, statusSource, "PUBLISHED");
+}
 
+const STOP = new Set(["the", "a", "an", "of", "in", "at", "and", "for", "on", "to", "no", "near", "flat", "property", "situated", "bearing"]);
+
+function tokens(title: string): Set<string> {
+  return new Set(
+    title.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((t) => t && !STOP.has(t)),
+  );
+}
+
+function similar(a: Set<string>, b: Set<string>): boolean {
+  if (!a.size || !b.size) return false;
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter++;
+  return inter / (a.size + b.size - inter) >= 0.8;
+}
+
+function sameDay(a: Date, b: Date) {
+  return a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
+}
+
+interface Known { tokens: Set<string>; reserve: number | null; start: Date | null }
+
+export async function importRecords(
+  records: ListingRecord[],
+  statusSource: string,
+  propertyStatus: PropertyStatus,
+  sourceUrl?: string,
+): Promise<ImportResult> {
   let created = 0;
   let skipped = 0;
   let failed = 0;
+  // Existing listings per bank (loaded once per run), extended as new ones are created,
+  // so duplicates inside the same batch and across sources are both caught.
+  const knownByBank = new Map<string, Known[]>();
+  async function known(bankId: string | null): Promise<Known[]> {
+    const key = bankId ?? "none";
+    let list = knownByBank.get(key);
+    if (!list) {
+      const rows = await prisma.auction.findMany({
+        where: { bankId },
+        select: { reservePrice: true, auctionStart: true, property: { select: { title: true } } },
+        take: 20000,
+      });
+      list = rows.map((r) => ({
+        tokens: tokens(r.property.title),
+        reserve: r.reservePrice ? Number(r.reservePrice) : null,
+        start: r.auctionStart,
+      }));
+      knownByBank.set(key, list);
+    }
+    return list;
+  }
 
-  for (const r of rows.slice(0, MAX_ROWS)) {
+  for (const rec of records.slice(0, MAX_ROWS)) {
+    const col = (name: string) => String(rec[name] ?? "").trim();
     try {
-      const title = col(r, "title");
-      if (!title) { failed++; continue; }
+      const title = col("title");
+      // Quality gate: a listing needs a title plus a bank or a location, otherwise it is noise.
+      if (!title || title.length < 8 || (!col("bank") && !col("location"))) { failed++; continue; }
 
-      const bankName = col(r, "bank");
+      const bankName = col("bank");
       const bank = bankName
         ? await prisma.bank.upsert({ where: { name: bankName }, update: {}, create: { name: bankName, slug: slugify(bankName) } })
         : null;
 
-      const dup = await prisma.property.findFirst({
-        where: { title: { equals: title, mode: "insensitive" }, auctions: bank ? { some: { bankId: bank.id } } : undefined },
-        select: { id: true },
-      });
-      if (dup) { skipped++; continue; }
+      const reservePrice = Number(col("reserve_price").replace(/[₹,\s]/g, ""));
+      const startDate = col("auction_start") ? new Date(col("auction_start")) : null;
+      const validStart = startDate && !isNaN(startDate.getTime()) ? startDate : null;
+      const titleTokens = tokens(title);
+
+      const list = await known(bank?.id ?? null);
+      const isDup = list.some(
+        (k) =>
+          similar(titleTokens, k.tokens) ||
+          // Same bank, same reserve price, same auction day = same property even if titled differently.
+          (reservePrice > 0 && k.reserve === reservePrice && !!validStart && !!k.start && sameDay(validStart, k.start)),
+      );
+      if (isDup) { skipped++; continue; }
+      list.push({ tokens: titleTokens, reserve: reservePrice > 0 ? reservePrice : null, start: validStart });
 
       const base = slugify(title);
       const slug = (await prisma.property.findUnique({ where: { slug: base } })) ? `${base}-${Date.now()}-${created}` : base;
-      const catRaw = col(r, "category").toUpperCase().replace(/[ &]+/g, "_");
+      const catRaw = col("category").toUpperCase().replace(/[ &]+/g, "_");
       const category = CATEGORIES.includes(catRaw) ? (catRaw as PropertyCategory) : undefined;
-      const reserve = Number(col(r, "reserve_price").replace(/[₹,\s]/g, ""));
-      const emd = Number(col(r, "emd").replace(/[₹,\s]/g, ""));
-      const start = col(r, "auction_start") ? new Date(col(r, "auction_start")) : null;
+      const emd = Number(col("emd").replace(/[₹,\s]/g, ""));
 
       const property = await prisma.property.create({
         data: {
           slug,
           title,
           category,
-          description: col(r, "description") || null,
-          addressText: col(r, "location") || null,
-          status: "PUBLISHED",
+          description: col("description") || null,
+          addressText: col("location") || null,
+          status: propertyStatus,
         },
       });
       await prisma.auction.create({
         data: {
           propertyId: property.id,
           bankId: bank?.id,
-          borrower: col(r, "borrower") || null,
-          reservePrice: reserve > 0 ? reserve : undefined,
+          borrower: col("borrower") || null,
+          reservePrice: reservePrice > 0 ? reservePrice : undefined,
           emd: emd > 0 ? emd : undefined,
-          auctionStart: start && !isNaN(start.getTime()) ? start : undefined,
-          auctionMethod: col(r, "auction_method") || null,
-          possessionStatus: col(r, "possession_status") || null,
+          auctionStart: validStart ?? undefined,
+          auctionMethod: col("auction_method") || null,
+          possessionStatus: col("possession_status") || null,
           status: "UPCOMING",
           statusSource,
+          sourceUrl: col("source_url") || sourceUrl || null,
         },
       });
       created++;
