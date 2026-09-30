@@ -20,6 +20,13 @@ function ago(d: Date | null | undefined) {
   return d.toLocaleDateString("en-IN");
 }
 
+// Link sources auto-run about once an hour; the next scheduler tick after that picks them up.
+function nextRun(last: Date | null | undefined) {
+  if (!last) return "on the next tick";
+  const mins = Math.round((last.getTime() + 55 * 60000 - Date.now()) / 60000);
+  return mins <= 0 ? "on the next tick (within ~30 min)" : `in about ${mins} min`;
+}
+
 type Tone = "green" | "gray" | "red" | "amber";
 function Badge({ tone, children }: { tone: Tone; children: React.ReactNode }) {
   const c = {
@@ -131,7 +138,11 @@ export default async function DataEnginePage() {
         </div>
       )}
 
-      <h2 className="font-semibold mb-3">Sources</h2>
+      <h2 className="font-semibold mb-1">Sources</h2>
+      <p className="text-xs text-brand-muted mb-3">
+        <b>Live</b> means the source runs by itself, automatically, about every hour. You never need to press Run now —
+        it only forces an immediate extra run. Press <b>Pause</b> to stop a source; <b>Resume</b> puts it back on automatic.
+      </p>
       <div className="grid gap-3 mb-8">
         <div className="bg-white border border-brand-border rounded-xl p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -173,7 +184,7 @@ export default async function DataEnginePage() {
                 )}
                 <form action={runFeedSourceNow}>
                   <input type="hidden" name="id" value={f.id} />
-                  <SubmitButton className={btn}>Run now</SubmitButton>
+                  <SubmitButton className={btn}>Run extra now</SubmitButton>
                 </form>
                 <form action={toggleFeedSource}>
                   <input type="hidden" name="id" value={f.id} />
@@ -183,6 +194,7 @@ export default async function DataEnginePage() {
             </div>
             <div className="mt-3 text-xs text-brand-muted flex flex-wrap items-start gap-x-6 gap-y-1">
               <span>Last run: {ago(f.lastRunAt)}</span>
+              {f.active && <span className="text-green-700">Next auto-run: {nextRun(f.lastRunAt)}</span>}
               {f.lastStatus && <Badge tone={f.lastStatus === "ok" ? "green" : "red"}>{f.lastStatus === "ok" ? "OK" : "Error"}</Badge>}
               {f.lastMessage && <span className="break-words">{f.lastMessage}</span>}
             </div>

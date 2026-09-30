@@ -13,7 +13,7 @@ const STATUS: Record<string, string> = {
 export default async function HistoryPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
   const { filter } = await searchParams;
   const logs = await prisma.sourceRunLog.findMany({
-    where: filter === "problems" ? { status: { in: ["error", "blocked"] } } : filter === "ticks" ? { kind: "cron" } : { kind: { not: "cron" } },
+    where: filter === "problems" ? { status: { in: ["error", "blocked"] } } : filter === "ticks" ? { kind: "cron" } : { kind: { notIn: ["cron", "claim"] } },
     orderBy: { startedAt: "desc" },
     take: 150,
   });
