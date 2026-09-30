@@ -6,6 +6,8 @@ import { logRun } from "@/lib/pipeline/runLog";
 // Sites whose terms or robots.txt disallow copying; never accept these as links.
 const BLOCKED_HOSTS = ["baanknet.com", "auctionbazaar.com", "bankauction.co", "eauctionsindia.com"];
 
+const BLOCKED_REASON = "This site's own terms or protection forbid automated copying (Baanknet, AuctionBazaar, eAuctionsIndia). Use its official notices, a Google Sheet or a CSV instead";
+
 /** Access is refused by the site (robots.txt, terms, anti-bot). We never retry or work around it; the feed is auto-paused. */
 class BlockedError extends Error {}
 const MIN_INTERVAL_MS = 55 * 60 * 1000; // scheduled runs are hourly
@@ -15,7 +17,7 @@ export function validateFeedUrl(raw: string): { ok: true; url: string } | { ok: 
   try { u = new URL(raw.trim()); } catch { return { ok: false, reason: "Invalid URL" }; }
   if (u.protocol !== "https:") return { ok: false, reason: "Only https links are allowed" };
   if (BLOCKED_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith("." + h))) {
-    return { ok: false, reason: "This site does not permit copying its content" };
+    return { ok: false, reason: BLOCKED_REASON };
   }
   return { ok: true, url: u.toString() };
 }
@@ -94,7 +96,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
     return { name: feed.name, message };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    const blocked = e instanceof BlockedError || message === "This site does not permit copying its content";
+    const blocked = e instanceof BlockedError || message === BLOCKED_REASON;
     const finalMessage = blocked && !message.startsWith("Blocked") ? `Blocked: ${message}. Paused automatically.` : message;
     await prisma.feedSource.update({
       where: { id },

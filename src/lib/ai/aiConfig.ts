@@ -15,6 +15,7 @@ export interface AiConfig {
   model: string;
   fallbackModel: string;
   extractionPrompt: string | null;
+  rules: string;
   maxPageChars: number;
   fromDb: boolean;
 }
@@ -45,6 +46,7 @@ export async function getAiConfig(): Promise<AiConfig> {
     model: row?.extractorModel?.trim() || process.env.AI_EXTRACTOR_MODEL?.trim() || DEFAULT_MODEL,
     fallbackModel: row?.fallbackModel?.trim() || DEFAULT_MODEL,
     extractionPrompt: row?.extractionPrompt?.trim() || null,
+    rules: row?.rules?.trim() ?? "",
     maxPageChars: row?.maxPageChars && row.maxPageChars > 1000 ? row.maxPageChars : DEFAULT_MAX_PAGE_CHARS,
     fromDb: !!row,
   };

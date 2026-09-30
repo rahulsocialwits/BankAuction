@@ -738,6 +738,7 @@ model AiSettings {
   extractorModel  String?
   fallbackModel   String?
   extractionPrompt String? @db.Text
+  rules           String?  @db.Text // standing instructions, one per line, added to every extraction
   maxPageChars    Int?
   updatedAt       DateTime @updatedAt
 

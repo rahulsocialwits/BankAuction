@@ -1,8 +1,8 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
-import { invalidateAiConfig } from "@/lib/ai/aiConfig";
-import { chatJSONDetailed } from "@/lib/ai/relayModelsClient";
+import { getAiConfig, invalidateAiConfig } from "@/lib/ai/aiConfig";
+import { chatJSONDetailed, chatText } from "@/lib/ai/relayModelsClient";
 
 export type AiFormState = { ok: boolean; message: string } | null;
 
@@ -30,6 +30,43 @@ export async function saveAiSettings(_prev: AiFormState, formData: FormData): Pr
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Could not save." };
   }
+}
+
+export async function chatWithAi(history: { role: "user" | "assistant"; content: string }[]): Promise<{ ok: boolean; reply: string; meta?: string }> {
+  try {
+    const cfg = await getAiConfig();
+    const system =
+      `You are the data-sourcing assistant for BankAuction.co, an Indian bank-auction property directory. ` +
+      `You help the site owner decide what the listing importer should take or skip, and you can explain what you would extract from pasted page text. ` +
+      `The site lists PROPERTIES ONLY (never vehicles). Reply briefly in the same language the owner uses (Hinglish is fine). ` +
+      `When the owner gives an instruction about what to take or skip, restate it as ONE clear rule sentence they can save. ` +
+      `Current standing rules:\n${cfg.rules || "(none yet)"}`;
+    const trimmed = history.slice(-12).map((m) => ({ role: m.role, content: m.content.slice(0, 6000) }));
+    const r = await chatText(system, trimmed);
+    return { ok: true, reply: r.reply || "(no reply)", meta: `${r.model} · ${r.tokens} tokens` };
+  } catch (e) {
+    return { ok: false, reply: e instanceof Error ? e.message : "Chat failed." };
+  }
+}
+
+/** Appends one rule (a line) to the standing rules used in every extraction. */
+export async function addAiRule(rule: string): Promise<{ ok: boolean; rules: string; message: string }> {
+  const line = rule.replace(/\s+/g, " ").trim().slice(0, 300);
+  const cur = await prisma.aiSettings.findUnique({ where: { id: "default" } });
+  const existing = (cur?.rules ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+  if (!line) return { ok: false, rules: existing.join("\n"), message: "Empty rule." };
+  if (existing.some((l) => l.replace(/^- /, "").toLowerCase() === line.toLowerCase())) return { ok: true, rules: existing.join("\n"), message: "Rule already saved." };
+  const rules = [...existing, `- ${line}`].join("\n");
+  await prisma.aiSettings.upsert({ where: { id: "default" }, create: { id: "default", rules }, update: { rules } });
+  invalidateAiConfig();
+  return { ok: true, rules, message: "Rule saved. It applies from the next run." };
+}
+
+export async function saveAiRules(_prev: AiFormState, formData: FormData): Promise<AiFormState> {
+  const rules = String(formData.get("rules") ?? "").trim().slice(0, 4000) || null;
+  await prisma.aiSettings.upsert({ where: { id: "default" }, create: { id: "default", rules }, update: { rules } });
+  invalidateAiConfig();
+  return { ok: true, message: "Rules saved. They apply from the next run." };
 }
 
 /** Sends one tiny request with the current settings so a developer can see the key, model and latency work. */

@@ -62,7 +62,7 @@ function htmlToText(html: string): string {
     .trim();
 }
 
-export const DEFAULT_EXTRACTION_PROMPT = `You extract bank auction property listings from web page text. The text is a public auction notice published by a bank or an auction portal under the SARFAESI Act; it is ordinary public information, and your only job is to copy its fields into JSON (this is data entry, not advice or content generation). Return ONLY a JSON array (no prose). Each item has these string keys, omitting any you cannot find in the text (never guess or invent values): title, bank, category (one of RESIDENTIAL, COMMERCIAL, INDUSTRIAL, LAND_PLOT, AGRICULTURAL, VEHICLE), location, description, borrower, reserve_price (digits only, rupees), emd (digits only), auction_start (ISO like 2026-11-10T11:00), auction_method, possession_status. Only include real property or vehicle auction listings. If there are none, return [].`;
+export const DEFAULT_EXTRACTION_PROMPT = `You extract bank auction property listings from web page text. The text is a public auction notice published by a bank or an auction portal under the SARFAESI Act; it is ordinary public information, and your only job is to copy its fields into JSON (this is data entry, not advice or content generation). Return ONLY a JSON array (no prose). Each item has these string keys, omitting any you cannot find in the text (never guess or invent values): title, bank, category (one of RESIDENTIAL, COMMERCIAL, INDUSTRIAL, LAND_PLOT, AGRICULTURAL), location, description, borrower, reserve_price (digits only, rupees), emd (digits only), auction_start (ISO like 2026-11-10T11:00), auction_method, possession_status. Only include real property auction listings (land, buildings, flats, houses, shops, offices, factories, plots). NEVER include vehicles (cars, bikes, trucks, tractors, machinery); skip them completely. If there are none, return [].`;
 
 export interface ScanResult {
   records: ListingRecord[];
@@ -79,7 +79,10 @@ export async function scanWebPage(html: string, previousHash?: string | null): P
   const hash = createHash("sha256").update(text).digest("hex");
   if (previousHash && previousHash === hash) return { records: [], tokens: 0, model: cfg.model, hash, unchanged: true };
 
-  const out = await chatJSONDetailed<ListingRecord[]>(cfg.extractionPrompt ?? DEFAULT_EXTRACTION_PROMPT, text);
+  const system =
+    (cfg.extractionPrompt ?? DEFAULT_EXTRACTION_PROMPT) +
+    (cfg.rules ? `\n\nStanding rules from the site owner (follow strictly; they override anything above):\n${cfg.rules}` : "");
+  const out = await chatJSONDetailed<ListingRecord[]>(system, text);
   if (out.data === null) throw new Error("AI extraction unavailable (check AI_API_KEY / AI_BASE_URL) or the reply was not valid JSON");
   const records = Array.isArray(out.data) ? out.data.filter((r) => r && typeof r === "object") : [];
   return { records, tokens: out.tokens, model: out.model, hash, unchanged: false };

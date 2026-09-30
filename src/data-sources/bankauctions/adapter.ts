@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { logRun } from "@/lib/pipeline/runLog";
+import { isVehicleListing } from "@/lib/import/csvImport";
 import { politeFetch } from "@/lib/fetch/politeFetch";
 import { getSourceDefinition } from "@/data-sources/registry";
 import { extractBankAuctionsListing } from "./extract";
@@ -43,9 +44,29 @@ export async function ensureSourceRow() {
   });
 }
 
-function discoverListingUrls(sitemapXml: string, limit: number): string[] {
+function discoverListingUrls(sitemapXml: string): string[] {
   const urls = Array.from(sitemapXml.matchAll(/<loc>([^<]+)<\/loc>/g)).map((m) => m[1]);
-  return urls.filter((u) => u.includes("/auction/")).slice(0, limit);
+  return urls.filter((u) => u.includes("/auction/"));
+}
+
+/**
+ * Which pages to fetch this run. The WordPress sitemap lists oldest first (~2,000 URLs), so taking the
+ * first N would only ever re-read the oldest listings and never see new ones. Instead:
+ *  - ~70%: URLs we have never stored, newest first (the end of the sitemap)
+ *  - ~30%: already-stored records that were checked longest ago (keeps prices/dates fresh)
+ */
+async function pickUrls(sourceId: string, all: string[], limit: number): Promise<string[]> {
+  const stored = new Set((await prisma.sourceRecord.findMany({ where: { sourceId }, select: { sourceUrl: true } })).map((r) => r.sourceUrl));
+  const fresh = all.filter((u) => !stored.has(u)).reverse();
+  const staleWanted = fresh.length >= limit ? Math.floor(limit * 0.3) : limit - fresh.length;
+  const picked = fresh.slice(0, limit - staleWanted);
+  const stale = await prisma.sourceRecord.findMany({
+    where: { sourceId },
+    orderBy: { lastCheckedAt: "asc" },
+    take: staleWanted,
+    select: { sourceUrl: true },
+  });
+  return [...picked, ...stale.map((s) => s.sourceUrl).filter((u) => all.includes(u))];
 }
 
 async function findOrCreateBank(name: string | null) {
@@ -123,7 +144,7 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
     const sitemapRes = await politeFetch(sourceDef, SITEMAP_PATH);
     if (!sitemapRes.ok) throw new Error(`Sitemap fetch failed: HTTP ${sitemapRes.status}`);
     const sitemapXml = await sitemapRes.text();
-    const listingUrls = discoverListingUrls(sitemapXml, limit);
+    const listingUrls = await pickUrls(source.id, discoverListingUrls(sitemapXml), limit);
 
     for (const url of listingUrls) {
       summary.pagesChecked++;
@@ -209,6 +230,18 @@ async function ingestOnePage(
       data: { lastCheckedAt: new Date() },
     });
     return; // unchanged — skip reprocessing, per spec §16
+  }
+
+  // Auctions that ended more than 14 days ago are not imported as new listings. They are remembered
+  // (IGNORED) so they are not fetched again on every run.
+  if (!existingRecord && isVehicleListing(normalized.title ?? "", normalized.category)) {
+    await upsertSourceRecord(sourceId, url, contentHash, normalized, "IGNORED", null, null);
+    return; // vehicles are out of scope for this site
+  }
+  const endedAt = normalized.auctionEnd ?? normalized.auctionStart;
+  if (!existingRecord && endedAt && Date.now() - endedAt.getTime() > 14 * 864e5) {
+    await upsertSourceRecord(sourceId, url, contentHash, normalized, "IGNORED", null, null);
+    return;
   }
 
   const validation = validateAuctionRecord(normalized);
@@ -452,7 +485,7 @@ async function upsertSourceRecord(
   url: string,
   contentHash: string,
   normalized: unknown,
-  status: "PROCESSED" | "PENDING_REVIEW" | "FAILED",
+  status: "PROCESSED" | "PENDING_REVIEW" | "FAILED" | "IGNORED",
   propertyId: string | null,
   auctionId: string | null
 ) {

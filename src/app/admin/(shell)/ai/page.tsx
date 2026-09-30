@@ -2,7 +2,8 @@ import { prisma } from "@/lib/db/prisma";
 import { getAiConfig } from "@/lib/ai/aiConfig";
 import { DEFAULT_EXTRACTION_PROMPT } from "@/data-sources/feeds/webScan";
 import { AiSettingsForm, TestButton, type Preset } from "@/components/admin/AiAdminForms";
-import { saveAiSettings, testAi } from "./actions";
+import AiChat from "@/components/admin/AiChat";
+import { saveAiSettings, testAi, chatWithAi, addAiRule, saveAiRules } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,12 @@ export default async function AiAdminPage() {
           <div><dt className="text-xs text-brand-muted">Last 7 days</dt><dd>{(usage._sum.aiTokens ?? 0).toLocaleString("en-IN")} tokens across {usage._count._all} runs</dd></div>
         </dl>
         <div className="mt-4"><TestButton action={testAi} /></div>
+      </section>
+
+      <section className="bg-white border border-brand-border rounded-xl p-5 mb-6">
+        <h2 className="font-semibold mb-1">Talk to your AI</h2>
+        <p className="text-xs text-brand-muted mb-3">Relay Models se seedha chat. Jo aap bologe wahi rules ban kar har source scan mein lagega.</p>
+        <AiChat initialRules={cfg.rules} chat={chatWithAi} addRule={addAiRule} saveRules={saveAiRules} />
       </section>
 
       <section className="bg-white border border-brand-border rounded-xl p-5 mb-6">

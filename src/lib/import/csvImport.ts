@@ -2,6 +2,12 @@ import { PropertyCategory, PropertyStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { slugify } from "@/lib/normalization/parsers";
 
+/** Vehicles (cars, bikes, trucks, tractors …) are out of scope for this site. */
+export function isVehicleListing(title: string, category?: string | null): boolean {
+  if ((category ?? "").toUpperCase().replace(/[ &]+/g, "_") === "VEHICLE") return true;
+  return /\b(vehicles?|two[- ]?wheelers?|four[- ]?wheelers?|motor ?cycles?|scooters?|tractors?|trucks?|lorry|lorries)\b/i.test(title);
+}
+
 const CATEGORIES = ["RESIDENTIAL", "COMMERCIAL", "INDUSTRIAL", "LAND_PLOT", "AGRICULTURAL", "VEHICLE"];
 export const MAX_ROWS = 500;
 
@@ -107,6 +113,8 @@ export async function importRecords(
       const title = col("title");
       // Quality gate: a listing needs a title plus a bank or a location, otherwise it is noise.
       if (!title || title.length < 8 || (!col("bank") && !col("location"))) { failed++; continue; }
+      // This site does not list vehicles, whatever the source or the AI says.
+      if (isVehicleListing(title, col("category"))) { failed++; continue; }
 
       const bankName = col("bank");
       const bank = bankName

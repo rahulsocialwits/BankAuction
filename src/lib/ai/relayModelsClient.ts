@@ -81,6 +81,35 @@ export async function chatJSONDetailed<T>(systemPrompt: string, userPrompt: stri
   }
 }
 
+/** Plain conversation with the configured Relay model (used by the AI Admin chat). */
+export async function chatText(system: string, messages: { role: "user" | "assistant"; content: string }[]): Promise<{ reply: string; tokens: number; model: string }> {
+  const cfg = await getAiConfig();
+  const apiKey = process.env.AI_API_KEY?.trim();
+  if (!cfg.enabled) throw new Error("AI is switched off.");
+  if (!apiKey || !cfg.baseUrl || !cfg.keyValid) throw new Error("AI key or base URL is not set up correctly (see Status above).");
+
+  const call = (model: string) =>
+    fetch(`${cfg.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, temperature: 0.3, messages: [{ role: "system", content: system }, ...messages] }),
+      signal: AbortSignal.timeout(90_000),
+    });
+
+  const chain = [...new Set([cfg.model, cfg.fallbackModel, "deepseek-v4-flash"])];
+  let model = chain[0];
+  let res = await call(model);
+  let body = res.ok ? "" : await res.text();
+  for (let i = 1; !res.ok && i < chain.length && /model_not_found|No available channel|unsafe or sensitive|capacity_unavailable|temporarily unavailable/i.test(body); i++) {
+    model = chain[i];
+    res = await call(model);
+    body = res.ok ? "" : await res.text();
+  }
+  if (!res.ok) throw new Error(`Relay Models request failed: HTTP ${res.status} ${body.slice(0, 300)}`);
+  const json = await res.json();
+  return { reply: String(json.choices?.[0]?.message?.content ?? "").trim(), tokens: Number(json.usage?.total_tokens ?? 0) || 0, model };
+}
+
 export async function chatJSON<T>(systemPrompt: string, userPrompt: string): Promise<T | null> {
   return (await chatJSONDetailed<T>(systemPrompt, userPrompt)).data;
 }
