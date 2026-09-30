@@ -688,3 +688,17 @@ model AdminUser {
 
   @@map("admin_users")
 }
+
+// Admin-managed link sources (CSV / Google Sheet) polled every 30 min
+model FeedSource {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  url         String
+  active      Boolean   @default(true)
+  lastRunAt   DateTime?
+  lastStatus  String?   // ok | error
+  lastMessage String?   @db.Text
+  createdAt   DateTime  @default(now())
+
+  @@map("feed_sources")
+}

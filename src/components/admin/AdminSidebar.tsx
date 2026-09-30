@@ -10,6 +10,7 @@ const NAV = [
   { href: "/admin/properties", label: "Properties" },
   { href: "/admin/properties/new", label: "Add Property" },
   { href: "/admin/properties/import", label: "Bulk Import" },
+  { href: "/admin/feeds", label: "Link Sources" },
   { href: "/admin/leads", label: "Leads" },
   { href: "/admin/blog", label: "Blog" },
   { href: "/admin/localities", label: "Locations" },

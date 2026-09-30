@@ -5,9 +5,14 @@ config({ path: ".env.local" });
 config({ path: ".env" });
 
 import { runBankAuctionsIngestion } from "@/data-sources/bankauctions/adapter";
+import { runAllFeeds } from "@/data-sources/feeds/run";
 
 const ADAPTERS: Record<string, (limit: number) => Promise<unknown>> = {
-  bankauctions: (limit) => runBankAuctionsIngestion({ limit, triggeredBy: process.env.GITHUB_ACTIONS ? process.env.GITHUB_EVENT_NAME ?? "schedule" : "manual" }),
+  bankauctions: async (limit) => ({
+    main: await runBankAuctionsIngestion({ limit, triggeredBy: process.env.GITHUB_ACTIONS ? process.env.GITHUB_EVENT_NAME ?? "schedule" : "manual" }),
+    feeds: await runAllFeeds(),
+  }),
+  feeds: () => runAllFeeds(),
 };
 
 async function main() {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runBankAuctionsIngestion } from "@/data-sources/bankauctions/adapter";
+import { runAllFeeds } from "@/data-sources/feeds/run";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -18,5 +19,6 @@ export async function GET(request: NextRequest) {
 
   const limit = Number(request.nextUrl.searchParams.get("limit") ?? "100");
   const summary = await runBankAuctionsIngestion({ limit, triggeredBy: "http-cron" });
-  return NextResponse.json(summary);
+  const feeds = await runAllFeeds();
+  return NextResponse.json({ ...summary, feeds });
 }
