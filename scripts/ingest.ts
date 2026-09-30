@@ -7,7 +7,7 @@ config({ path: ".env" });
 import { runBankAuctionsIngestion } from "@/data-sources/bankauctions/adapter";
 
 const ADAPTERS: Record<string, (limit: number) => Promise<unknown>> = {
-  bankauctions: (limit) => runBankAuctionsIngestion({ limit, triggeredBy: "manual" }),
+  bankauctions: (limit) => runBankAuctionsIngestion({ limit, triggeredBy: process.env.GITHUB_ACTIONS ? process.env.GITHUB_EVENT_NAME ?? "schedule" : "manual" }),
 };
 
 async function main() {
@@ -16,7 +16,7 @@ async function main() {
     console.error(`Usage: tsx scripts/ingest.ts <${Object.keys(ADAPTERS).join("|")}> [limit]`);
     process.exit(1);
   }
-  const limit = limitArg ? parseInt(limitArg, 10) : 5;
+  const limit = limitArg ? parseInt(limitArg, 10) : 250;
   const summary = await ADAPTERS[sourceKey](limit);
   console.log(JSON.stringify(summary, null, 2));
 }

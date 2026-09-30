@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { AuctionStatus, PropertyCategory } from "@prisma/client";
-import { PLACEHOLDER_IMAGE_URL } from "@/lib/constants";
 
 export interface PropertyCardData {
   slug: string;

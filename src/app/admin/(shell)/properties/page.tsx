@@ -1,140 +1,19 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
-import { approveProperty, rejectProperty } from "./actions";
 import type { PropertyStatus } from "@prisma/client";
+export const dynamic="force-dynamic";
+const TABS:[string,PropertyStatus|"ALL"][]=[["All","ALL"],["Pending review","PENDING_REVIEW"],["Published","PUBLISHED"],["Draft","DRAFT"]];
+const styles:Record<string,string>={PUBLISHED:"bg-emerald-50 text-emerald-700",PENDING_REVIEW:"bg-amber-50 text-amber-800",DRAFT:"bg-gray-100 text-gray-600",DUPLICATE:"bg-purple-50 text-purple-700",EXPIRED:"bg-gray-100 text-gray-500"};
 
-export const dynamic = "force-dynamic";
-
-const TABS: { label: string; value: PropertyStatus | "ALL" }[] = [
-  { label: "All", value: "ALL" },
-  { label: "Pending Review", value: "PENDING_REVIEW" },
-  { label: "Published", value: "PUBLISHED" },
-  { label: "Draft", value: "DRAFT" },
-];
-
-const STATUS_STYLES: Record<string, string> = {
-  PUBLISHED: "bg-green-50 text-green-700",
-  PENDING_REVIEW: "bg-amber-50 text-amber-700",
-  DRAFT: "bg-gray-100 text-gray-600",
-  DUPLICATE: "bg-purple-50 text-purple-700",
-  EXPIRED: "bg-gray-100 text-gray-500",
-};
-
-export default async function AdminPropertiesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ status?: string }>;
-}) {
-  const { status } = await searchParams;
-  const filter = status && status !== "ALL" ? (status as PropertyStatus) : undefined;
-
-  const properties = await prisma.property.findMany({
-    where: filter ? { status: filter } : undefined,
-    orderBy: { createdAt: "desc" },
-    include: {
-      auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 },
-      sourceRecords: { include: { source: true }, take: 1 },
-    },
-    take: 50,
-  });
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <h1 className="text-2xl font-semibold text-brand">Properties</h1>
-        <Link href="/admin/properties/new" className="bg-brand text-white text-sm font-medium rounded-lg px-4 py-2 hover:bg-brand-dark">
-          + Add Property
-        </Link>
-      </div>
-      <p className="text-sm text-brand-muted mb-5">
-        Records pulled by the ingestion pipeline. Clean records auto-publish; uncertain ones wait here for review.
-      </p>
-
-      <div className="flex gap-2 mb-5">
-        {TABS.map((t) => (
-          <Link
-            key={t.value}
-            href={t.value === "ALL" ? "/admin/properties" : `/admin/properties?status=${t.value}`}
-            className={`text-sm px-3 py-1.5 rounded-lg border ${
-              (status ?? "ALL") === t.value ? "bg-brand text-white border-brand" : "border-brand-border text-brand-muted hover:border-brand"
-            }`}
-          >
-            {t.label}
-          </Link>
-        ))}
-      </div>
-
-      <div className="bg-white border border-brand-border rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-brand-bg text-left text-xs text-brand-muted">
-            <tr>
-              <th className="px-4 py-2.5">Title</th>
-              <th className="px-4 py-2.5">Bank</th>
-              <th className="px-4 py-2.5">Category</th>
-              <th className="px-4 py-2.5">Source</th>
-              <th className="px-4 py-2.5">Status</th>
-              <th className="px-4 py-2.5">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {properties.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-brand-muted">
-                  Nothing here.
-                </td>
-              </tr>
-            )}
-            {properties.map((p) => {
-              const auction = p.auctions[0];
-              const source = p.sourceRecords[0]?.source;
-              return (
-                <tr key={p.id} className="border-t border-brand-border align-top">
-                  <td className="px-4 py-3 max-w-xs">{p.title}</td>
-                  <td className="px-4 py-3">{auction?.bank?.name ?? "—"}</td>
-                  <td className="px-4 py-3">{p.category ?? <em className="text-brand-muted">unclassified</em>}</td>
-                  <td className="px-4 py-3">
-                    {source && auction?.sourceUrl ? (
-                      <a href={auction.sourceUrl} target="_blank" rel="noreferrer" className="text-brand hover:underline">
-                        {source.name}
-                      </a>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded ${STATUS_STYLES[p.status] ?? ""}`}>{p.status}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      {p.status !== "PUBLISHED" && (
-                        <form action={approveProperty}>
-                          <input type="hidden" name="propertyId" value={p.id} />
-                          <button type="submit" className="bg-brand text-white text-xs font-medium rounded-md px-3 py-1.5 hover:bg-brand-dark">
-                            Approve
-                          </button>
-                        </form>
-                      )}
-                      {p.status !== "DRAFT" && (
-                        <form action={rejectProperty}>
-                          <input type="hidden" name="propertyId" value={p.id} />
-                          <button type="submit" className="border border-brand-border text-xs font-medium rounded-md px-3 py-1.5 hover:border-red-400 hover:text-red-600">
-                            Reject
-                          </button>
-                        </form>
-                      )}
-                      {p.status === "PUBLISHED" && (
-                        <Link href={`/property/${p.slug}`} target="_blank" className="text-xs text-brand hover:underline">
-                          View →
-                        </Link>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+export default async function AdminPropertiesPage({searchParams}:{searchParams:Promise<{status?:string}>}){
+ const {status}=await searchParams; const filter=status&&status!=="ALL"?(status as PropertyStatus):undefined;
+ const properties=await prisma.property.findMany({where:filter?{status:filter}:undefined,orderBy:{createdAt:"desc"},include:{auctions:{include:{bank:true},orderBy:{createdAt:"desc"},take:1},sourceRecords:{include:{source:true},take:1}},take:100});
+ return <div className="space-y-6">
+  <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4"><div><div className="ba-kicker">Content management</div><h1 className="text-3xl font-extrabold text-brand">Properties</h1><p className="text-sm text-brand-muted mt-1">Review, publish and monitor records imported from auction sources.</p></div><Link href="/admin/properties/new" className="rounded-xl bg-brand text-white px-4 py-2.5 text-sm font-bold">+ Add property</Link></div>
+  <div className="flex gap-2 overflow-x-auto pb-1">{TABS.map(([label,value])=><Link key={value} href={value==="ALL"?"/admin/properties":"/admin/properties?status="+value} className={"whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold border "+((status??"ALL")===value?"bg-brand text-white border-brand":"bg-white border-brand-border text-brand-muted hover:border-brand")}>{label}</Link>)}</div>
+  <div className="ba-card overflow-hidden"><div className="p-4 border-b border-brand-border flex items-center justify-between"><div className="text-xs text-brand-muted">{properties.length} records shown</div><div className="text-[10px] text-brand-muted">Auto-import every 30 min</div></div>
+   <div className="overflow-x-auto"><table className="w-full text-xs"><thead className="bg-brand-bg text-brand-muted"><tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Bank / source</th><th className="px-4 py-3 text-left">Auction</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Action</th></tr></thead>
+   <tbody>{properties.map(p=>{const a=p.auctions[0],s=p.sourceRecords[0]?.source;return <tr key={p.id} className="border-t border-brand-border hover:bg-brand-bg/60"><td className="px-4 py-4 min-w-[320px]"><div className="font-bold text-sm text-brand line-clamp-2">{p.title}</div><div className="text-[11px] text-brand-muted mt-1">{p.addressText??"Location unavailable"}</div></td><td className="px-4 py-4"><div className="font-semibold">{a?.bank?.name??"—"}</div><div className="text-brand-muted mt-1">{s?.name??"—"}</div></td><td className="px-4 py-4"><div className="font-semibold">{a?.reservePrice?"₹"+Number(a.reservePrice).toLocaleString("en-IN"):"—"}</div><div className="text-brand-muted mt-1">{a?.auctionStart?new Date(a.auctionStart).toLocaleDateString("en-IN"):"—"}</div></td><td className="px-4 py-4"><span className={"inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold "+(styles[p.status]??"bg-gray-100")}>{p.status}</span></td><td className="px-4 py-4 text-right"><Link href={p.status==="PUBLISHED"?"/property/"+p.slug:"/admin/properties"} target={p.status==="PUBLISHED"?"_blank":undefined} className="text-brand font-bold hover:underline">{p.status==="PUBLISHED"?"View →":"Review →"}</Link></td></tr>})}</tbody></table>{properties.length===0&&<div className="p-12 text-center text-sm text-brand-muted">No property records in this view.</div>}</div>
+  </div>
+ </div>
 }

@@ -73,7 +73,7 @@ async function uniqueSlug(base: string, fallbackSuffix: string): Promise<string>
 }
 
 export async function runBankAuctionsIngestion(opts: { limit?: number; triggeredBy?: string } = {}): Promise<IngestionSummary> {
-  const limit = opts.limit ?? 10;
+  const limit = opts.limit ?? 250;
   const source = await ensureSourceRow();
   const sourceDef = getSourceDefinition(SOURCE_KEY)!;
 

@@ -50,10 +50,13 @@ export default function AdminSidebar() {
           </Link>
         ))}
       </nav>
+      <div className="m-3 rounded-xl bg-white/5 p-3">
+        <div className="text-[10px] uppercase tracking-wider text-white/40">Data engine</div>
+        <div className="mt-1 text-xs text-white/80">BankAuctions.in</div>
+        <div className="mt-2 flex items-center gap-2 text-[10px] text-emerald-300"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Auto sync every 30 min</div>
+      </div>
       <form action={logoutAdmin} className="p-3 border-t border-white/10">
-        <button type="submit" className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/60 hover:bg-white/10 hover:text-white transition-colors">
-          Sign out
-        </button>
+        <button className="w-full rounded-xl px-3 py-2.5 text-left text-sm text-white/60 hover:bg-white/8 hover:text-white">↪ Sign out</button>
       </form>
     </aside>
   );
