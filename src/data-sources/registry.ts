@@ -69,9 +69,9 @@ export const SOURCE_REGISTRY: SourceDefinition[] = [
     key: "baanknet",
     name: "Baanknet.com",
     baseUrl: "https://baanknet.com",
-    accessStatus: "ALLOWED",
+    accessStatus: "RESTRICTED",
     accessNotes:
-      "robots.txt allows all (\"Disallow:\" empty). Verified allowed; adapter not implemented yet.",
+      "robots.txt allows crawling, but the site's Terms prohibit copying content without written consent from PSB Alliance. Not built, and blocked in link sources, unless written permission is obtained.",
   },
   {
     key: "bankauction_co",

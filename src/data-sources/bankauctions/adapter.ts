@@ -24,9 +24,10 @@ export interface IngestionSummary {
   aiCalls: number;
   failures: number;
   errors: { url: string; message: string }[];
+  skipped?: boolean;
 }
 
-async function ensureSourceRow() {
+export async function ensureSourceRow() {
   const def = getSourceDefinition(SOURCE_KEY)!;
   return prisma.source.upsert({
     where: { name: def.name },
@@ -76,6 +77,25 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
   const limit = opts.limit ?? 250;
   const source = await ensureSourceRow();
   const sourceDef = getSourceDefinition(SOURCE_KEY)!;
+
+  // Paused from Admin → Data Engine: skip every run until it is resumed.
+  if (source.status === "DISABLED") {
+    return {
+      jobId: "",
+      pagesChecked: 0,
+      newProperties: 0,
+      updatedProperties: 0,
+      newAuctions: 0,
+      updatedAuctions: 0,
+      documentsFound: 0,
+      duplicatesFound: 0,
+      aiDuplicatesCaught: 0,
+      aiCalls: 0,
+      failures: 0,
+      errors: [],
+      skipped: true,
+    };
+  }
 
   const job = await prisma.importJob.create({
     data: { sourceId: source.id, triggeredBy: opts.triggeredBy ?? "manual" },
