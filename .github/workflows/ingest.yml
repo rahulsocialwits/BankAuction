@@ -1,11 +1,7 @@
 name: Ingest bank auction listings
 
 on:
-  schedule:
-    # Every 30 minutes, offset a few minutes past :00/:30 to avoid GitHub's
-    # busiest queue times (top/bottom of the hour), which can otherwise
-    # delay or drop scheduled runs for hours on free-tier repos.
-    - cron: "*/30 * * * *"
+  # Manual only. The automatic schedule now lives in tick.yml (one secret instead of five).
   workflow_dispatch:
     inputs:
       source:
