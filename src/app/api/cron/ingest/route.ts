@@ -12,7 +12,9 @@ export const maxDuration = 300;
  * or a Vercel Cron Job can call this every 30 minutes instead/as well.
  */
 export async function GET(request: NextRequest) {
-  const secret = request.nextUrl.searchParams.get("secret") ?? request.headers.get("x-cron-secret");
+  // Vercel Cron sends "Authorization: Bearer <CRON_SECRET>"; external pingers use ?secret= or x-cron-secret.
+  const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  const secret = request.nextUrl.searchParams.get("secret") ?? request.headers.get("x-cron-secret") ?? bearer;
   if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
