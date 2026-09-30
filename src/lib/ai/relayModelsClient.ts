@@ -42,13 +42,26 @@ export async function chatJSONDetailed<T>(systemPrompt: string, userPrompt: stri
   // safety filter sometimes rejects ordinary auction notices (borrower names, legal text), and a
   // different vendor's model reads the same page fine.
   const chain = [...new Set([cfg.model, cfg.fallbackModel, "deepseek-v4-flash", "qwen3.7-plus"])];
+  const TRANSIENT = /capacity_unavailable|temporarily unavailable|overloaded|rate.?limit|timeout/i;
+  const MOVE_ON = /model_not_found|No available channel|unsafe or sensitive|"code":"?1301|capacity_unavailable|temporarily unavailable/i;
+
+  // One model: short retries with backoff for temporary provider trouble (503/429/capacity).
+  const attempt = async (m: string) => {
+    let r = await request(m);
+    let body = r.ok ? "" : await r.text();
+    for (let n = 0; !r.ok && n < 2 && ([429, 502, 503, 504].includes(r.status) || TRANSIENT.test(body)); n++) {
+      await new Promise((ok) => setTimeout(ok, 2500 * (n + 1)));
+      r = await request(m);
+      body = r.ok ? "" : await r.text();
+    }
+    return { r, body };
+  };
+
   let model = chain[0];
-  let res = await request(model);
-  let errorBody = res.ok ? "" : await res.text();
-  for (let i = 1; !res.ok && i < chain.length && /model_not_found|No available channel|unsafe or sensitive|"code":"?1301/i.test(errorBody); i++) {
+  let { r: res, body: errorBody } = await attempt(model);
+  for (let i = 1; !res.ok && i < chain.length && MOVE_ON.test(errorBody); i++) {
     model = chain[i];
-    res = await request(model);
-    errorBody = res.ok ? "" : await res.text();
+    ({ r: res, body: errorBody } = await attempt(model));
   }
   if (!res.ok) throw new Error(`Relay Models request failed: HTTP ${res.status} ${errorBody.slice(0, 400)}`);
 
