@@ -71,7 +71,9 @@ export default async function AdminSettingsPage() {
           <div>
             <label className="block text-sm font-medium mb-1">Home page description</label>
             <textarea name="homeDescription" defaultValue={s.homeDescription} rows={3} className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
-            <p className="text-xs text-brand-muted mt-1">Best kept under 160 characters.</p>
+            <p className="text-xs text-brand-muted mt-1">
+              Leave empty and it is written automatically from live numbers (listings, banks, cities). Type your own text to override it. Best under 160 characters.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Keywords</label>

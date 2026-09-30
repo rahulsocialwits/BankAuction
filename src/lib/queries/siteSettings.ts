@@ -5,6 +5,9 @@ import { DEFAULT_SITE_SETTINGS } from "@/lib/constants";
 // Cached: the header and footer read this on every page. Invalidated by the admin settings save.
 export const SETTINGS_TAG = "site-settings";
 
+const LEGACY_HOME_DESCRIPTION =
+  "Discover Indian bank-auction properties — residential, commercial, industrial, agricultural, land and vehicles — sourced and verified from public auction listings.";
+
 type Row = Awaited<ReturnType<typeof prisma.siteSettings.findFirst>>;
 
 export function buildSettings(row: Row) {
@@ -25,9 +28,8 @@ export function buildSettings(row: Row) {
       footerLogoUrl: row?.footerLogoUrl || row?.headerLogoUrl || "/brand/logo.png",
       faviconUrl: row?.faviconUrl || "",
       homeTitle: row?.homeTitle || "BankAuction.co — Indian Bank Auction Property Discovery",
-      homeDescription:
-        row?.homeDescription ||
-        "Discover Indian bank-auction properties — residential, commercial, industrial, agricultural, land and vehicles — sourced and verified from public auction listings.",
+      // Empty (or the old built-in text) means "write it automatically from live data" — see the site layout.
+      homeDescription: row?.homeDescription && row.homeDescription !== LEGACY_HOME_DESCRIPTION ? row.homeDescription : "",
       homeKeywords: row?.homeKeywords || "",
   };
 }

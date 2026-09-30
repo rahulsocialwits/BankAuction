@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 export const metadata: Metadata = {
-  title: "About BankAuction.co",
+  title: "About Us",
   description: "BankAuction.co helps buyers discover verified bank auction properties across India from public auction notices, in one searchable place.",
   alternates: { canonical: "/about" },
 };
