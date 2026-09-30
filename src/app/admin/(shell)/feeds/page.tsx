@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { addFeed, toggleFeed, deleteFeed, runFeedNow } from "./actions";
 
 import SubmitButton from "@/components/admin/SubmitButton";
+import EngineTabs from "@/components/admin/EngineTabs";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -12,7 +13,9 @@ export default async function FeedsPage({ searchParams }: { searchParams: Promis
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-brand mb-1">Link Sources</h1>
+      <h1 className="text-2xl font-semibold text-brand mb-1">Data Engine</h1>
+      <EngineTabs />
+      <h2 className="text-lg font-semibold mb-1">Link Sources</h2>
       <p className="text-sm text-brand-muted mb-6 max-w-2xl">
         Paste a link to a website page that lists auctions, a Google Sheet or a CSV file. The site re-checks it every
         hour and publishes new listings directly. Website pages are read with AI (only if the site&apos;s robots.txt allows

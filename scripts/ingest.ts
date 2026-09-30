@@ -6,6 +6,7 @@ config({ path: ".env" });
 
 import { runBankAuctionsIngestion } from "@/data-sources/bankauctions/adapter";
 import { runAllFeeds } from "@/data-sources/feeds/run";
+import { logRun } from "@/lib/pipeline/runLog";
 
 const ADAPTERS: Record<string, (limit: number) => Promise<unknown>> = {
   bankauctions: async (limit) => ({
@@ -22,7 +23,16 @@ async function main() {
     process.exit(1);
   }
   const limit = limitArg ? parseInt(limitArg, 10) : 250;
+  const startedAt = new Date();
   const summary = await ADAPTERS[sourceKey](limit);
+  await logRun({
+    source: "Scheduler tick",
+    kind: "cron",
+    trigger: process.env.GITHUB_ACTIONS ? "cron" : "manual",
+    status: "ok",
+    message: `via ${process.env.GITHUB_ACTIONS ? "GitHub Actions" : "command line"} (${sourceKey})`,
+    startedAt,
+  });
   console.log(JSON.stringify(summary, null, 2));
 }
 

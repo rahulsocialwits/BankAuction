@@ -182,6 +182,7 @@ enum PropertyStatus {
   PUBLISHED
   DUPLICATE
   EXPIRED
+  REMOVED // hidden by an admin; re-imports never bring it back
 }
 
 model Property {
@@ -704,7 +705,41 @@ model FeedSource {
   lastRunAt   DateTime?
   lastStatus  String?   // ok | error
   lastMessage String?   @db.Text
+  contentHash String?   // hash of the last scanned page text; unchanged page => no AI call
   createdAt   DateTime  @default(now())
 
   @@map("feed_sources")
+}
+
+// One row per pipeline run of any source (built-in crawler, link source, CSV import, cron tick).
+model SourceRunLog {
+  id          String    @id @default(cuid())
+  source      String    // display name of the source
+  kind        String    // builtin | feed | csv | cron
+  trigger     String    // schedule | manual | cron | import
+  status      String    // ok | error | skipped | blocked
+  created     Int       @default(0)
+  updated     Int       @default(0)
+  duplicates  Int       @default(0)
+  rejected    Int       @default(0)
+  aiTokens    Int       @default(0)
+  message     String?   @db.Text
+  startedAt   DateTime  @default(now())
+  durationMs  Int       @default(0)
+
+  @@index([startedAt])
+  @@map("source_run_logs")
+}
+
+// Single-row developer settings for the AI (Relay Models) layer. Environment variables are the fallback.
+model AiSettings {
+  id              String   @id @default("default")
+  enabled         Boolean  @default(true)
+  extractorModel  String?
+  fallbackModel   String?
+  extractionPrompt String? @db.Text
+  maxPageChars    Int?
+  updatedAt       DateTime @updatedAt
+
+  @@map("ai_settings")
 }

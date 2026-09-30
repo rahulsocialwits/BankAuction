@@ -5,6 +5,7 @@ import Image from "next/image";
 import { PLACEHOLDER_IMAGE_URL } from "@/lib/constants";
 import { Suspense } from "react";
 import PropertyEnquiry from "@/components/PropertyEnquiry";
+import { tidyText } from "@/lib/text";
 
 export const revalidate = 120;
 
@@ -61,14 +62,15 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
         <Link href="/" className="hover:text-brand">Home</Link> / <Link href="/properties" className="hover:text-brand">Properties</Link> / <span>{property.title}</span>
       </nav>
 
-      <div className="relative h-56 sm:h-72 rounded-2xl overflow-hidden mb-6 bg-brand-bg">
-        <Image src={PLACEHOLDER_IMAGE_URL} alt={property.title} fill unoptimized priority className="object-cover" />
+      {/* Same artwork and background as the listing card; contained so it is never cropped. */}
+      <div className="relative h-52 sm:h-64 rounded-2xl overflow-hidden mb-6 bg-[#E8EDF5]">
+        <Image src={PLACEHOLDER_IMAGE_URL} alt={property.title} fill unoptimized priority className="object-contain" />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
-          <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded mb-3 ${STATUS_STYLES[auction?.status ?? ""] ?? "bg-gray-100 text-gray-600"}`}>
-            {auction?.status ?? "STATUS UNKNOWN"}
+          <span className={`inline-block text-xs font-semibold px-3 py-1 rounded-full mb-3${STATUS_STYLES[auction?.status ?? ""] ?? "bg-gray-100 text-gray-600"}`}>
+            {auction?.status ? auction.status.charAt(0) + auction.status.slice(1).toLowerCase().replace("_", " ") : "Status unknown"}
           </span>
           <h1 className="text-2xl font-semibold mb-1">{property.title}</h1>
           <p className="text-brand-muted text-sm mb-6">
@@ -105,14 +107,14 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
 
           <section className="mb-6">
             <h2 className="font-semibold mb-2">Property Overview</h2>
-            <p className="text-sm leading-6 text-black/80">{property.description ?? "No description provided."}</p>
+            <p className="text-sm leading-6 text-black/80 whitespace-pre-line">{tidyText(property.description) || "No description provided."}</p>
             {rawType && <p className="text-xs text-brand-muted mt-2">Listed type: {rawType}</p>}
           </section>
 
           {legalSchedule && (
             <section className="mb-6">
               <h2 className="font-semibold mb-2">Legal / Property Schedule</h2>
-              <p className="text-sm leading-6 text-black/70 whitespace-pre-wrap">{legalSchedule}</p>
+              <p className="text-sm leading-6 text-black/70 whitespace-pre-line">{tidyText(legalSchedule)}</p>
             </section>
           )}
 

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { logRun } from "@/lib/pipeline/runLog";
 import { politeFetch } from "@/lib/fetch/politeFetch";
 import { getSourceDefinition } from "@/data-sources/registry";
 import { extractBankAuctionsListing } from "./extract";
@@ -75,11 +76,13 @@ async function uniqueSlug(base: string, fallbackSuffix: string): Promise<string>
 
 export async function runBankAuctionsIngestion(opts: { limit?: number; triggeredBy?: string } = {}): Promise<IngestionSummary> {
   const limit = opts.limit ?? 250;
+  const runStartedAt = new Date();
   const source = await ensureSourceRow();
   const sourceDef = getSourceDefinition(SOURCE_KEY)!;
 
   // Paused from Admin → Data Engine: skip every run until it is resumed.
   if (source.status === "DISABLED") {
+    await logRun({ source: "BankAuctions.in", kind: "builtin", trigger: opts.triggeredBy === "manual" ? "manual" : "cron", status: "skipped", message: "Source is paused", startedAt: runStartedAt });
     return {
       jobId: "",
       pagesChecked: 0,
@@ -161,6 +164,18 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
     });
   }
 
+  await logRun({
+    source: "BankAuctions.in",
+    kind: "builtin",
+    trigger: opts.triggeredBy === "manual" ? "manual" : "cron",
+    status: summary.failures > 0 && summary.pagesChecked <= summary.failures ? "error" : "ok",
+    created: summary.newProperties,
+    updated: summary.updatedProperties,
+    duplicates: summary.duplicatesFound,
+    rejected: summary.failures,
+    message: `${summary.pagesChecked} pages checked` + (summary.errors[0] ? ` — first error: ${summary.errors[0].message}` : ""),
+    startedAt: runStartedAt,
+  });
   return summary;
 }
 

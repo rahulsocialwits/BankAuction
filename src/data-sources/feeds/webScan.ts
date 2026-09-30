@@ -1,4 +1,6 @@
-import { chatJSON } from "@/lib/ai/relayModelsClient";
+import { createHash } from "node:crypto";
+import { chatJSONDetailed } from "@/lib/ai/relayModelsClient";
+import { getAiConfig } from "@/lib/ai/aiConfig";
 import type { ListingRecord } from "@/lib/import/csvImport";
 
 export const UA = "BankAuctionBot/1.0 (+https://auction.bizsocio.com)";
@@ -60,11 +62,25 @@ function htmlToText(html: string): string {
     .trim();
 }
 
-const SYSTEM = `You extract bank auction property listings from web page text. Return ONLY a JSON array (no prose). Each item has these string keys, omitting any you cannot find in the text (never guess or invent values): title, bank, category (one of RESIDENTIAL, COMMERCIAL, INDUSTRIAL, LAND_PLOT, AGRICULTURAL, VEHICLE), location, description, borrower, reserve_price (digits only, rupees), emd (digits only), auction_start (ISO like 2026-11-10T11:00), auction_method, possession_status. Only include real property or vehicle auction listings. If there are none, return [].`;
+export const DEFAULT_EXTRACTION_PROMPT = `You extract bank auction property listings from web page text. Return ONLY a JSON array (no prose). Each item has these string keys, omitting any you cannot find in the text (never guess or invent values): title, bank, category (one of RESIDENTIAL, COMMERCIAL, INDUSTRIAL, LAND_PLOT, AGRICULTURAL, VEHICLE), location, description, borrower, reserve_price (digits only, rupees), emd (digits only), auction_start (ISO like 2026-11-10T11:00), auction_method, possession_status. Only include real property or vehicle auction listings. If there are none, return [].`;
 
-export async function scanWebPage(html: string): Promise<ListingRecord[]> {
-  const text = htmlToText(html).slice(0, 40_000);
-  const out = await chatJSON<ListingRecord[]>(SYSTEM, text);
-  if (out === null) throw new Error("AI extraction unavailable (check AI_API_KEY / AI_BASE_URL) or the reply was not valid JSON");
-  return Array.isArray(out) ? out.filter((r) => r && typeof r === "object") : [];
+export interface ScanResult {
+  records: ListingRecord[];
+  tokens: number;
+  model: string;
+  hash: string;
+  unchanged: boolean; // page text identical to the previous scan: the AI was not called
+}
+
+/** Page → listings. If the page text hash equals `previousHash` the AI call is skipped entirely. */
+export async function scanWebPage(html: string, previousHash?: string | null): Promise<ScanResult> {
+  const cfg = await getAiConfig();
+  const text = htmlToText(html).slice(0, cfg.maxPageChars);
+  const hash = createHash("sha256").update(text).digest("hex");
+  if (previousHash && previousHash === hash) return { records: [], tokens: 0, model: cfg.model, hash, unchanged: true };
+
+  const out = await chatJSONDetailed<ListingRecord[]>(cfg.extractionPrompt ?? DEFAULT_EXTRACTION_PROMPT, text);
+  if (out.data === null) throw new Error("AI extraction unavailable (check AI_API_KEY / AI_BASE_URL) or the reply was not valid JSON");
+  const records = Array.isArray(out.data) ? out.data.filter((r) => r && typeof r === "object") : [];
+  return { records, tokens: out.tokens, model: out.model, hash, unchanged: false };
 }

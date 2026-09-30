@@ -9,13 +9,12 @@ const NAV = [
   { href: "/admin", label: "Dashboard", exact: true },
   { href: "/admin/properties", label: "Properties" },
   { href: "/admin/properties/new", label: "Add Property" },
-  { href: "/admin/properties/import", label: "Bulk Import" },
-  { href: "/admin/engine", label: "Data Engine" },
-  { href: "/admin/feeds", label: "Link Sources" },
+  // One sourcing area: overview, link sources, bulk import, history and duplicates are tabs inside it.
+  { href: "/admin/engine", label: "Data Engine", also: ["/admin/feeds", "/admin/properties/import"] },
   { href: "/admin/leads", label: "Leads" },
   { href: "/admin/blog", label: "Blog" },
   { href: "/admin/localities", label: "Locations" },
-  { href: "/admin/sources", label: "Sources" },
+  { href: "/admin/ai", label: "AI Admin" },
   { href: "/admin/admins", label: "Admin Users" },
   { href: "/admin/settings", label: "Settings" },
 ];
@@ -23,8 +22,9 @@ const NAV = [
 export default function AdminSidebar() {
   const pathname = usePathname();
 
-  function isActive(item: { href: string; exact?: boolean }) {
+  function isActive(item: { href: string; exact?: boolean; also?: string[] }) {
     if (item.exact) return pathname === item.href;
+    if (item.also?.some((p) => pathname === p || pathname.startsWith(p + "/"))) return true;
     if (item.href === "/admin/properties" || item.href === "/admin/properties/new") return pathname === item.href;
     return pathname === item.href || pathname.startsWith(item.href + "/");
   }

@@ -62,7 +62,7 @@ export default function PropertyCard({ property }: { property: PropertyCardData 
       href={`/property/${property.slug}`}
       className="group flex flex-col h-full bg-white border border-brand-border rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition"
     >
-      <div className="relative aspect-[5/3] bg-brand-bg overflow-hidden">
+      <div className="relative aspect-[5/3] bg-[#E8EDF5] overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={PLACEHOLDER_IMAGE_URL}

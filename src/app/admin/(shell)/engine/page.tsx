@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { SOURCE_REGISTRY } from "@/data-sources/registry";
+import { getAiConfig } from "@/lib/ai/aiConfig";
 import SubmitButton from "@/components/admin/SubmitButton";
+import EngineTabs from "@/components/admin/EngineTabs";
 import { toggleBuiltIn, toggleFeedSource, runFeedSourceNow } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -18,60 +20,67 @@ function ago(d: Date | null | undefined) {
   return d.toLocaleDateString("en-IN");
 }
 
-function Badge({ tone, children }: { tone: "green" | "gray" | "red" | "amber"; children: React.ReactNode }) {
+type Tone = "green" | "gray" | "red" | "amber";
+function Badge({ tone, children }: { tone: Tone; children: React.ReactNode }) {
   const c = {
     green: "bg-green-50 text-green-700",
     gray: "bg-gray-100 text-gray-600",
     red: "bg-red-50 text-red-700",
     amber: "bg-amber-50 text-amber-700",
   }[tone];
-  return <span className={`text-xs font-semibold px-2 py-0.5 rounded ${c}`}>{children}</span>;
+  return <span className={`text-xs font-semibold px-2 py-0.5 rounded whitespace-nowrap ${c}`}>{children}</span>;
 }
 
 const btn = "text-xs border border-brand-border rounded-lg px-3 py-1.5 hover:bg-brand-bg";
 
 export default async function DataEnginePage() {
-  const [builtIn, lastJob, feeds, published] = await Promise.all([
+  const since24h = new Date(Date.now() - 864e5);
+  const [builtIn, lastJob, feeds, published, pending, lastTick, lastRuns, tokens24, ai] = await Promise.all([
     prisma.source.findUnique({ where: { name: BUILT_IN_NAME } }),
-    prisma.importJob.findFirst({ where: { source: { name: BUILT_IN_NAME } }, orderBy: { startedAt: "desc" } }),
+    prisma.sourceRunLog.findFirst({ where: { kind: "builtin" }, orderBy: { startedAt: "desc" } }),
     prisma.feedSource.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.property.count({ where: { status: "PUBLISHED" } }),
+    prisma.property.count({ where: { status: "PENDING_REVIEW" } }),
+    prisma.sourceRunLog.findFirst({ where: { kind: "cron" }, orderBy: { startedAt: "desc" } }),
+    prisma.sourceRunLog.findMany({ where: { startedAt: { gte: since24h } }, orderBy: { startedAt: "desc" }, take: 200 }),
+    prisma.sourceRunLog.aggregate({ where: { startedAt: { gte: since24h } }, _sum: { aiTokens: true, created: true } }),
+    getAiConfig(),
   ]);
 
   const builtInPaused = builtIn?.status === "DISABLED";
-  const liveCount = (builtInPaused ? 0 : 1) + feeds.filter((f) => f.active).length;
+  const liveFeeds = feeds.filter((f) => f.active);
+  const liveCount = (builtInPaused ? 0 : 1) + liveFeeds.length;
   const pausedCount = (builtInPaused ? 1 : 0) + feeds.filter((f) => !f.active).length;
   const blocked = SOURCE_REGISTRY.filter((s) => s.key !== "bankauctions" && s.accessStatus !== "ALLOWED");
 
-  // Never reveals the key: only whether it is present and usable in this deployment.
-  const rawKey = process.env.AI_API_KEY ?? "";
-  const key = rawKey.trim();
-  const keyBad = /[^\x20-\x7E]/.test(key);
-  const aiStatus = !key
-    ? { tone: "red" as const, text: "AI key is missing — website scanning is off." }
-    : keyBad
-      ? { tone: "red" as const, text: `AI key is invalid: it contains non-standard characters (${key.length} chars, starts with "${key.slice(0, 3)}"). Re-paste the real key in Vercel and redeploy.` }
-      : { tone: "green" as const, text: `AI key looks valid (${key.length} characters, starts with "${key.slice(0, 3)}"). Model: ${process.env.AI_EXTRACTOR_MODEL?.trim() || "glm-5.3-cursor"}.` };
-  const deployed = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7);
+  // Scheduler health: a tick should arrive at least every ~90 minutes.
+  const tickAgeMin = lastTick ? (Date.now() - lastTick.startedAt.getTime()) / 60000 : null;
+  const schedulerTone: Tone = tickAgeMin === null ? "red" : tickAgeMin > 90 ? "amber" : "green";
+
+  // Problems: everything that needs a human, in one list.
+  const problems: { title: string; detail: string; fix: string }[] = [];
+  if (!ai.hasKey) problems.push({ title: "AI key missing", detail: "Website scanning is off.", fix: "Set AI_API_KEY in Vercel and redeploy." });
+  else if (!ai.keyValid) problems.push({ title: "AI key invalid", detail: `The saved key has non-standard characters (${ai.keyHint}).`, fix: "Re-paste the real key in Vercel and redeploy." });
+  if (!ai.enabled) problems.push({ title: "AI is switched off", detail: "Link sources that need AI will fail.", fix: "Turn it on in AI Admin." });
+  if (tickAgeMin === null) problems.push({ title: "Scheduler has never run", detail: "No automatic run has been recorded.", fix: "Set up a 30-minute scheduler (see the card below)." });
+  else if (tickAgeMin > 90) problems.push({ title: "Scheduler is late", detail: `Last automatic run was ${ago(lastTick!.startedAt)}.`, fix: "Check GitHub Actions or your cron-job.org job." });
+  for (const f of feeds) {
+    if (f.lastStatus === "error") problems.push({ title: `${f.name}: last run failed`, detail: f.lastMessage ?? "", fix: f.lastMessage?.startsWith("Blocked") ? "The site does not allow automated access. Delete this source." : "Fix the cause and press Run now." });
+  }
+  if (pending > 0) problems.push({ title: `${pending} properties wait for review`, detail: "They are not visible on the site yet.", fix: "Open Properties → Pending review and publish or remove them." });
 
   return (
     <div className="max-w-4xl">
       <h1 className="text-2xl font-semibold text-brand mb-1">Data Engine</h1>
-      <div className={`text-xs rounded-lg px-3 py-2 mb-4 ${aiStatus.tone === "green" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-        {aiStatus.text}
-        {deployed && <span className="opacity-70"> · Deployment {deployed}</span>}
-      </div>
-      <p className="text-sm text-brand-muted mb-6">
-        Every source that feeds listings into the site. Pause a source to stop it from importing; resume whenever you
-        want. Sources run automatically every 30–60 minutes.
-      </p>
+      <EngineTabs />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
         {[
           { label: "Live sources", value: liveCount, tone: "text-green-700" },
           { label: "Paused", value: pausedCount, tone: "text-amber-700" },
           { label: "Not allowed", value: blocked.length, tone: "text-gray-500" },
-          { label: "Published listings", value: published, tone: "text-brand" },
+          { label: "Published", value: published, tone: "text-brand" },
+          { label: "AI tokens (24h)", value: (tokens24._sum.aiTokens ?? 0).toLocaleString("en-IN"), tone: "text-brand" },
         ].map((t) => (
           <div key={t.label} className="bg-white border border-brand-border rounded-xl p-4">
             <div className={`text-2xl font-semibold ${t.tone}`}>{t.value}</div>
@@ -80,7 +89,49 @@ export default async function DataEnginePage() {
         ))}
       </div>
 
-      <h2 className="font-semibold mb-3">Active sources</h2>
+      <section className="bg-white border border-brand-border rounded-xl p-4 mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h2 className="font-semibold">Health</h2>
+          <Link href="/admin/ai" className="text-xs text-brand hover:underline">AI Admin →</Link>
+        </div>
+        <div className="grid sm:grid-cols-3 gap-3 text-xs">
+          <div className="rounded-lg border border-brand-border p-3">
+            <div className="text-brand-muted mb-1">Scheduler (every 30 min)</div>
+            <Badge tone={schedulerTone}>{tickAgeMin === null ? "Never ran" : tickAgeMin > 90 ? "Late" : "Running"}</Badge>
+            <div className="mt-2 text-brand-muted">
+              Last tick: {ago(lastTick?.startedAt)}
+              {lastTick?.message && <div className="mt-0.5">{lastTick.message}</div>}
+            </div>
+          </div>
+          <div className="rounded-lg border border-brand-border p-3">
+            <div className="text-brand-muted mb-1">AI (Relay Models)</div>
+            <Badge tone={ai.enabled && ai.keyValid ? "green" : "red"}>{!ai.enabled ? "Off" : ai.keyValid ? "Ready" : "Key problem"}</Badge>
+            <div className="mt-2 text-brand-muted break-words">Model: {ai.model}</div>
+          </div>
+          <div className="rounded-lg border border-brand-border p-3">
+            <div className="text-brand-muted mb-1">Last 24 hours</div>
+            <div className="font-semibold text-sm">{tokens24._sum.created ?? 0} new listings</div>
+            <div className="mt-1 text-brand-muted">{lastRuns.filter((r) => r.status === "error" || r.status === "blocked").length} failed runs</div>
+          </div>
+        </div>
+      </section>
+
+      <h2 className="font-semibold mb-2">Needs attention {problems.length > 0 && <span className="text-red-600">({problems.length})</span>}</h2>
+      {problems.length === 0 ? (
+        <div className="bg-green-50 text-green-700 text-sm rounded-xl px-4 py-3 mb-6">Everything is running normally.</div>
+      ) : (
+        <div className="grid gap-2 mb-6">
+          {problems.map((p, i) => (
+            <div key={i} className="bg-white border border-red-200 rounded-xl p-3">
+              <div className="text-sm font-medium text-red-700">{p.title}</div>
+              {p.detail && <div className="text-xs text-brand-muted mt-0.5 break-words">{p.detail}</div>}
+              <div className="text-xs mt-1"><span className="font-semibold">Fix:</span> {p.fix}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <h2 className="font-semibold mb-3">Sources</h2>
       <div className="grid gap-3 mb-8">
         <div className="bg-white border border-brand-border rounded-xl p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -99,7 +150,7 @@ export default async function DataEnginePage() {
             <span>Last successful sync: {ago(builtIn?.lastSuccessfulSync)}</span>
             {lastJob && (
               <span>
-                Last run: {lastJob.newProperties} new · {lastJob.updatedProperties} updated · {lastJob.failures} failed
+                Last run ({ago(lastJob.startedAt)}): {lastJob.created} new · {lastJob.updated} updated · {lastJob.rejected} failed
               </span>
             )}
           </div>
@@ -147,7 +198,7 @@ export default async function DataEnginePage() {
       <p className="text-xs text-brand-muted mb-3">
         These are never fetched automatically — robots.txt, terms of use or anti-bot protection do not allow it.
       </p>
-      <div className="grid gap-2">
+      <div className="grid gap-2 mb-8">
         {blocked.map((s) => (
           <div key={s.key} className="bg-white border border-brand-border rounded-xl p-3 flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0 max-w-2xl">
@@ -158,6 +209,16 @@ export default async function DataEnginePage() {
           </div>
         ))}
       </div>
+
+      <section className="bg-white border border-brand-border rounded-xl p-4 text-xs text-brand-muted">
+        <h2 className="font-semibold text-sm text-black mb-2">How the scheduler is set up</h2>
+        <p className="mb-2">
+          One URL runs every source: <code className="bg-brand-bg px-1 rounded">/api/cron/ingest?secret=&lt;CRON_SECRET&gt;</code>. Point any
+          scheduler at it every 30 minutes (cron-job.org is the most dependable free option). GitHub Actions and the daily
+          Vercel cron are backups. Every call shows up above as &quot;Last tick&quot;.
+        </p>
+        <p>Link sources are throttled to one scan per hour each, and a page that has not changed costs no AI tokens.</p>
+      </section>
     </div>
   );
 }

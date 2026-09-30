@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { importProperties } from "./actions";
+import EngineTabs from "@/components/admin/EngineTabs";
 
 const TEMPLATE =
   "title,bank,category,location,description,borrower,reserve_price,emd,auction_start,auction_method,possession_status\n" +
@@ -16,7 +17,9 @@ export default async function ImportPage({
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-brand mb-1">Bulk Import</h1>
+      <h1 className="text-2xl font-semibold text-brand mb-1">Data Engine</h1>
+      <EngineTabs />
+      <h2 className="text-lg font-semibold mb-1">Bulk Import</h2>
       <p className="text-sm text-brand-muted mb-6">
         Upload a CSV of listings you are entitled to publish (bank notices, partner feeds, your own data). Rows publish
         immediately as Upcoming auctions. Rows whose title already exists for the same bank are skipped, so re-uploading
