@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getSiteSettings } from "@/lib/queries/siteSettings";
 import { getTopBanks } from "@/lib/queries/footerLinks";
 import { getLocalityMap } from "@/lib/queries/localities";
+import { PRIORITY_CITIES } from "@/lib/constants";
 
 const PROPERTY_TYPES = [
   { label: "Residential", value: "RESIDENTIAL" },
@@ -28,8 +29,8 @@ function FooterColumn({ title, children }: { title: string; children: React.Reac
 }
 
 export default async function Footer() {
-  const [s, topBanks, localityMap] = await Promise.all([getSiteSettings(), getTopBanks(), getLocalityMap()]);
-  const cities = Object.keys(localityMap).slice(0, 6);
+  const [s, topBanks, localityMap] = await Promise.all([getSiteSettings(), getTopBanks(), getLocalityMap().catch(() => null)]);
+  const cities = (localityMap ? Object.keys(localityMap) : [...PRIORITY_CITIES]).slice(0, 6);
 
   return (
     <footer className="bg-brand-bg border-t border-brand-border mt-16">

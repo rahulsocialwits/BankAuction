@@ -2,7 +2,7 @@ import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 
 /** Banks with the most published listings, for the footer. Cached so the footer never hits the DB per request. */
-export const getTopBanks = unstable_cache(
+const cachedTopBanks = unstable_cache(
   async () => {
     const groups = await prisma.auction.groupBy({
       by: ["bankId"],
@@ -22,3 +22,14 @@ export const getTopBanks = unstable_cache(
   ["footer-top-banks"],
   { revalidate: 600 },
 );
+
+type FooterBank = { id: string; name: string };
+
+/** Failures (e.g. pool timeout while many pages build at once) fall back to an empty list and are not cached. */
+export async function getTopBanks(): Promise<FooterBank[]> {
+  try {
+    return await cachedTopBanks();
+  } catch {
+    return [];
+  }
+}
