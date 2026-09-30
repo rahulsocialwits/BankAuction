@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import { getSiteSettings } from "@/lib/queries/siteSettings";
 import "../globals.css";
 
 const poppins = Poppins({
@@ -10,11 +11,15 @@ const poppins = Poppins({
   weight: ["400", "500", "600", "700"],
 });
 
-export const metadata: Metadata = {
-  title: "BankAuction.co — Indian Bank Auction Property Discovery",
-  description:
-    "Discover Indian bank-auction properties — residential, commercial, industrial, agricultural, land and vehicles — sourced and verified from public auction listings.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const s = await getSiteSettings();
+  return {
+    title: s.homeTitle,
+    description: s.homeDescription,
+    keywords: s.homeKeywords ? s.homeKeywords.split(",").map((k) => k.trim()).filter(Boolean) : undefined,
+    icons: s.faviconUrl ? { icon: s.faviconUrl, shortcut: s.faviconUrl, apple: s.faviconUrl } : undefined,
+  };
+}
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   return (

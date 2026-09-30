@@ -1,13 +1,14 @@
 import Link from "next/link";
-import Image from "next/image";
 import { getSiteSettings } from "@/lib/queries/siteSettings";
+import { getTopBanks } from "@/lib/queries/footerLinks";
+import { getLocalityMap } from "@/lib/queries/localities";
 
 const PROPERTY_TYPES = [
-  { label: "Residential", value: "residential" },
-  { label: "Commercial", value: "commercial" },
-  { label: "Plots", value: "land_plot" },
-  { label: "Vehicles", value: "vehicle" },
-  { label: "Industrial", value: "industrial" },
+  { label: "Residential", value: "RESIDENTIAL" },
+  { label: "Commercial", value: "COMMERCIAL" },
+  { label: "Plots", value: "LAND_PLOT" },
+  { label: "Vehicles", value: "VEHICLE" },
+  { label: "Industrial", value: "INDUSTRIAL" },
 ];
 
 const SOCIAL_ICONS: { key: "facebookUrl" | "instagramUrl" | "linkedinUrl" | "youtubeUrl"; label: string; path: string }[] = [
@@ -27,13 +28,15 @@ function FooterColumn({ title, children }: { title: string; children: React.Reac
 }
 
 export default async function Footer() {
-  const s = await getSiteSettings();
+  const [s, topBanks, localityMap] = await Promise.all([getSiteSettings(), getTopBanks(), getLocalityMap()]);
+  const cities = Object.keys(localityMap).slice(0, 6);
 
   return (
     <footer className="bg-brand-bg border-t border-brand-border mt-16">
       <div className="max-w-6xl mx-auto px-5 py-12 grid grid-cols-2 lg:grid-cols-6 gap-x-8 gap-y-10">
         <div className="col-span-2 lg:col-span-2">
-          <Image src="/brand/logo.png" alt="BankAuction.co" width={140} height={55} className="h-9 w-auto mb-3" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={s.footerLogoUrl} alt="BankAuction.co" height={36} loading="lazy" className="h-9 w-auto mb-3" />
           <p className="text-sm text-brand-muted max-w-xs mb-5">
             India&apos;s trusted platform for bank auction properties. Explore residential, commercial, industrial, and
             land auction listings at the best prices.
@@ -62,21 +65,21 @@ export default async function Footer() {
 
         <FooterColumn title="Property Type">
           {PROPERTY_TYPES.map((t) => (
-            <li key={t.value}><Link href={`/property-type/${t.value}`} className="hover:text-brand">{t.label}</Link></li>
+            <li key={t.value}><Link href={`/properties?category=${t.value}&status=all`} className="hover:text-brand">{t.label}</Link></li>
           ))}
           <li><Link href="/property-types" className="hover:text-brand font-medium">All Property Type</Link></li>
         </FooterColumn>
 
         <FooterColumn title="Banks">
-          {["SBI Bank", "HDFC Bank", "IDBI Bank", "PNB Bank", "ICICI Bank", "Bank of Baroda"].map((b) => (
-            <li key={b}><Link href={`/properties?q=${encodeURIComponent(b)}`} className="hover:text-brand">{b}</Link></li>
+          {topBanks.map((b) => (
+            <li key={b.id}><Link href={`/properties?bank=${b.id}&status=all`} className="hover:text-brand">{b.name}</Link></li>
           ))}
           <li><Link href="/banks" className="hover:text-brand font-medium">All Bank</Link></li>
         </FooterColumn>
 
         <FooterColumn title="Top Cities">
-          {["Mumbai", "Pune", "Delhi", "Ahmedabad", "Bangalore", "Chennai"].map((c) => (
-            <li key={c}><Link href={`/properties?q=${encodeURIComponent(c)}`} className="hover:text-brand">{c}</Link></li>
+          {cities.map((c) => (
+            <li key={c}><Link href={`/properties?city=${encodeURIComponent(c)}&status=all`} className="hover:text-brand">{c}</Link></li>
           ))}
           <li><Link href="/cities" className="hover:text-brand font-medium">All City</Link></li>
         </FooterColumn>
@@ -100,6 +103,12 @@ export default async function Footer() {
           </a>
         </p>
         <p className="mt-1 space-x-3">
+          <Link href="/about" className="hover:text-brand">About</Link>
+          <span>·</span>
+          <Link href="/contact" className="hover:text-brand">Contact</Link>
+          <span>·</span>
+          <Link href="/how-it-works" className="hover:text-brand">How It Works</Link>
+          <span>·</span>
           <Link href="/disclaimer" className="hover:text-brand">Disclaimer</Link>
           <span>·</span>
           <Link href="/privacy-policy" className="hover:text-brand">Privacy Policy</Link>

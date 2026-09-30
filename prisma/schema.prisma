@@ -633,6 +633,12 @@ model SiteSettings {
   privacyPolicy      String?  @db.Text
   termsAndConditions String?  @db.Text
   disclaimer         String?  @db.Text
+  headerLogoUrl      String?  @db.Text // URL or data: URI
+  footerLogoUrl      String?  @db.Text
+  faviconUrl         String?  @db.Text
+  homeTitle          String?
+  homeDescription    String?  @db.Text
+  homeKeywords       String?  @db.Text
   updatedAt          DateTime @updatedAt
 
   @@map("site_settings")

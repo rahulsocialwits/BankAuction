@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { PLACEHOLDER_IMAGE_URL } from "@/lib/constants";
-import { submitPropertyLead } from "./actions";
-import { getCurrentUser } from "@/lib/auth/userSession";
+import { Suspense } from "react";
+import PropertyEnquiry from "@/components/PropertyEnquiry";
 
 export const revalidate = 120;
 
@@ -37,16 +37,8 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-export default async function PropertyPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ slug: string }>;
-  searchParams: Promise<{ leadSent?: string; leadError?: string }>;
-}) {
+export default async function PropertyPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const { leadSent, leadError } = await searchParams;
-  const user = await getCurrentUser();
 
   const property = await prisma.property.findUnique({
     where: { slug },
@@ -147,38 +139,9 @@ export default async function PropertyPage({
             <h2 className="font-semibold mb-1">Interested in this property?</h2>
             <p className="text-xs text-brand-muted mb-4">Send an enquiry and our team will get back to you.</p>
 
-            {leadSent && <div className="bg-green-50 text-green-700 text-sm rounded-lg px-3 py-2.5 mb-4">Thanks — we&apos;ll be in touch shortly.</div>}
-            {leadError && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2.5 mb-4">Please enter your name.</div>}
-
-            {user ? (
-              <form action={submitPropertyLead} className="space-y-3">
-                <input type="hidden" name="propertyId" value={property.id} />
-                <input type="hidden" name="slug" value={property.slug} />
-                <input name="name" required defaultValue={user.name ?? ""} placeholder="Your name" className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
-                <input name="phone" placeholder="Phone" className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
-                <input name="email" type="email" defaultValue={user.email} placeholder="Email" className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
-                <textarea name="message" placeholder="Message (optional)" rows={3} className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
-                <button type="submit" className="w-full bg-brand text-white font-medium rounded-lg py-2.5 hover:bg-brand-dark">
-                  Send Enquiry
-                </button>
-              </form>
-            ) : (
-              <div className="bg-brand-bg border border-brand-border rounded-lg p-4 text-center">
-                <p className="text-sm text-brand-muted mb-3">Sign in to send an enquiry on this property.</p>
-                <Link
-                  href={`/login?next=${encodeURIComponent(`/property/${property.slug}`)}`}
-                  className="block bg-brand text-white font-medium rounded-lg py-2.5 mb-2 hover:bg-brand-dark text-sm"
-                >
-                  Login
-                </Link>
-                <Link
-                  href={`/register?next=${encodeURIComponent(`/property/${property.slug}`)}`}
-                  className="text-xs text-brand hover:underline"
-                >
-                  New here? Register free
-                </Link>
-              </div>
-            )}
+            <Suspense fallback={<div className="h-40 rounded-lg bg-brand-bg animate-pulse" />}>
+              <PropertyEnquiry propertyId={property.id} slug={property.slug} />
+            </Suspense>
 
             <div className="border-t border-brand-border mt-5 pt-4">
               <p className="text-xs text-brand-muted mb-3">

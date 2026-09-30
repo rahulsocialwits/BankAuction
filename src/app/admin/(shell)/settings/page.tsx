@@ -12,6 +12,35 @@ function Field({ label, name, defaultValue, type = "text" }: { label: string; na
   );
 }
 
+function ImageField({ label, name, value, small }: { label: string; name: string; value: string; small?: boolean }) {
+  const isData = value.startsWith("data:");
+  return (
+    <div className="grid sm:grid-cols-[96px_1fr] gap-4 items-start">
+      <div className={`${small ? "h-16 w-16" : "h-16 w-24"} rounded-lg border border-brand-border bg-brand-bg flex items-center justify-center overflow-hidden`}>
+        {value ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={value} alt={label} className="max-h-full max-w-full object-contain" />
+        ) : (
+          <span className="text-[10px] text-brand-muted">Default</span>
+        )}
+      </div>
+      <div className="space-y-2">
+        <label className="block text-sm font-medium">{label}</label>
+        <input type="file" name={`${name}File`} accept="image/*,.ico" className="text-xs block" />
+        <input
+          name={name}
+          defaultValue={isData ? "" : value}
+          placeholder={isData ? "Uploaded image in use — paste a link to replace" : "…or paste an https:// image link"}
+          className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm"
+        />
+        <label className="flex items-center gap-2 text-xs text-brand-muted">
+          <input type="checkbox" name={`${name}Remove`} /> Reset to default
+        </label>
+      </div>
+    </div>
+  );
+}
+
 export default async function AdminSettingsPage() {
   const s = await getSiteSettings();
 
@@ -23,6 +52,31 @@ export default async function AdminSettingsPage() {
       </p>
 
       <form action={saveSiteSettings} className="space-y-8 max-w-2xl">
+        <section className="bg-white border border-brand-border rounded-xl p-5 space-y-5">
+          <div>
+            <h2 className="font-semibold">Logos &amp; Site Icon</h2>
+            <p className="text-xs text-brand-muted mt-1">Upload an image (PNG, JPG, WEBP, SVG or ICO, under 400 KB) or paste an https:// link. Leave both empty to keep the current one.</p>
+          </div>
+          <ImageField label="Header logo" name="headerLogoUrl" value={s.headerLogoUrl} />
+          <ImageField label="Footer logo" name="footerLogoUrl" value={s.footerLogoUrl} />
+          <ImageField label="Site icon (favicon)" name="faviconUrl" value={s.faviconUrl} small />
+        </section>
+
+        <section className="bg-white border border-brand-border rounded-xl p-5 space-y-4">
+          <h2 className="font-semibold">Home Page SEO</h2>
+          <Field label="Home page title" name="homeTitle" defaultValue={s.homeTitle} />
+          <div>
+            <label className="block text-sm font-medium mb-1">Home page description</label>
+            <textarea name="homeDescription" defaultValue={s.homeDescription} rows={3} className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
+            <p className="text-xs text-brand-muted mt-1">Best kept under 160 characters.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Keywords</label>
+            <textarea name="homeKeywords" defaultValue={s.homeKeywords} rows={2} placeholder="bank auction, SARFAESI, flats under auction Mumbai" className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
+            <p className="text-xs text-brand-muted mt-1">Comma separated.</p>
+          </div>
+        </section>
+
         <section className="bg-white border border-brand-border rounded-xl p-5 space-y-4">
           <h2 className="font-semibold">Contact Info</h2>
           <Field label="Phone" name="phone" defaultValue={s.phone} />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Dropdown from "./Dropdown";
 
 interface Props {
   localities: Record<string, string[]>;
@@ -23,6 +24,10 @@ const label = "block text-[11px] font-semibold text-brand-muted mb-1 uppercase t
 
 export default function PropertyFilterForm({ localities, banks, categories, initial }: Props) {
   const [city, setCity] = useState(initial.city ?? "");
+  const [locality, setLocality] = useState(initial.locality ?? "");
+  const [category, setCategory] = useState(initial.category ?? "");
+  const [bank, setBank] = useState(initial.bank ?? "");
+  const [status, setStatus] = useState(initial.status ?? "active");
   const activeCount = [initial.q, initial.city, initial.locality, initial.category, initial.bank, initial.priceMin, initial.priceMax].filter(Boolean).length;
   const [open, setOpen] = useState(activeCount > 0);
   const cities = Object.keys(localities);
@@ -46,53 +51,67 @@ export default function PropertyFilterForm({ localities, banks, categories, init
         </div>
         <div>
           <label className={label}>City</label>
-          <select name="city" value={city} onChange={(e) => setCity(e.target.value)} className={field}>
-            <option value="">All cities</option>
-            {cities.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+          <Dropdown
+            name="city"
+            value={city}
+            onChange={(v) => { setCity(v); setLocality(""); }}
+            options={cities.map((c) => ({ value: c, label: c }))}
+            placeholder="All cities"
+            searchable
+            className={field}
+          />
         </div>
         <div>
           <label className={label}>Area / Locality</label>
-          <select
-            key={city}
+          <Dropdown
             name="locality"
-            defaultValue={city === initial.city ? initial.locality ?? "" : ""}
+            value={locality}
+            onChange={setLocality}
+            options={areas.map((a) => ({ value: a, label: a }))}
+            placeholder={city ? `All areas in ${city}` : "Select a city first"}
             disabled={!city}
-            className={`${field} disabled:bg-brand-bg disabled:text-brand-muted`}
-          >
-            <option value="">{city ? `All areas in ${city}` : "Select a city first"}</option>
-            {areas.map((a) => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </select>
+            searchable
+            className={field}
+          />
         </div>
         <div>
           <label className={label}>Property type</label>
-          <select name="category" defaultValue={initial.category ?? ""} className={field}>
-            <option value="">All types</option>
-            {categories.map((c) => (
-              <option key={c.value} value={c.value}>{c.label}</option>
-            ))}
-          </select>
+          <Dropdown
+            name="category"
+            value={category}
+            onChange={setCategory}
+            options={categories}
+            placeholder="All types"
+            className={field}
+          />
         </div>
         <div>
           <label className={label}>Bank</label>
-          <select name="bank" defaultValue={initial.bank ?? ""} className={field}>
-            <option value="">All banks</option>
-            {banks.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
+          <Dropdown
+            name="bank"
+            value={bank}
+            onChange={setBank}
+            options={banks.map((b) => ({ value: b.id, label: b.name }))}
+            placeholder="All banks"
+            searchable
+            className={field}
+          />
         </div>
         <div>
           <label className={label}>Auction status</label>
-          <select name="status" defaultValue={initial.status ?? "active"} className={field}>
-            <option value="active">Live &amp; Upcoming</option>
-            <option value="completed">Completed / Past</option>
-            <option value="all">All</option>
-          </select>
+          <input type="hidden" name="status" value={status} />
+          <Dropdown
+            name="statusUi"
+            value={status}
+            onChange={(v) => setStatus(v || "active")}
+            options={[
+              { value: "active", label: "Live & Upcoming" },
+              { value: "completed", label: "Completed / Past" },
+              { value: "all", label: "All" },
+            ]}
+            placeholder="Live & Upcoming"
+            className={field}
+          />
         </div>
         <div className="col-span-2 lg:col-span-1 grid grid-cols-2 gap-2">
           <div>

@@ -4,16 +4,16 @@ import Link from "next/link";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import SearchBar from "./SearchBar";
+import { useMe } from "@/lib/auth/useMe";
 
 export default function MobileNav({
   navItems,
-  isLoggedIn,
   logoutAction,
 }: {
   navItems: { href: string; label: string }[];
-  isLoggedIn: boolean;
   logoutAction: () => void;
 }) {
+  const isLoggedIn = !!useMe().user;
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
