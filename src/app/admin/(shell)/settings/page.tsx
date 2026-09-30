@@ -1,4 +1,6 @@
-import { getSiteSettings } from "@/lib/queries/siteSettings";
+import { prisma } from "@/lib/db/prisma";
+import { buildSettings } from "@/lib/queries/siteSettings";
+import SettingsForm from "@/components/admin/SettingsForm";
 import { saveSiteSettings } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +44,8 @@ function ImageField({ label, name, value, small }: { label: string; name: string
 }
 
 export default async function AdminSettingsPage() {
-  const s = await getSiteSettings();
+  // Read straight from the DB (not the cached public copy) so the form always shows what is saved.
+  const s = buildSettings(await prisma.siteSettings.findFirst());
 
   return (
     <div>
@@ -51,7 +54,7 @@ export default async function AdminSettingsPage() {
         Contact info, social links and policy pages shown across the public site. Changes apply immediately.
       </p>
 
-      <form action={saveSiteSettings} className="space-y-8 max-w-2xl">
+      <SettingsForm action={saveSiteSettings}>
         <section className="bg-white border border-brand-border rounded-xl p-5 space-y-5">
           <div>
             <h2 className="font-semibold">Logos &amp; Site Icon</h2>
@@ -110,10 +113,7 @@ export default async function AdminSettingsPage() {
           </div>
         </section>
 
-        <button type="submit" className="bg-brand text-white font-medium rounded-lg px-6 py-2.5 hover:bg-brand-dark">
-          Save Settings
-        </button>
-      </form>
+      </SettingsForm>
     </div>
   );
 }

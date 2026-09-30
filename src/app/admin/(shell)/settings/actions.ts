@@ -2,12 +2,22 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { ensureSiteSettingsRow, SETTINGS_TAG } from "@/lib/queries/siteSettings";
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
+import type { SaveState } from "@/components/admin/SettingsForm";
 
 const MAX_IMAGE_BYTES = 400 * 1024;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon", "image/gif"];
 
-export async function saveSiteSettings(formData: FormData) {
+export async function saveSiteSettings(_prev: SaveState, formData: FormData): Promise<SaveState> {
+  try {
+    await save(formData);
+    return { ok: true, message: "Saved — live on the site now." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not save. Please try again." };
+  }
+}
+
+async function save(formData: FormData) {
   const row = await ensureSiteSettingsRow();
 
   const field = (name: string) => {
@@ -60,7 +70,6 @@ export async function saveSiteSettings(formData: FormData) {
     },
   });
 
-  revalidateTag(SETTINGS_TAG, "max");
+  updateTag(SETTINGS_TAG);
   revalidatePath("/", "layout");
-  revalidatePath("/admin/settings");
 }

@@ -7,7 +7,7 @@ export const SETTINGS_TAG = "site-settings";
 
 type Row = Awaited<ReturnType<typeof prisma.siteSettings.findFirst>>;
 
-function build(row: Row) {
+export function buildSettings(row: Row) {
   return {
       phone: row?.phone || DEFAULT_SITE_SETTINGS.phone,
       generalEmail: row?.generalEmail || DEFAULT_SITE_SETTINGS.generalEmail,
@@ -33,7 +33,7 @@ function build(row: Row) {
 }
 
 const cachedSettings = unstable_cache(
-  async () => build(await prisma.siteSettings.findFirst()),
+  async () => buildSettings(await prisma.siteSettings.findFirst()),
   ["site-settings"],
   { revalidate: 300, tags: [SETTINGS_TAG] },
 );
@@ -43,7 +43,7 @@ export async function getSiteSettings() {
   try {
     return await cachedSettings();
   } catch {
-    return build(null);
+    return buildSettings(null);
   }
 }
 
