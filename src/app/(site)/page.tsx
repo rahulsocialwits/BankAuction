@@ -105,7 +105,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <div className="w-full px-5 lg:px-10 xl:px-16 -mt-6 relative z-10 grid grid-cols-3 gap-3 sm:gap-4 max-w-3xl">
+      <div className="w-full px-5 lg:px-10 xl:px-16 mt-6 grid grid-cols-3 gap-3 sm:gap-4 max-w-3xl">
         {stats.map((s) => (
           <div key={s.label} className="bg-white border border-brand-border rounded-2xl py-4 text-center shadow-sm">
             <div className="text-xl sm:text-2xl font-bold text-brand">{s.value.toLocaleString("en-IN")}</div>
