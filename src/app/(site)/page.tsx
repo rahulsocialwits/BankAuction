@@ -5,6 +5,7 @@ import { toPropertyCardData } from "@/lib/queries/listProperties";
 import HeroSearch from "@/components/HeroSearch";
 import ResponsiveImage from "@/components/ResponsiveImage";
 import BlogCarousel from "@/components/BlogCarousel";
+import DragScroll from "@/components/DragScroll";
 import AuctionCountdownTable, { CountdownRow } from "@/components/AuctionCountdownTable";
 import { getCityCounts, citySlug } from "@/lib/queries/cities";
 import { getHomeConfig } from "@/lib/queries/homeConfig";
@@ -166,7 +167,7 @@ export default async function Home() {
           <h2 className="text-xl sm:text-2xl font-bold text-brand">Assets Available</h2>
           <Link href="/property-types" className="text-sm font-medium text-brand hover:underline">All types →</Link>
         </div>
-        <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-3 -mx-5 px-5 scroll-px-5 md:scroll-px-0 md:mx-0 md:px-0 md:grid md:grid-cols-5 md:gap-5 md:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <DragScroll className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-3 -mx-5 px-5 scroll-px-5 md:scroll-px-0 md:mx-0 md:px-0 md:grid md:grid-cols-5 md:gap-5 md:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {config.types.map((t) => {
             const d = imageUrl(versions, typeKey(t.value, "d"));
             const m = imageUrl(versions, typeKey(t.value, "m"));
@@ -185,7 +186,7 @@ export default async function Home() {
               </Link>
             );
           })}
-        </div>
+        </DragScroll>
       </section>
 
       <section className="w-full px-5 lg:px-10 xl:px-16 py-10">
@@ -210,7 +211,7 @@ export default async function Home() {
         {promoBanks.length === 0 ? (
           <p className="text-brand-muted text-sm">No banks with published listings yet.</p>
         ) : (
-          <div className="grid grid-flow-col auto-cols-[44%] sm:auto-cols-[30%] gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-5 px-5 scroll-px-5 md:scroll-px-0 md:mx-0 md:px-0 md:pb-0 md:grid-flow-row md:grid-cols-5 md:auto-cols-auto md:gap-4 md:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <DragScroll className="grid grid-flow-col auto-cols-[44%] sm:auto-cols-[30%] gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-5 px-5 scroll-px-5 md:scroll-px-0 md:mx-0 md:px-0 md:pb-0 md:grid-flow-row md:grid-cols-5 md:auto-cols-auto md:gap-4 md:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {promoBanks.map((b) => {
               const logo = imageUrl(versions, bankKey(b.slug));
               return (
@@ -224,7 +225,7 @@ export default async function Home() {
                 </Link>
               );
             })}
-          </div>
+          </DragScroll>
         )}
       </section>
 

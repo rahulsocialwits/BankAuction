@@ -35,7 +35,7 @@ export default async function Footer() {
   const cities = (localityMap ? Object.keys(localityMap) : [...PRIORITY_CITIES]).slice(0, 6);
 
   return (
-    <footer className="bg-[#d4dfea] border-t border-[#b8c7d8] mt-16">
+    <footer className="bg-white border-t border-brand-border mt-16">
       <div className="w-full px-5 lg:px-10 xl:px-16 py-10 sm:py-12 grid grid-cols-2 lg:grid-cols-[1.3fr_0.9fr_1.5fr_0.9fr_minmax(260px,1.6fr)] gap-x-6 sm:gap-x-8 xl:gap-x-12 gap-y-8 sm:gap-y-10">
         <div className="col-span-2 lg:col-span-1 min-w-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -98,7 +98,7 @@ export default async function Footer() {
         </div>
       </div>
 
-      <div className="border-t border-[#b8c7d8] text-center text-xs text-black/65 py-4 px-5">
+      <div className="border-t border-brand-border text-center text-xs text-black/65 py-4 px-5">
         <p>
           Copyright © {new Date().getFullYear()} All rights reserved. Designed By{" "}
           <a href="https://thesocialwits.com/" target="_blank" rel="noreferrer" className="text-brand hover:underline">
