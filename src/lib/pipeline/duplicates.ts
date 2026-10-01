@@ -84,8 +84,37 @@ export async function findDuplicateGroups(): Promise<DupGroup[]> {
  * Admin → Properties → Duplicates → Restore. Returns how many listings were hidden.
  */
 export async function autoCleanExactDuplicates(): Promise<number> {
-  const groups = await findDuplicateGroups();
-  const ids = groups.filter((g) => g.similarity >= 0.999).flatMap((g) => g.members.slice(1).map((m) => m.id));
-  if (ids.length) await prisma.property.updateMany({ where: { id: { in: ids } }, data: { status: "DUPLICATE" } });
-  return ids.length;
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const props = await prisma.property.findMany({
+    where: { status: { in: ["PUBLISHED", "PENDING_REVIEW", "DRAFT"] } },
+    select: {
+      id: true,
+      title: true,
+      createdAt: true,
+      auctions: { select: { bankId: true, reservePrice: true, auctionStart: true }, orderBy: { createdAt: "desc" }, take: 1 },
+    },
+    orderBy: { createdAt: "asc" },
+    take: 20_000,
+  });
+
+  // 100% match = same bank + the same title (ignoring case and punctuation) + the same reserve price.
+  // The auction date may differ: that is the same property put up for auction again, and one listing is enough.
+  // (Same title but a different price is a different flat in the same building, so it is kept.)
+  const groups = new Map<string, typeof props>();
+  for (const p of props) {
+    const a = p.auctions[0];
+    if (!a?.bankId || !a.reservePrice) continue;
+    const key = `${norm(p.title)}|${a.bankId}|${a.reservePrice.toString()}`;
+    groups.set(key, [...(groups.get(key) ?? []), p]);
+  }
+
+  const hide: string[] = [];
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    // keep the listing with the latest auction date (the live one); on a tie keep the oldest record
+    const keep = [...list].sort((x, y) => (y.auctions[0].auctionStart?.getTime() ?? 0) - (x.auctions[0].auctionStart?.getTime() ?? 0) || x.createdAt.getTime() - y.createdAt.getTime())[0];
+    for (const p of list) if (p.id !== keep.id) hide.push(p.id);
+  }
+  if (hide.length) await prisma.property.updateMany({ where: { id: { in: hide } }, data: { status: "DUPLICATE" } });
+  return hide.length;
 }
