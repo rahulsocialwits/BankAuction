@@ -21,10 +21,30 @@ const SUBJECTS = ["General enquiry", "About a property", "List a property / part
 
 const field = "w-full border border-brand-border rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand";
 
-function InfoCard({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
+const svg = { width: 20, height: 20, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
+
+const PhoneIcon = () => (
+  <svg {...svg}>
+    <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z" />
+  </svg>
+);
+const ChatIcon = () => (
+  <svg {...svg}>
+    <path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 20.5l1.7-5.3A8.4 8.4 0 1 1 21 11.5z" />
+    <path d="M8.5 10.5h7M8.5 13.5h4" />
+  </svg>
+);
+const MailIcon = () => (
+  <svg {...svg}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="m3.5 7 8.5 6 8.5-6" />
+  </svg>
+);
+
+function InfoCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
     <div className="bg-white border border-brand-border rounded-2xl p-5 flex gap-4">
-      <div className="w-10 h-10 shrink-0 rounded-full bg-brand-bg flex items-center justify-center text-lg" aria-hidden="true">{icon}</div>
+      <div className="w-10 h-10 shrink-0 rounded-full bg-brand-bg text-brand flex items-center justify-center">{icon}</div>
       <div className="min-w-0">
         <div className="font-semibold text-sm mb-1">{title}</div>
         <div className="text-sm text-brand-muted space-y-1 break-words">{children}</div>
@@ -102,12 +122,12 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
         </section>
 
         <aside className="space-y-4" aria-label="Contact details">
-          <InfoCard icon="📞" title="Call us">
+          <InfoCard icon={<PhoneIcon />} title="Call us">
             <a href={`tel:${s.phone.replace(/\s/g, "")}`} className="text-brand font-medium hover:underline">{s.phone}</a>
             <div>{s.workingHours}</div>
           </InfoCard>
 
-          <InfoCard icon="💬" title="WhatsApp">
+          <InfoCard icon={<ChatIcon />} title="WhatsApp">
             <a
               href={`https://wa.me/${wa}?text=${encodeURIComponent("Hi, I have a question about BankAuction.co")}`}
               target="_blank"
@@ -118,7 +138,7 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
             </a>
           </InfoCard>
 
-          <InfoCard icon="✉️" title="Email">
+          <InfoCard icon={<MailIcon />} title="Email">
             <div><span className="text-xs uppercase tracking-wide">General</span><br /><a href={`mailto:${s.generalEmail}`} className="text-brand hover:underline break-all">{s.generalEmail}</a></div>
             <div><span className="text-xs uppercase tracking-wide">List a property</span><br /><a href={`mailto:${s.listingsEmail}`} className="text-brand hover:underline break-all">{s.listingsEmail}</a></div>
             <div><span className="text-xs uppercase tracking-wide">Partnerships</span><br /><a href={`mailto:${s.partnershipsEmail}`} className="text-brand hover:underline break-all">{s.partnershipsEmail}</a></div>
