@@ -110,14 +110,13 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
         <Link href="/" className="hover:text-brand">Home</Link> / <Link href="/properties" className="hover:text-brand">Properties</Link> / <span>{property.title}</span>
       </nav>
 
-      {/* Same artwork and background as the listing card; contained so it is never cropped. */}
-      <div className="relative h-52 sm:h-64 rounded-2xl overflow-hidden mb-6 bg-[#E8EDF5]">
-        <Image src={PLACEHOLDER_IMAGE_URL} alt={property.title} fill unoptimized priority className="object-contain" />
-      </div>
-
-      <div className="grid lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2">
-          <span className={`inline-block text-xs font-semibold px-3 py-1 rounded-full mb-3${STATUS_STYLES[auction?.status ?? ""] ?? "bg-gray-100 text-gray-600"}`}>
+      <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-3 gap-8 items-start">
+        <div className="lg:col-span-2 min-w-0">
+          {/* The picture lives in the left column; the enquiry card on the right starts level with it. */}
+          <div className="relative h-52 sm:h-72 rounded-2xl overflow-hidden mb-6 bg-[#E8EDF5]">
+            <Image src={PLACEHOLDER_IMAGE_URL} alt={property.title} fill unoptimized priority className="object-contain" />
+          </div>
+          <span className={`inline-block text-xs font-semibold px-3 py-1 rounded-full mb-3 ${STATUS_STYLES[auction?.status ?? ""] ?? "bg-gray-100 text-gray-600"}`}>
             {auction?.status ? auction.status.charAt(0) + auction.status.slice(1).toLowerCase().replace("_", " ") : "Status unknown"}
           </span>
           <h1 className="text-2xl font-semibold mb-1">{property.title}</h1>
