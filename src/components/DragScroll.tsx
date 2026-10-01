@@ -40,7 +40,7 @@ export default function DragScroll({ children, className = "", arrows = false }:
     <div className="relative min-w-0">
       <div
         ref={ref}
-        className={`${className} touch-pan-x`}
+        className={`${className}`}
         onPointerDown={(e) => {
           if (e.pointerType !== "mouse" || e.button !== 0 || !ref.current) return;
           drag.current = { down: true, moved: false, x: e.clientX, left: ref.current.scrollLeft };

@@ -22,7 +22,7 @@ export default async function BlogCarousel() {
   return (
     <DragScroll className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-5 px-5 scroll-px-5 md:scroll-px-0 md:mx-0 md:px-0 md:grid md:grid-cols-4 md:gap-5 md:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {posts.map((p) => (
-        <Link key={p.id} href={`/blog/${p.slug}`} className="group snap-start shrink-0 w-[calc((100%-2.75rem)/2)] md:w-auto flex flex-col bg-white border border-brand-border rounded-xl overflow-hidden hover:border-brand hover:shadow-md transition">
+        <Link key={p.id} href={`/blog/${p.slug}`} className="group snap-start shrink-0 w-[68%] sm:w-[44%] md:w-auto flex flex-col bg-white border border-brand-border rounded-xl overflow-hidden hover:border-brand hover:shadow-md transition">
           <div className="relative aspect-[400/270] bg-gradient-to-br from-brand to-brand-dark">
             {p.coverImageUrl && (
               // eslint-disable-next-line @next/next/no-img-element
