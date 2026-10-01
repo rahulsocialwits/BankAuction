@@ -25,7 +25,7 @@ export default function PostForm({ post, action, error }: { post?: BlogPost; act
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium mb-1">Cover / feature image <span className="font-normal text-brand-muted">(JPG, PNG or WebP under 1.5 MB; recommended size 400 × 270 px)</span></label>
+        <label className="block text-sm font-medium mb-1">Cover / feature image <span className="font-normal text-brand-muted">(JPG, PNG or WebP up to about 4 MB, larger ones are shrunk automatically; recommended size 400 × 270 px)</span></label>
         {post?.coverImageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={post.coverImageUrl} alt="Current cover" className="mb-2 h-28 w-auto rounded-lg border border-brand-border object-cover" />

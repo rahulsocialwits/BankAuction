@@ -17,6 +17,20 @@ async function makeThumb(data: Buffer): Promise<Buffer | null> {
 
 export class MediaError extends Error {}
 
+/** Too big? Re-save as WebP at a sensible size instead of refusing. Returns null if it cannot get under the limit. */
+async function shrink(data: Buffer): Promise<{ data: Buffer; contentType: string } | null> {
+  try {
+    const sharp = (await import("sharp")).default;
+    for (const [width, quality] of [[1800, 82], [1400, 78], [1000, 72], [700, 70]] as const) {
+      const out = await sharp(data).rotate().resize({ width, withoutEnlargement: true }).webp({ quality }).toBuffer();
+      if (out.length <= MEDIA_MAX_BYTES) return { data: out, contentType: "image/webp" };
+    }
+  } catch {
+    /* image tool unavailable */
+  }
+  return null;
+}
+
 /**
  * Adds an image to the library. The same picture (same bytes) is stored only once: uploading it again just
  * returns the existing library entry.
@@ -24,6 +38,8 @@ export class MediaError extends Error {}
 export async function storeMedia(input: { name: string; contentType: string; data: Buffer }) {
   if (!MEDIA_TYPES.includes(input.contentType)) throw new MediaError(`"${input.name}": use a JPG, PNG or WebP image.`);
   if (input.data.length > MEDIA_MAX_BYTES) {
+    const small = await shrink(input.data);
+    if (small) return storeMedia({ name: input.name, contentType: small.contentType, data: small.data });
     throw new MediaError(`"${input.name}" is ${(input.data.length / 1024 / 1024).toFixed(1)} MB. Keep each image under 1.5 MB (export as JPG or WebP at about 80% quality).`);
   }
   const hash = createHash("sha256").update(input.data).digest("hex");
