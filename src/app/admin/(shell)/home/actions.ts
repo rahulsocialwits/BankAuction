@@ -4,6 +4,7 @@ import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { requireMaster } from "@/lib/auth/adminAuth";
+import { storeMedia } from "@/lib/media";
 import { DEFAULT_TILE_CITIES, IMAGE_TAG, PROPERTY_TYPE_TILES, citySlugOf, imageSize } from "@/lib/siteImages";
 
 const MAX_BYTES = 1.5 * 1024 * 1024;
@@ -45,9 +46,32 @@ export async function uploadSiteImage(formData: FormData) {
     create: { key, contentType: f.type, data, sizeBytes: data.length, width: size?.width ?? null, height: size?.height ?? null },
     update: { contentType: f.type, data, sizeBytes: data.length, width: size?.width ?? null, height: size?.height ?? null },
   });
+  // Everything uploaded here also lands in the Media Library, ready to reuse elsewhere.
+  await storeMedia({ name: f.name, contentType: f.type, data }).catch(() => null);
   updateTag(IMAGE_TAG);
   revalidatePath("/");
-  back("Image uploaded and live.", true);
+  revalidatePath("/admin/media");
+  back("Image uploaded and live (and saved in the Media Library).", true);
+}
+
+/** Puts a picture that is already in the Media Library into a Home Page slot: no upload needed. */
+export async function chooseLibraryImage(formData: FormData) {
+  await requireMaster();
+  const key = String(formData.get("key") ?? "");
+  const assetId = String(formData.get("assetId") ?? "");
+  if (!(await allowedKeys()).has(key)) back("Unknown image slot.");
+  const asset = await prisma.mediaAsset.findUnique({ where: { id: assetId } });
+  if (!asset) back("That picture is no longer in the library.");
+  const a = asset!;
+  const data = new Uint8Array(a.data);
+  await prisma.siteImage.upsert({
+    where: { key },
+    create: { key, contentType: a.contentType, data, sizeBytes: a.sizeBytes, width: a.width, height: a.height },
+    update: { contentType: a.contentType, data, sizeBytes: a.sizeBytes, width: a.width, height: a.height },
+  });
+  updateTag(IMAGE_TAG);
+  revalidatePath("/");
+  back(`"${a.name}" is now live in that slot.`, true);
 }
 
 export async function removeSiteImage(formData: FormData) {

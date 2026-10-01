@@ -29,7 +29,8 @@ function textMatch(term: string): Prisma.PropertyWhereInput {
   };
 }
 
-export async function listPublishedProperties(filters: PropertyFilters = {}, take = 24) {
+/** The where-clause shared by the website lists, the counts and the public API. */
+export function publishedWhere(filters: PropertyFilters = {}): Prisma.PropertyWhereInput {
   const priceFilter =
     filters.priceMin !== undefined || filters.priceMax !== undefined
       ? { gte: filters.priceMin, lte: filters.priceMax }
@@ -57,22 +58,31 @@ export async function listPublishedProperties(filters: PropertyFilters = {}, tak
     and.push({ OR: [{ geoLocality: { equals: filters.locality, mode: "insensitive" } }, { AND: [{ geoCheckedAt: null }, textMatch(filters.locality)] }] });
   }
 
-  return prisma.property.findMany({
-    where: {
-      status: "PUBLISHED",
-      category: filters.category,
-      addressText: filters.addressText,
-      auctions: {
-        some: {
-          bankId: filters.bankId,
-          reservePrice: priceFilter,
-          status: statusFilter,
-        },
+  return {
+    status: "PUBLISHED",
+    category: filters.category,
+    addressText: filters.addressText,
+    auctions: {
+      some: {
+        bankId: filters.bankId,
+        reservePrice: priceFilter,
+        status: statusFilter,
       },
-      AND: and.length ? and : undefined,
     },
+    AND: and.length ? and : undefined,
+  };
+}
+
+export function countPublishedProperties(filters: PropertyFilters = {}) {
+  return prisma.property.count({ where: publishedWhere(filters) });
+}
+
+export async function listPublishedProperties(filters: PropertyFilters = {}, take = 24, skip = 0) {
+  return prisma.property.findMany({
+    where: publishedWhere(filters),
     orderBy: { createdAt: "desc" },
     take,
+    skip,
     include: { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 } },
   });
 }

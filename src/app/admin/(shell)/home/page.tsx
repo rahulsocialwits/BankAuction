@@ -3,7 +3,8 @@ import { requireMaster } from "@/lib/auth/adminAuth";
 import SubmitButton from "@/components/admin/SubmitButton";
 import { getHomeConfig } from "@/lib/queries/homeConfig";
 import { PROPERTY_TYPE_TILES, SLOT_SPECS, cityKey, heroKey, typeKey } from "@/lib/siteImages";
-import { removeSiteImage, saveHomeConfig, uploadSiteImage } from "./actions";
+import MediaPicker from "@/components/admin/MediaPicker";
+import { chooseLibraryImage, removeSiteImage, saveHomeConfig, uploadSiteImage } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,7 @@ function Slot({ k, title, spec, meta }: { k: string; title: string; spec: { w: n
         <input type="file" name="file" accept="image/jpeg,image/png,image/webp" className="text-xs max-w-[190px]" />
         <SubmitButton className="text-xs border border-brand-border rounded-lg px-3 py-1.5 hover:bg-brand-bg">Upload</SubmitButton>
       </form>
+      <div className="mt-2"><MediaPicker mode="slot" slotKey={k} action={chooseLibraryImage} /></div>
       {meta && (
         <form action={removeSiteImage} className="mt-1.5">
           <input type="hidden" name="key" value={k} />

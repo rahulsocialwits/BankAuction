@@ -760,6 +760,38 @@ model SiteImage {
   @@map("site_images")
 }
 
+// The media library: every image the master admin has uploaded, reusable in any slot without uploading again.
+model MediaAsset {
+  id          String   @id @default(cuid())
+  name        String
+  contentType String
+  data        Bytes
+  thumb       Bytes? // small preview (JPEG) so the library page stays light
+  sizeBytes   Int      @default(0)
+  width       Int?
+  height      Int?
+  hash        String   @unique // sha256 of the file: the same picture is never stored twice
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("media_assets")
+}
+
+// Keys that let another system read our public listing data through /api/v1.
+model ApiKey {
+  id           String    @id @default(cuid())
+  name         String
+  prefix       String // first characters of the key, shown in the list (the key itself is never stored)
+  keyHash      String    @unique // sha256 of the key
+  active       Boolean   @default(true)
+  note         String?
+  lastUsedAt   DateTime?
+  requestCount Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  @@map("api_keys")
+}
+
 // Single-row home page content that the master admin edits.
 model HomeConfig {
   id           String   @id @default("default")

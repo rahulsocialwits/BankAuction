@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { buildSettings } from "@/lib/queries/siteSettings";
 import SettingsForm from "@/components/admin/SettingsForm";
+import MediaPicker from "@/components/admin/MediaPicker";
 import { saveSiteSettings } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,10 @@ function ImageField({ label, name, value, small }: { label: string; name: string
       </div>
       <div className="space-y-2">
         <label className="block text-sm font-medium">{label}</label>
-        <input type="file" name={`${name}File`} accept="image/*,.ico" className="text-xs block" />
+        <div className="flex flex-wrap items-center gap-2">
+          <input type="file" name={`${name}File`} accept="image/*,.ico" className="text-xs block" />
+          <MediaPicker mode="url" inputName={name} />
+        </div>
         <input
           name={name}
           defaultValue={isData ? "" : value}
