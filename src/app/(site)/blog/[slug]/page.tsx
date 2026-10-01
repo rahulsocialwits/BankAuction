@@ -93,7 +93,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         <article className="min-w-0 rounded-2xl border border-brand-border bg-white p-5 sm:p-8 lg:p-10 shadow-sm">
           {post.coverImageUrl && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={post.coverImageUrl} alt="" className="w-full rounded-xl mb-6 aspect-[16/9] object-cover" />
+            <img src={post.coverImageUrl} alt="" className="mx-auto mb-6 w-full max-w-[300px] rounded-xl aspect-[300/290] object-cover" />
           )}
           <RichText text={post.body} className="text-[15px] sm:text-base leading-7 sm:leading-8 text-black/80" />
 

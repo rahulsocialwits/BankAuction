@@ -25,10 +25,10 @@ export default function PostForm({ post, action, error }: { post?: BlogPost; act
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium mb-1">Cover image <span className="font-normal text-brand-muted">(JPG, PNG or WebP under 1.5 MB; 1200 × 750 px works well)</span></label>
+        <label className="block text-sm font-medium mb-1">Cover / feature image <span className="font-normal text-brand-muted">(JPG, PNG or WebP under 1.5 MB; recommended size 300 × 290 px)</span></label>
         {post?.coverImageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={post.coverImageUrl} alt="Current cover" className="mb-2 h-32 w-auto rounded-lg border border-brand-border object-cover" />
+          <img src={post.coverImageUrl} alt="Current cover" className="mb-2 h-28 w-auto rounded-lg border border-brand-border object-cover" />
         )}
         <input type="file" name="coverFile" accept="image/jpeg,image/png,image/webp" className="block w-full text-sm" />
         <p className="mt-1 text-xs text-brand-muted">Uploading saves the picture in the Media Library too. Or pick one already there, or paste a link:</p>

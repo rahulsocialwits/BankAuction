@@ -37,7 +37,7 @@ export default async function BlogPage({ searchParams }: { searchParams: Promise
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-5">
           {posts.map((p) => (
             <Link key={p.id} href={`/blog/${p.slug}`} className="group flex flex-col bg-white border border-brand-border rounded-xl overflow-hidden hover:border-brand hover:shadow-md transition">
-              <div className="relative aspect-[16/10] bg-gradient-to-br from-brand to-brand-dark">
+              <div className="relative aspect-[300/290] bg-gradient-to-br from-brand to-brand-dark">
                 {p.coverImageUrl && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={p.coverImageUrl} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
