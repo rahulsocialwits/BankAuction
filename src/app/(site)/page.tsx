@@ -9,7 +9,7 @@ import AuctionCountdownTable, { CountdownRow } from "@/components/AuctionCountdo
 import { getCityCounts, citySlug } from "@/lib/queries/cities";
 import { getHomeConfig } from "@/lib/queries/homeConfig";
 import { canonCity } from "@/lib/pipeline/locations";
-import { PROPERTY_TYPE_TILES, cityKey, getImageVersions, heroKey, imageUrl, typeKey } from "@/lib/siteImages";
+import { cityKey, getImageVersions, heroKey, imageUrl, typeKey } from "@/lib/siteImages";
 
 export const revalidate = 120;
 
@@ -151,7 +151,7 @@ export default async function Home() {
           <Link href="/property-types" className="text-sm font-medium text-brand hover:underline">All types →</Link>
         </div>
         <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-3 -mx-5 px-5 md:mx-0 md:px-0 md:grid md:grid-cols-5 md:gap-5 md:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {PROPERTY_TYPE_TILES.map((t) => {
+          {config.types.map((t) => {
             const d = imageUrl(versions, typeKey(t.value, "d"));
             const m = imageUrl(versions, typeKey(t.value, "m"));
             return (

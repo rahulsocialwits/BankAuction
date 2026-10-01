@@ -83,18 +83,44 @@ export async function removeSiteImage(formData: FormData) {
   back("Image removed.", true);
 }
 
+/**
+ * Saves only what the submitted form contains: the hero text form, or the "order of tiles" form. Each leaves the
+ * other's data alone, so saving one can never wipe the other.
+ */
 export async function saveHomeConfig(formData: FormData) {
   await requireMaster();
+  const data: { heroTitle?: string | null; heroSubtitle?: string | null; cities?: string; typeOrder?: string } = {};
   const text = (n: string, max: number) => String(formData.get(n) ?? "").trim().slice(0, max) || null;
-  const cities: string[] = [];
-  for (let i = 0; i < 8; i++) {
-    const c = String(formData.get(`city_${i}`) ?? "").trim().slice(0, 40);
-    if (c && !cities.some((x) => x.toLowerCase() === c.toLowerCase())) cities.push(c);
+
+  if (formData.has("heroTitle") || formData.has("heroSubtitle")) {
+    data.heroTitle = text("heroTitle", 120);
+    data.heroSubtitle = text("heroSubtitle", 300);
   }
-  if (cities.length < 4) back("Keep at least 4 cities.");
-  const data = { heroTitle: text("heroTitle", 120), heroSubtitle: text("heroSubtitle", 300), cities: JSON.stringify(cities) };
+
+  if (formData.has("city_0")) {
+    const cities: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      const c = String(formData.get(`city_${i}`) ?? "").trim().slice(0, 40);
+      if (c && !cities.some((x) => x.toLowerCase() === c.toLowerCase())) cities.push(c);
+    }
+    if (cities.length < 4) back("Keep at least 4 cities.");
+    data.cities = JSON.stringify(cities);
+  }
+
+  if (formData.has("type_0")) {
+    // Property-type cards: only known values, in the arranged order; none can be lost.
+    const valid = PROPERTY_TYPE_TILES.map((t) => t.value) as string[];
+    const order: string[] = [];
+    for (let i = 0; i < valid.length; i++) {
+      const v = String(formData.get(`type_${i}`) ?? "");
+      if (valid.includes(v) && !order.includes(v)) order.push(v);
+    }
+    for (const v of valid) if (!order.includes(v)) order.push(v);
+    data.typeOrder = JSON.stringify(order);
+  }
+
   await prisma.homeConfig.upsert({ where: { id: "default" }, create: { id: "default", ...data }, update: data });
   updateTag(IMAGE_TAG);
   revalidatePath("/");
-  back("Saved.", true);
+  back("Saved. The home page shows the new order now.", true);
 }

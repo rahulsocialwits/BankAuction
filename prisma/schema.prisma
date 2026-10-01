@@ -806,7 +806,8 @@ model HomeConfig {
   id           String   @id @default("default")
   heroTitle    String?
   heroSubtitle String?  @db.Text
-  cities       String?  @db.Text // JSON array of the 8 city names shown in "Explore by City"
+  cities       String?  @db.Text // JSON array of the 8 city names shown in "Explore by City", in display order
+  typeOrder    String?  @db.Text // JSON array of property-type values, in the order the cards are shown
   updatedAt    DateTime @updatedAt
 
   @@map("home_config")

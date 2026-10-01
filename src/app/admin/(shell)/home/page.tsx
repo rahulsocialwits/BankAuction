@@ -4,6 +4,7 @@ import SubmitButton from "@/components/admin/SubmitButton";
 import { getHomeConfig } from "@/lib/queries/homeConfig";
 import { PROPERTY_TYPE_TILES, SLOT_SPECS, cityKey, heroKey, typeKey } from "@/lib/siteImages";
 import MediaPicker from "@/components/admin/MediaPicker";
+import OrderEditor from "@/components/admin/OrderEditor";
 import { chooseLibraryImage, removeSiteImage, saveHomeConfig, uploadSiteImage } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -56,7 +57,7 @@ export default async function HomeManagerPage({ searchParams }: { searchParams: 
     prisma.siteImage.findMany({ select: { key: true, updatedAt: true, sizeBytes: true, width: true, height: true } }),
   ]);
   const meta = new Map<string, Meta>(rows.map((r) => [r.key, r]));
-  const cities = [...cfg.cities, ...Array(8 - cfg.cities.length).fill("")];
+  const thumb = (key: string) => { const m = meta.get(key); return m ? `/api/img/${key}?v=${m.updatedAt.getTime()}` : null; };
 
   return (
     <div className="w-full">
@@ -85,21 +86,31 @@ export default async function HomeManagerPage({ searchParams }: { searchParams: 
             <textarea name="heroSubtitle" rows={2} defaultValue={cfg.heroSubtitle} className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
           </div>
 
-          <div className="mt-2">
-            <div className="text-xs font-semibold mb-1">Cities shown in &quot;Explore by City&quot; (8 tiles, 2 rows of 4)</div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {cities.map((c, i) => (
-                <input key={i} name={`city_${i}`} defaultValue={c} placeholder={`City ${i + 1}`} className="border border-brand-border rounded-lg px-3 py-2 text-sm" />
-              ))}
-            </div>
-            <p className="text-[11px] text-brand-muted mt-1">Use the same spelling as on the site (e.g. Bangalore, Mumbai). Save, then upload each city&apos;s picture below.</p>
-          </div>
-          <div><SubmitButton className="bg-brand text-white text-sm font-medium rounded-lg px-5 py-2 hover:bg-brand-dark">Save text and cities</SubmitButton></div>
+          <div><SubmitButton className="bg-brand text-white text-sm font-medium rounded-lg px-5 py-2 hover:bg-brand-dark">Save text</SubmitButton></div>
         </form>
       </section>
 
       <section className="bg-white border border-brand-border rounded-xl p-5 mb-6">
-        <h2 className="font-semibold mb-1">2. Explore by City — pictures</h2>
+        <h2 className="font-semibold mb-1">2. Order of the tiles on the home page</h2>
+        <p className="text-xs text-brand-muted mb-5">
+          Decide who sits where. Position 1 is shown first (top-left); use the arrows to move a tile. Save when you are happy; the home page changes straight away.
+        </p>
+        <form action={saveHomeConfig} className="grid gap-8 xl:grid-cols-2 items-start">
+          <div>
+            <div className="text-sm font-semibold mb-1">Explore by City <span className="font-normal text-brand-muted">(8 tiles, 2 rows of 4)</span></div>
+            <p className="text-[11px] text-brand-muted mb-3">Type the city exactly as it is spelled on the site (e.g. Bangalore, Mumbai). Then upload its picture in section 3.</p>
+            <OrderEditor prefix="city" columns={4} nameEditable max={8} addLabel="+ Add a city" initial={cfg.cities.map((c) => ({ value: c, label: c, thumb: thumb(cityKey(c, "d")) }))} />
+          </div>
+          <div>
+            <div className="text-sm font-semibold mb-1">Assets Available <span className="font-normal text-brand-muted">(property type cards)</span></div>
+            <p className="text-[11px] text-brand-muted mb-3">On a phone these become a swipeable row in the same order.</p>
+            <OrderEditor prefix="type" columns={5} nameEditable={false} max={5} initial={cfg.types.map((t) => ({ value: t.value, label: t.label, thumb: thumb(typeKey(t.value, "d")) }))} />
+          </div>
+          <div className="xl:col-span-2"><SubmitButton className="bg-brand text-white text-sm font-medium rounded-lg px-6 py-2.5 hover:bg-brand-dark">Save order</SubmitButton></div>
+        </form>
+      </section>
+      <section className="bg-white border border-brand-border rounded-xl p-5 mb-6">
+        <h2 className="font-semibold mb-1">3. Explore by City — pictures</h2>
         <p className="text-xs text-brand-muted mb-4">Each city has a desktop picture and a mobile picture ({SLOT_SPECS.city.d.w} × {SLOT_SPECS.city.d.h} px).</p>
         <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
           {cfg.cities.map((city) => (
@@ -113,10 +124,10 @@ export default async function HomeManagerPage({ searchParams }: { searchParams: 
       </section>
 
       <section className="bg-white border border-brand-border rounded-xl p-5">
-        <h2 className="font-semibold mb-1">3. Property type cards — pictures</h2>
+        <h2 className="font-semibold mb-1">4. Property type cards — pictures</h2>
         <p className="text-xs text-brand-muted mb-4">Five cards ({SLOT_SPECS.type.d.w} × {SLOT_SPECS.type.d.h} px). On mobile they become a swipeable row.</p>
         <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-4">
-          {PROPERTY_TYPE_TILES.map((t) => (
+          {cfg.types.map((t) => (
             <div key={t.value} className="space-y-3">
               <div className="font-medium text-sm">{t.label}</div>
               <Slot k={typeKey(t.value, "d")} title="Desktop" spec={SLOT_SPECS.type.d} meta={meta.get(typeKey(t.value, "d"))} />
