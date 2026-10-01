@@ -18,11 +18,11 @@ const SOCIAL_ICONS: { key: "facebookUrl" | "instagramUrl" | "linkedinUrl" | "you
   { key: "youtubeUrl", label: "YouTube", path: "M21.6 7.2s-.2-1.5-.8-2.1c-.8-.8-1.7-.8-2.1-.9C15.9 4 12 4 12 4s-3.9 0-6.7.2c-.4 0-1.3.1-2.1.9-.6.6-.8 2.1-.8 2.1S2.2 9 2.2 10.7v1.6c0 1.7.2 3.5.2 3.5s.2 1.5.8 2.1c.8.8 1.9.8 2.3.9 1.7.1 7.5.2 7.5.2s3.9 0 6.7-.2c.4-.1 1.3-.1 2.1-.9.6-.6.8-2.1.8-2.1s.2-1.8.2-3.5v-1.6c0-1.7-.2-3.5-.2-3.5M9.9 14.6V8.7l5.6 3-5.6 3" },
 ];
 
-function FooterColumn({ title, children }: { title: string; children: React.ReactNode }) {
+function FooterColumn({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 ${className}`}>
       <div className="font-semibold mb-3 text-sm">{title}</div>
-      <ul className="space-y-2 text-sm text-brand-muted leading-snug">{children}</ul>
+      <ul className="space-y-2 text-sm text-black/65 leading-snug">{children}</ul>
     </div>
   );
 }
@@ -35,8 +35,8 @@ export default async function Footer() {
   const cities = (localityMap ? Object.keys(localityMap) : [...PRIORITY_CITIES]).slice(0, 6);
 
   return (
-    <footer className="bg-brand-bg border-t border-brand-border mt-16">
-      <div className="w-full px-5 lg:px-10 xl:px-16 py-12 grid grid-cols-2 lg:grid-cols-[1.3fr_0.9fr_1.5fr_0.9fr_minmax(260px,1.6fr)] gap-x-8 xl:gap-x-12 gap-y-10">
+    <footer className="bg-[#d4dfea] border-t border-[#b8c7d8] mt-16">
+      <div className="w-full px-5 lg:px-10 xl:px-16 py-10 sm:py-12 grid grid-cols-2 lg:grid-cols-[1.3fr_0.9fr_1.5fr_0.9fr_minmax(260px,1.6fr)] gap-x-6 sm:gap-x-8 xl:gap-x-12 gap-y-8 sm:gap-y-10">
         <div className="col-span-2 lg:col-span-1 min-w-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={s.footerLogoUrl} alt="BankAuction.co" height={36} loading="lazy" className="h-9 w-auto mb-3" />
@@ -66,30 +66,30 @@ export default async function Footer() {
           </div>
         </div>
 
-        <FooterColumn title="Property Type">
+        <FooterColumn title="Property Type" className="order-1 lg:order-none">
           {PROPERTY_TYPES.map((t) => (
             <li key={t.value}><Link href={`/properties?category=${t.value}&status=all`} className="hover:text-brand">{t.label}</Link></li>
           ))}
           <li><Link href="/property-types" className="hover:text-brand font-medium">All Property Type</Link></li>
         </FooterColumn>
 
-        <FooterColumn title="Banks">
+        <FooterColumn title="Banks" className="order-3 lg:order-none">
           {topBanks.map((b) => (
             <li key={b.id}><Link href={`/properties?bank=${b.id}&status=all`} title={b.name} className="hover:text-brand">{shortBank(b.name)}</Link></li>
           ))}
           <li><Link href="/banks" className="hover:text-brand font-medium">All Bank</Link></li>
         </FooterColumn>
 
-        <FooterColumn title="Top Cities">
+        <FooterColumn title="Top Cities" className="order-2 lg:order-none">
           {cities.map((c) => (
             <li key={c}><Link href={`/properties?city=${encodeURIComponent(c)}&status=all`} className="hover:text-brand">{c}</Link></li>
           ))}
           <li><Link href="/cities" className="hover:text-brand font-medium">All City</Link></li>
         </FooterColumn>
 
-        <div className="col-span-2 lg:col-span-1 min-w-0">
+        <div className="order-4 lg:order-none min-w-0">
           <div className="font-semibold mb-3 text-sm">Contact Info.</div>
-          <ul className="space-y-3 text-sm text-brand-muted leading-snug">
+          <ul className="space-y-3 text-[13px] sm:text-sm text-brand-muted leading-snug">
             <li><span className="block text-[11px] uppercase tracking-wide opacity-70">Call</span><a href={`tel:${s.phone.replace(/\s/g, "")}`} className="hover:text-brand">{s.phone}</a></li>
             <li><span className="block text-[11px] uppercase tracking-wide opacity-70">General</span><a href={`mailto:${s.generalEmail}`} className="hover:text-brand break-all">{s.generalEmail}</a></li>
             <li><span className="block text-[11px] uppercase tracking-wide opacity-70">Listings</span><a href={`mailto:${s.listingsEmail}`} className="hover:text-brand break-all">{s.listingsEmail}</a></li>
@@ -98,28 +98,18 @@ export default async function Footer() {
         </div>
       </div>
 
-      <div className="border-t border-brand-border text-center text-xs text-brand-muted py-4 px-5">
+      <div className="border-t border-[#b8c7d8] text-center text-xs text-black/65 py-4 px-5">
         <p>
           Copyright © {new Date().getFullYear()} All rights reserved. Designed By{" "}
           <a href="https://thesocialwits.com/" target="_blank" rel="noreferrer" className="text-brand hover:underline">
             SocialWits
           </a>
         </p>
-        <p className="mt-1 space-x-3">
-          <Link href="/about" className="hover:text-brand">About</Link>
-          <span>·</span>
-          <Link href="/contact" className="hover:text-brand">Contact</Link>
-          <span>·</span>
-          <Link href="/how-it-works" className="hover:text-brand">How It Works</Link>
-          <span>·</span>
-          <Link href="/faq" className="hover:text-brand">FAQ</Link>
-          <span>·</span>
-          <Link href="/disclaimer" className="hover:text-brand">Disclaimer</Link>
-          <span>·</span>
-          <Link href="/privacy-policy" className="hover:text-brand">Privacy Policy</Link>
-          <span>·</span>
-          <Link href="/terms-and-conditions" className="hover:text-brand">Terms and Conditions</Link>
-        </p>
+        <nav aria-label="Footer" className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1.5">
+          {[["/about", "About"], ["/contact", "Contact"], ["/how-it-works", "How It Works"], ["/faq", "FAQ"], ["/disclaimer", "Disclaimer"], ["/privacy-policy", "Privacy Policy"], ["/terms-and-conditions", "Terms and Conditions"]].map(([href, label]) => (
+            <Link key={href} href={href} className="whitespace-nowrap hover:text-brand">{label}</Link>
+          ))}
+        </nav>
       </div>
     </footer>
   );

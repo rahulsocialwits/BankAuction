@@ -9,6 +9,8 @@ import { tidyText } from "@/lib/text";
 import type { Metadata } from "next";
 import { clip, dayLabel, inr } from "@/lib/seo";
 import { titleCase } from "@/lib/pipeline/locations";
+import PropertyCarousel from "@/components/PropertyCarousel";
+import { toPropertyCardData } from "@/lib/queries/listProperties";
 
 export const revalidate = 120;
 
@@ -94,6 +96,16 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
   });
 
   if (!property || property.status !== "PUBLISHED") notFound();
+
+  // Similar listings: same city first, topped up with the same type; never this property itself.
+  const similarInclude = { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" as const }, take: 1 } };
+  const sameCity = property.geoCity
+    ? await prisma.property.findMany({ where: { status: "PUBLISHED", id: { not: property.id }, geoCity: property.geoCity, ...(property.category ? { category: property.category } : {}) }, orderBy: { createdAt: "desc" }, take: 8, include: similarInclude })
+    : [];
+  const topUp = sameCity.length < 8 && property.category
+    ? await prisma.property.findMany({ where: { status: "PUBLISHED", id: { notIn: [property.id, ...sameCity.map((x) => x.id)] }, category: property.category }, orderBy: { createdAt: "desc" }, take: 8 - sameCity.length, include: similarInclude })
+    : [];
+  const similar = [...sameCity, ...topUp];
 
   const auction = property.auctions[0];
   const legalSchedule = property.attributes.find((a) => a.key === "legal_schedule")?.value;
@@ -202,7 +214,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
           )}
         </div>
 
-        <aside className="lg:col-span-1 lg:sticky lg:top-24 lg:self-start">
+        <aside className="lg:col-span-1 lg:sticky lg:top-32 lg:self-start">
           <div className="bg-white border border-brand-border rounded-2xl p-5">
             <h2 className="font-semibold mb-1">Interested in this property?</h2>
             <p className="text-xs text-brand-muted mb-4">Send an enquiry and our team will get back to you.</p>
@@ -235,6 +247,13 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
           </div>
         </aside>
       </div>
+
+      {similar.length > 0 && (
+        <section className="mt-12">
+          <h2 className="text-xl font-bold text-brand mb-5">Similar Properties</h2>
+          <PropertyCarousel properties={similar.map(toPropertyCardData)} />
+        </section>
+      )}
     </main>
   );
 }

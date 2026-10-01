@@ -10,9 +10,9 @@ export default function PropertyCarousel({ properties }: { properties: PropertyC
   }
 
   return (
-    <div className="flex gap-5 overflow-x-auto pb-2 snap-x snap-mandatory">
+    <div className="flex gap-4 sm:gap-5 overflow-x-auto pb-2 snap-x snap-mandatory -mx-5 px-5 scroll-px-5 lg:mx-0 lg:px-0 lg:scroll-px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {properties.map((p) => (
-        <div key={p.slug} className="snap-start shrink-0 w-72 sm:w-80 flex [&>a]:w-full">
+        <div key={p.slug} className="snap-start shrink-0 w-[78%] sm:w-80 flex [&>a]:w-full">
           <PropertyCard property={p} />
         </div>
       ))}
