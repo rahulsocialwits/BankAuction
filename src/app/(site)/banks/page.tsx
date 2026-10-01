@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
+import BankDirectory from "@/components/BankDirectory";
 
 export const revalidate = 120;
 
@@ -15,7 +15,7 @@ export default async function BanksPage() {
     include: { _count: { select: { auctions: { where: { property: { status: "PUBLISHED" } } } } } },
     orderBy: { name: "asc" },
   });
-  const withListings = banks.filter((b) => b._count.auctions > 0);
+  const withListings = banks.filter((b) => b._count.auctions > 0).map((b) => ({ id: b.id, name: b.name, slug: b.slug, count: b._count.auctions }));
 
   return (
     <main className="w-full px-5 lg:px-10 xl:px-16 py-10">
@@ -25,14 +25,7 @@ export default async function BanksPage() {
       {withListings.length === 0 ? (
         <p className="text-brand-muted text-sm py-10 text-center">No banks with published listings yet.</p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {withListings.map((b) => (
-            <Link key={b.id} href={`/bank/${b.slug}`} className="bg-white border border-brand-border rounded-xl p-4 hover:border-brand transition-colors">
-              <div className="font-semibold">{b.name}</div>
-              <div className="text-xs text-brand-muted mt-1">{b._count.auctions} listing(s)</div>
-            </Link>
-          ))}
-        </div>
+        <BankDirectory banks={withListings} />
       )}
     </main>
   );
