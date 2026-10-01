@@ -91,11 +91,14 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       <div className="w-full px-5 lg:px-10 xl:px-16 -mt-16 sm:-mt-20 lg:-mt-24 pb-12 grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_340px] gap-8 items-start">
         {/* Article card */}
         <article className="min-w-0 rounded-2xl border border-brand-border bg-white p-5 sm:p-8 lg:p-10 shadow-sm">
-          {post.coverImageUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={post.coverImageUrl} alt="" className="mx-auto mb-6 w-full max-w-[400px] rounded-xl aspect-[400/270] object-cover" />
-          )}
-          <RichText text={post.body} className="text-[15px] sm:text-base leading-7 sm:leading-8 text-black/80" />
+          {/* Picture on the left with the text flowing beside it (full width on a phone), so there are no empty sides. */}
+          <div className="flow-root">
+            {post.coverImageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={post.coverImageUrl} alt={post.title} className="mb-5 w-full rounded-xl aspect-[400/270] object-cover sm:float-left sm:mr-7 sm:mb-3 sm:w-[400px] sm:max-w-[45%]" />
+            )}
+            <RichText text={post.body} className="text-[15px] sm:text-base leading-7 sm:leading-8 text-black/80" />
+          </div>
 
           {post.tags.length > 0 && (
             <div className="mt-8 flex flex-wrap items-center gap-2 border-t border-brand-border pt-5">
