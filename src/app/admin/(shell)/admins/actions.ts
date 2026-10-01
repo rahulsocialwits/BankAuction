@@ -1,11 +1,14 @@
 "use server";
 
+import { requireMaster } from "@/lib/auth/adminAuth";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { hashPassword } from "@/lib/auth/password";
 
 export async function createAdmin(formData: FormData) {
+  await requireMaster();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const name = String(formData.get("name") ?? "").trim() || null;
   const password = String(formData.get("password") ?? "");
@@ -16,12 +19,14 @@ export async function createAdmin(formData: FormData) {
   const exists = await prisma.adminUser.findUnique({ where: { email } });
   if (exists) redirect("/admin/admins?error=exists");
 
-  await prisma.adminUser.create({ data: { email, name, passwordHash: hashPassword(password) } });
+  const role = formData.get("role") === "MASTER" ? "MASTER" : "ADMIN";
+  await prisma.adminUser.create({ data: { email, name, role, passwordHash: hashPassword(password) } });
   revalidatePath("/admin/admins");
   redirect("/admin/admins?created=1");
 }
 
 export async function toggleAdmin(formData: FormData) {
+  await requireMaster();
   const id = String(formData.get("id") ?? "");
   const admin = await prisma.adminUser.findUnique({ where: { id } });
   if (!admin) return;
@@ -30,6 +35,7 @@ export async function toggleAdmin(formData: FormData) {
 }
 
 export async function deleteAdmin(formData: FormData) {
+  await requireMaster();
   const id = String(formData.get("id") ?? "");
   await prisma.adminUser.deleteMany({ where: { id } });
   revalidatePath("/admin/admins");

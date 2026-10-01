@@ -11,9 +11,9 @@ export const maxDuration = 300;
 export default async function ImportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ created?: string; skipped?: string; failed?: string; error?: string }>;
+  searchParams: Promise<{ created?: string; skipped?: string; failed?: string; error?: string; reason?: string }>;
 }) {
-  const { created, skipped, failed, error } = await searchParams;
+  const { created, skipped, failed, error, reason } = await searchParams;
 
   return (
     <div>
@@ -21,14 +21,15 @@ export default async function ImportPage({
       <EngineTabs />
       <h2 className="text-lg font-semibold mb-1">Bulk Import</h2>
       <p className="text-sm text-brand-muted mb-6">
-        Upload a CSV of listings you are entitled to publish (bank notices, partner feeds, your own data). Rows publish
-        immediately as Upcoming auctions. Rows whose title already exists for the same bank are skipped, so re-uploading
-        is safe. Max 500 rows per upload.
+        Upload or paste a CSV of listings you are entitled to publish. Use our template, or any layout at all: if the
+        columns are different, the AI reads the header once, works out which column is which and imports every row.
+        Rows publish immediately. Duplicates are skipped, so re-uploading is safe. For a Google Sheet with several tabs,
+        add its link under <b>Link Sources</b> instead and every tab is read automatically.
       </p>
 
       {error && (
         <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2 mb-4 max-w-2xl">
-          {error === "header" ? "The first row must be a header row that includes a \"title\" column." : "Upload a file or paste CSV text."}
+          {error === "ai" ? `Nothing imported: ${reason ?? "the AI could not read this sheet"}.` : "Upload a file or paste CSV text."}
         </div>
       )}
       {created !== undefined && (

@@ -1,11 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-
-const PLANS = [
-  { label: "3 Month", price: 2500, note: "Refund on 1st week cancellation" },
-  { label: "6 Month", price: 4000, was: 5000, note: "Save 20%" },
-  { label: "1 Year", price: 7000, was: 10000, note: "Save 30%" },
-];
+import { getPaymentSettings } from "@/lib/payments/settings";
 
 const FEATURES = [
   "Full borrower name & contact details",
@@ -23,7 +18,13 @@ export const metadata: Metadata = {
   alternates: { canonical: "/pricing" },
 };
 
-export default function PricingPage() {
+export const revalidate = 120;
+
+export default async function PricingPage() {
+  const settings = await getPaymentSettings();
+  const PLANS = settings.plans
+    .filter((p) => p.active)
+    .map((p) => ({ label: p.name, price: p.priceInr, note: p.note }));
   return (
     <main className="w-full px-5 lg:px-10 xl:px-16 py-14">
       <div className="text-center mb-10">
@@ -39,7 +40,6 @@ export default function PricingPage() {
           <div key={p.label} className="bg-white border border-brand-border rounded-2xl p-6 text-center">
             <div className="text-sm font-semibold text-brand-muted mb-1">{p.label} Premium</div>
             <div className="mb-1">
-              {p.was && <span className="text-sm text-brand-muted line-through mr-2">₹{p.was.toLocaleString("en-IN")}</span>}
               <span className="text-2xl font-bold text-brand">₹{p.price.toLocaleString("en-IN")}</span>
             </div>
             <div className="text-xs text-gold font-semibold mb-4">{p.note}</div>

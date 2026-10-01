@@ -23,7 +23,7 @@ export default async function AdminLoginPage({
           <input type="hidden" name="next" value={next ?? "/admin"} />
           <div>
             <label htmlFor="email" className="block text-sm font-medium mb-1">
-              Email <span className="text-brand-muted font-normal">(leave blank for the master password)</span>
+              Email <span className="text-brand-muted font-normal">(leave blank to sign in with the owner password)</span>
             </label>
             <input
               id="email"

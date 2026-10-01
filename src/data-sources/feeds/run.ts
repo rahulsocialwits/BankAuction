@@ -2,7 +2,9 @@ import { prisma } from "@/lib/db/prisma";
 import { importCsvText, importRecords, type ImportResult } from "@/lib/import/csvImport";
 import { robotsAllows, scanWebPage, UA } from "./webScan";
 import { logRun } from "@/lib/pipeline/runLog";
-import { syncLocationsFromProperties } from "@/lib/pipeline/locations";
+import { enrichLocations } from "@/lib/pipeline/geo";
+import { importTabular, type TabState } from "@/lib/import/tabular";
+import { fetchTabCsv, listSheetTabs, sheetIdFromUrl } from "./sheets";
 
 // Sites whose terms or robots.txt disallow copying; never accept these as links.
 const BLOCKED_HOSTS = ["baanknet.com", "auctionbazaar.com", "bankauction.co", "eauctionsindia.com"];
@@ -31,8 +33,55 @@ export function toCsvUrl(url: string): string {
   return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv${gid ? `&gid=${gid}` : ""}`;
 }
 
-function describe(out: ImportResult) {
+function describe(out: Pick<ImportResult, "created" | "skipped" | "failed">) {
   return `${out.created} new, ${out.skipped} duplicate skipped, ${out.failed} rejected`;
+}
+
+const safeJson = (s: string | null | undefined): { tabs?: Record<string, unknown> } | null => {
+  try {
+    return s ? JSON.parse(s) : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Reads every tab of a shared Google Sheet and imports the property rows, whatever the column names are. */
+async function runSheet(sheetState: string | null, feedName: string, url: string, trigger: "schedule" | "manual") {
+  const id = sheetIdFromUrl(url)!;
+  const gid = url.match(/[#&?]gid=(\d+)/)?.[1] ?? null;
+  const state = (safeJson(sheetState)?.tabs ?? {}) as Record<string, TabState>;
+  const tabs = await listSheetTabs(id, gid);
+
+  const total = { created: 0, skipped: 0, failed: 0 };
+  const lines: string[] = [];
+  let tokens = 0;
+  let changedTabs = 0;
+  let errors = 0;
+  for (const tab of tabs) {
+    try {
+      const csv = await fetchTabCsv(id, tab.gid);
+      const r = await importTabular(csv, `feed:${feedName}`, { sourceUrl: url, state: state[tab.gid], force: trigger === "manual" });
+      state[tab.gid] = r.state;
+      tokens += r.tokens;
+      if (r.unchanged) continue;
+      changedTabs++;
+      total.created += r.created;
+      total.skipped += r.skipped;
+      total.failed += r.failed;
+      lines.push(`${tab.name}: ${r.skippedReason ? `skipped (${r.skippedReason})` : describe(r)}`);
+    } catch (e) {
+      errors++;
+      lines.push(`${tab.name}: ${e instanceof Error ? e.message : String(e)}`);
+      if (errors === 1 && tabs.length === 1) throw e; // a single-tab sheet that cannot be read is an error, not a remark
+    }
+  }
+  if (errors === tabs.length) throw new Error(lines[0] ?? "Could not read the sheet");
+
+  const unchanged = changedTabs === 0 && errors === 0;
+  const message = unchanged
+    ? `No changes in any of the ${tabs.length} tab(s) (checked automatically).`
+    : `${tabs.length} tab(s) read — ${describe(total)}. ${lines.join(" | ")}${tokens ? ` (${tokens} AI tokens)` : ""}`;
+  return { stats: total, tokens, unchanged, message, stateJson: JSON.stringify({ tabs: state }) };
 }
 
 export async function runFeedSource(id: string, trigger: "schedule" | "manual" = "manual") {
@@ -41,15 +90,36 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
   const startedAt = new Date();
   let stats: Pick<ImportResult, "created" | "skipped" | "failed"> = { created: 0, skipped: 0, failed: 0 };
   let tokens = 0;
+  let unchanged = false;
   let newHash: string | undefined;
+  let sheetStateOut: string | undefined;
   try {
     const check = validateFeedUrl(feed.url);
     if (!check.ok) throw new Error(check.reason);
     const isSheet = check.url.startsWith("https://docs.google.com/spreadsheets/");
     const target = toCsvUrl(check.url);
 
-    // Plain web pages must be allowed by the site's robots.txt; Sheets/CSV links are data the owner shared.
-    const looksCsv = isSheet || /\.csv(\?|$)/i.test(target);
+    // Google Sheet: read EVERY tab, let the AI map each tab's columns, import the rows (see sheets.ts / tabular.ts).
+    if (isSheet) {
+      const sheet = await runSheet(feed.sheetState, feed.name, check.url, trigger);
+      stats = sheet.stats;
+      tokens += sheet.tokens;
+      unchanged = sheet.unchanged;
+      const message = sheet.message;
+      await prisma.feedSource.update({
+        where: { id },
+        data: { lastRunAt: new Date(), lastStatus: "ok", lastMessage: message, sheetState: sheet.stateJson },
+      });
+      if (stats.created > 0) {
+        const geo = await enrichLocations(60).catch(() => null);
+        tokens += geo?.tokens ?? 0;
+      }
+      if (!unchanged) await logRun({ source: feed.name, kind: "feed", trigger, status: "ok", created: stats.created, duplicates: stats.skipped, rejected: stats.failed, aiTokens: tokens, message, startedAt });
+      return { name: feed.name, message };
+    }
+
+    // Plain web pages must be allowed by the site's robots.txt; CSV links are data the owner shared.
+    const looksCsv = /\.csv(\?|$)/i.test(target);
     if (!looksCsv && !(await robotsAllows(target))) {
       throw new BlockedError("Blocked: this site's robots.txt does not allow automated access to this page. Paused automatically.");
     }
@@ -70,18 +140,26 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
 
     let message: string;
     if (!isHtml) {
-      const out = await importCsvText(text, `feed:${feed.name}`);
-      if (out.error) throw new Error('CSV must have a header row with a "title" column');
+      // A CSV file: our template goes straight in, any other layout is mapped by the AI.
+      const prev = (safeJson(feed.sheetState)?.tabs ?? {}).csv as TabState | undefined;
+      const out = await importTabular(text, `feed:${feed.name}`, { sourceUrl: check.url, state: prev, force: trigger === "manual" });
+      tokens += out.tokens;
       stats = out;
-      message = describe(out);
+      if (out.unchanged) {
+        unchanged = true;
+        message = "No changes since the last check (checked automatically).";
+      } else {
+        message = out.skippedReason ? `Skipped: ${out.skippedReason}` : `${describe(out)}${out.usedAi ? ` (columns mapped by AI, ${out.tokens} tokens)` : ""}`;
+      }
+      sheetStateOut = JSON.stringify({ tabs: { csv: out.state } });
     } else {
-      if (isSheet) throw new Error("Sheet is not public. Use File → Share → Publish to web, or set it to 'Anyone with the link'.");
       // Scheduled runs skip the AI when the page text is identical to last time; "Run now" always re-reads.
       const scan = await scanWebPage(text, trigger === "schedule" ? feed.contentHash : null);
       newHash = scan.hash;
       tokens = scan.tokens;
       if (scan.unchanged) {
-        message = "Page unchanged since the last scan — AI not called.";
+        unchanged = true;
+        message = "No changes since the last check (checked automatically).";
       } else {
         const out = await importRecords(scan.records, `feed:${feed.name}`, "PUBLISHED", check.url);
         stats = out;
@@ -91,10 +169,14 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
 
     await prisma.feedSource.update({
       where: { id },
-      data: { lastRunAt: new Date(), lastStatus: "ok", lastMessage: message, ...(newHash && { contentHash: newHash }) },
+      data: { lastRunAt: new Date(), lastStatus: "ok", lastMessage: message, ...(newHash && { contentHash: newHash }), ...(sheetStateOut && { sheetState: sheetStateOut }) },
     });
-    if (stats.created > 0) await syncLocationsFromProperties().catch(() => 0);
-    await logRun({ source: feed.name, kind: "feed", trigger, status: "ok", created: stats.created, duplicates: stats.skipped, rejected: stats.failed, aiTokens: tokens, message, startedAt });
+    if (stats.created > 0) {
+      const geo = await enrichLocations(30).catch(() => null);
+      tokens += geo?.tokens ?? 0;
+    }
+    // Hourly "nothing changed" checks are not worth a history row each; they would bury the real runs.
+    if (!unchanged) await logRun({ source: feed.name, kind: "feed", trigger, status: "ok", created: stats.created, duplicates: stats.skipped, rejected: stats.failed, aiTokens: tokens, message, startedAt });
     return { name: feed.name, message };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

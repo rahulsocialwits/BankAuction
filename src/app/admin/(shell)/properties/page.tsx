@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import type { Prisma, PropertyStatus } from "@prisma/client";
 import SubmitButton from "@/components/admin/SubmitButton";
 import { approveProperty, removeProperty, restoreProperty } from "./actions";
+import { isMasterAdmin } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +29,15 @@ const small = "text-xs border border-brand-border rounded-lg px-2.5 py-1 hover:b
 
 export default async function AdminPropertiesPage({ searchParams }: { searchParams: Promise<{ status?: string; q?: string }> }) {
   const { status, q } = await searchParams;
-  const active = status && status !== "ALL" ? status : "ALL";
+  const master = await isMasterAdmin();
+  // A normal admin never sees pipeline concepts (duplicates, sources); they only manage listings.
+  const tabs = master ? TABS : TABS.filter(([, v]) => v !== "DUPLICATE");
+  const active = status && status !== "ALL" && (master || status !== "DUPLICATE") ? status : "ALL";
 
   const where: Prisma.PropertyWhereInput = {
     // "All" hides duplicates and removed items so they never clutter the working list.
     status: active === "ALL" ? { notIn: ["DUPLICATE", "REMOVED"] } : (active as PropertyStatus),
+    // (a normal admin's "All" already excludes pipeline-hidden duplicates)
     ...(q ? { OR: [{ title: { contains: q, mode: "insensitive" } }, { addressText: { contains: q, mode: "insensitive" } }] } : {}),
   };
 
@@ -60,7 +65,7 @@ export default async function AdminPropertiesPage({ searchParams }: { searchPara
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {TABS.map(([label, value]) => (
+        {tabs.map(([label, value]) => (
           <Link
             key={value}
             href={`/admin/properties?status=${value}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
@@ -85,7 +90,7 @@ export default async function AdminPropertiesPage({ searchParams }: { searchPara
             <thead className="bg-brand-bg text-brand-muted">
               <tr>
                 <th className="px-4 py-3 text-left">Property</th>
-                <th className="px-4 py-3 text-left">Bank / source</th>
+                <th className="px-4 py-3 text-left">{master ? "Bank / source" : "Bank"}</th>
                 <th className="px-4 py-3 text-left">Auction</th>
                 <th className="px-4 py-3 text-left">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -103,7 +108,7 @@ export default async function AdminPropertiesPage({ searchParams }: { searchPara
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-medium">{a?.bank?.name ?? "—"}</div>
-                      <div className="text-brand-muted mt-0.5">{source}</div>
+                      {master && <div className="text-brand-muted mt-0.5">{source}</div>}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="font-medium">{a?.reservePrice ? "₹" + Number(a.reservePrice).toLocaleString("en-IN") : "—"}</div>

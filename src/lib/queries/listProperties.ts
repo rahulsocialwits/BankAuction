@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { AuctionStatus, Prisma, PropertyCategory } from "@prisma/client";
+import { canonCity } from "@/lib/pipeline/locations";
 
 export type StatusGroup = "active" | "completed" | "all";
 
@@ -42,8 +43,14 @@ export async function listPublishedProperties(filters: PropertyFilters = {}, tak
 
   const and: Prisma.PropertyWhereInput[] = [];
   if (filters.keyword) and.push(textMatch(filters.keyword));
-  if (filters.city) and.push(textMatch(filters.city));
-  if (filters.locality) and.push(textMatch(filters.locality));
+  // AI-verified place first (exact); listings the AI has not checked yet fall back to a text match.
+  if (filters.city) {
+    const city = canonCity(filters.city);
+    and.push({ OR: [{ geoCity: { equals: city, mode: "insensitive" } }, { AND: [{ geoCheckedAt: null }, textMatch(filters.city)] }] });
+  }
+  if (filters.locality) {
+    and.push({ OR: [{ geoLocality: { equals: filters.locality, mode: "insensitive" } }, { AND: [{ geoCheckedAt: null }, textMatch(filters.locality)] }] });
+  }
 
   return prisma.property.findMany({
     where: {

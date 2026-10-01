@@ -1,5 +1,7 @@
 "use server";
 
+import { requireMaster } from "@/lib/auth/adminAuth";
+
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -7,6 +9,7 @@ import { prisma } from "@/lib/db/prisma";
 import { runFeedSource, validateFeedUrl } from "@/data-sources/feeds/run";
 
 export async function addFeed(formData: FormData) {
+  await requireMaster();
   const name = String(formData.get("name") ?? "").trim();
   const check = validateFeedUrl(String(formData.get("url") ?? ""));
   if (!name) redirect("/admin/feeds?error=" + encodeURIComponent("Name is required"));
@@ -21,6 +24,7 @@ export async function addFeed(formData: FormData) {
 }
 
 export async function toggleFeed(formData: FormData) {
+  await requireMaster();
   const id = String(formData.get("id"));
   const feed = await prisma.feedSource.findUnique({ where: { id } });
   if (feed) {
@@ -34,11 +38,13 @@ export async function toggleFeed(formData: FormData) {
 }
 
 export async function deleteFeed(formData: FormData) {
+  await requireMaster();
   await prisma.feedSource.delete({ where: { id: String(formData.get("id")) } });
   revalidatePath("/admin/feeds");
 }
 
 export async function runFeedNow(formData: FormData) {
+  await requireMaster();
   const id = String(formData.get("id"));
   await prisma.feedSource.update({ where: { id }, data: { lastMessage: "Fetching…" } });
   after(() => runFeedSource(id));

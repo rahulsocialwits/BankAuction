@@ -5,7 +5,7 @@ import { toPropertyCardData } from "@/lib/queries/listProperties";
 import SearchBar from "@/components/SearchBar";
 import BlogCarousel from "@/components/BlogCarousel";
 import AuctionCountdownTable, { CountdownRow } from "@/components/AuctionCountdownTable";
-import { PRIORITY_CITIES } from "@/lib/constants";
+import { getCityCounts } from "@/lib/queries/cities";
 import { getLocalityMap } from "@/lib/queries/localities";
 
 export const revalidate = 120;
@@ -21,7 +21,7 @@ const PROPERTY_TYPES = [
 
 const WHY_CHOOSE = [
   { title: "Source-backed information", body: "Every figure and fact traces back to an official auction notice — nothing is invented." },
-  { title: "Broad coverage", body: "Residential, commercial, industrial, agricultural, land and vehicle auctions from banks across India." },
+  { title: "Broad coverage", body: "Residential, commercial, industrial, agricultural and land auctions from banks across India." },
   { title: "Always up to date", body: "Listings refresh automatically, so prices, dates and statuses stay current." },
   { title: "Full documents", body: "Sale notices, bid forms and terms are linked directly on every listing." },
 ];
@@ -37,11 +37,7 @@ export default async function Home() {
       take: 12,
       include: { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 } },
     }),
-    prisma.property.groupBy({
-      by: ["addressText"],
-      where: { status: "PUBLISHED", addressText: { in: PRIORITY_CITIES } },
-      _count: true,
-    }),
+    getCityCounts(),
     prisma.bank.findMany({
       include: { _count: { select: { auctions: { where: { property: { status: "PUBLISHED" } } } } } },
       orderBy: { auctions: { _count: "desc" } },
@@ -62,7 +58,7 @@ export default async function Home() {
     { label: "Upcoming Auctions", value: upcomingAuctions },
   ];
 
-  const cityCountMap = new Map(cityGroups.map((g) => [g.addressText, g._count]));
+  // First six cities (priority cities lead, then by listing count): 3 columns x 2 rows on the home page.
   // One row per property (soonest auction) -- a property can legitimately
   // have multiple auction events (re-listings), but listing each separately
   // here reads as a duplicate bug rather than useful information.
@@ -76,7 +72,7 @@ export default async function Home() {
       slug: a.property.slug,
       title: a.property.title,
       bankName: a.bank?.name ?? null,
-      location: a.property.addressText,
+      location: a.property.geoLocality && a.property.geoCity ? `${a.property.geoLocality}, ${a.property.geoCity}` : (a.property.geoCity ?? a.property.addressText),
       category: a.property.category,
       auctionStart: a.auctionStart ? a.auctionStart.toISOString() : null,
     });
@@ -162,30 +158,41 @@ export default async function Home() {
       <section className="w-full px-5 lg:px-10 xl:px-16 py-12">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl sm:text-2xl font-bold text-brand">Browse by Location</h2>
-          <Link href="/cities" className="text-sm text-brand font-medium">All cities →</Link>
+          <Link href="/cities" className="hidden sm:inline-block text-sm font-medium text-brand border border-brand-border rounded-lg px-4 py-2 hover:bg-brand hover:text-white transition-colors">
+            View all locations →
+          </Link>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Object.entries(localityMap).map(([city, areas]) => (
-            <div key={city} className="bg-white border border-brand-border rounded-2xl p-5">
-              <div className="flex items-center justify-between mb-3">
-                <Link href={`/properties?city=${encodeURIComponent(city)}`} className="font-semibold text-brand hover:underline">
-                  {city}
-                </Link>
-                <span className="text-xs text-brand-muted">{cityCountMap.get(city) ?? 0} listings</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {areas.slice(0, 8).map((a) => (
-                  <Link
-                    key={a}
-                    href={`/properties?city=${encodeURIComponent(city)}&locality=${encodeURIComponent(a)}`}
-                    className="text-xs px-2.5 py-1 rounded-full bg-brand-bg text-black/70 hover:bg-brand hover:text-white transition-colors"
-                  >
-                    {a}
+          {cityGroups.slice(0, 6).map((c) => {
+            const areas = localityMap[c.city] ?? [];
+            return (
+              <div key={c.slug} className="bg-white border border-brand-border rounded-2xl p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <Link href={`/properties?city=${encodeURIComponent(c.city)}&status=all`} className="font-semibold text-brand hover:underline">
+                    {c.city}
                   </Link>
-                ))}
+                  <span className="text-xs text-brand-muted">{c.count} listing{c.count === 1 ? "" : "s"}</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 min-h-[2rem]">
+                  {areas.slice(0, 6).map((a) => (
+                    <Link
+                      key={a}
+                      href={`/properties?city=${encodeURIComponent(c.city)}&locality=${encodeURIComponent(a)}&status=all`}
+                      className="text-xs px-2.5 py-1 rounded-full bg-brand-bg text-black/70 hover:bg-brand hover:text-white transition-colors"
+                    >
+                      {a}
+                    </Link>
+                  ))}
+                  {areas.length === 0 && <span className="text-xs text-brand-muted">Browse all listings in {c.city}</span>}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
+        </div>
+        <div className="mt-5 text-center">
+          <Link href="/cities" className="inline-block text-sm font-medium bg-brand text-white rounded-lg px-6 py-2.5 hover:bg-brand-dark">
+            View all locations
+          </Link>
         </div>
       </section>
 

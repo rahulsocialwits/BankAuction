@@ -5,7 +5,11 @@ import { slugify } from "@/lib/normalization/parsers";
 /** Vehicles (cars, bikes, trucks, tractors …) are out of scope for this site. */
 export function isVehicleListing(title: string, category?: string | null): boolean {
   if ((category ?? "").toUpperCase().replace(/[ &]+/g, "_") === "VEHICLE") return true;
-  return /\b(vehicles?|two[- ]?wheelers?|four[- ]?wheelers?|motor ?cycles?|scooters?|tractors?|trucks?|lorry|lorries)\b/i.test(title);
+  return (
+    /\b(vehicles?|two[- ]?wheelers?|four[- ]?wheelers?|motor ?cycles?|scooters?|tractors?|trucks?|lorry|lorries)\b/i.test(title) ||
+    /^\s*(car|bike|bus|jeep|suv|auto|tempo)\b/i.test(title) || // a title that starts with a vehicle word
+    /\b(car|jeep|suv|bus|bike)\s*\(/i.test(title) // "Car (Honda City)"
+  );
 }
 
 const CATEGORIES = ["RESIDENTIAL", "COMMERCIAL", "INDUSTRIAL", "LAND_PLOT", "AGRICULTURAL", "VEHICLE"];

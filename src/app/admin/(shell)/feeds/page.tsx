@@ -17,11 +17,12 @@ export default async function FeedsPage({ searchParams }: { searchParams: Promis
       <EngineTabs />
       <h2 className="text-lg font-semibold mb-1">Link Sources</h2>
       <p className="text-sm text-brand-muted mb-6 max-w-2xl">
-        Paste a link to a website page that lists auctions, a Google Sheet or a CSV file. The site re-checks it every
-        hour and publishes new listings directly. Website pages are read with AI (only if the site&apos;s robots.txt allows
-        it); Sheets and CSV files use the same columns as <a href="/admin/properties/import" className="underline">Bulk Import</a>.
+        Paste a link to a website page that lists auctions, a <b>Google Sheet</b> or a CSV file. The site re-checks it every
+        hour and publishes new listings directly. A <b>Google Sheet</b> must be shared as &quot;Anyone with the link&quot;; <b>every tab</b> is
+        read, and the AI works out which column is which, whatever the headers are (dates like 12/10/2026 and prices like
+        ₹ 45,00,000 are understood). Website pages are read with AI too, only if the site&apos;s robots.txt allows it.
         Duplicates are skipped by matching similar titles, and by bank + reserve price + auction date, across all
-        sources. Only add sources you have the right to use.
+        sources. Vehicles are never imported. Only add sources you have the right to use.
       </p>
 
       {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2 mb-4 max-w-2xl">{error}</div>}

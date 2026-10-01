@@ -1,5 +1,7 @@
 "use server";
 
+import { requireMaster } from "@/lib/auth/adminAuth";
+
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
@@ -13,6 +15,7 @@ function refresh() {
 
 /** Pause / resume the built-in BankAuctions.in crawler. */
 export async function toggleBuiltIn() {
+  await requireMaster();
   const row = await ensureSourceRow();
   await prisma.source.update({
     where: { id: row.id },
@@ -22,6 +25,7 @@ export async function toggleBuiltIn() {
 }
 
 export async function toggleFeedSource(formData: FormData) {
+  await requireMaster();
   const id = String(formData.get("id"));
   const feed = await prisma.feedSource.findUnique({ where: { id } });
   if (feed) {
@@ -33,6 +37,7 @@ export async function toggleFeedSource(formData: FormData) {
 }
 
 export async function runFeedSourceNow(formData: FormData) {
+  await requireMaster();
   const id = String(formData.get("id"));
   await prisma.feedSource.update({ where: { id }, data: { lastMessage: "Fetching…" } });
   after(() => runFeedSource(id));

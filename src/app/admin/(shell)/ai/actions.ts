@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
+import { isMasterAdmin } from "@/lib/auth/adminAuth";
 import { getAiConfig, invalidateAiConfig } from "@/lib/ai/aiConfig";
 import { parseRules, serializeRules, type AiRule } from "@/lib/ai/rules";
 import { chatJSONDetailed, chatText } from "@/lib/ai/relayModelsClient";
@@ -8,6 +9,7 @@ import { chatJSONDetailed, chatText } from "@/lib/ai/relayModelsClient";
 export type AiFormState = { ok: boolean; message: string } | null;
 
 export async function saveAiSettings(_prev: AiFormState, formData: FormData): Promise<AiFormState> {
+  if (!(await isMasterAdmin())) return { ok: false, message: "Only the master admin can do this." };
   try {
     const text = (n: string) => String(formData.get(n) ?? "").trim() || null;
     const model = text("extractorModel");
@@ -34,6 +36,7 @@ export async function saveAiSettings(_prev: AiFormState, formData: FormData): Pr
 }
 
 export async function chatWithAi(history: { role: "user" | "assistant"; content: string }[]): Promise<{ ok: boolean; reply: string; meta?: string }> {
+  if (!(await isMasterAdmin())) return { ok: false, reply: "Only the master admin can do this." };
   try {
     const cfg = await getAiConfig();
     const system =
@@ -68,6 +71,7 @@ async function storeRules(rules: AiRule[]) {
  * Relay model, then adds it to the rules dashboard. Falls back to the owner's own words if the AI is down.
  */
 export async function addAiRule(input: string): Promise<RulesResult> {
+  if (!(await isMasterAdmin())) return { ok: false, rules: [], message: "Only the master admin can do this." };
   const raw = input.replace(/\s+/g, " ").trim().slice(0, 400);
   const rules = await loadRules();
   if (!raw) return { ok: false, rules, message: "Type a rule first." };
@@ -94,12 +98,14 @@ export async function addAiRule(input: string): Promise<RulesResult> {
 }
 
 export async function toggleAiRule(id: string): Promise<RulesResult> {
+  if (!(await isMasterAdmin())) return { ok: false, rules: [], message: "Only the master admin can do this." };
   const next = (await loadRules()).map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r));
   await storeRules(next);
   return { ok: true, rules: next, message: "Updated." };
 }
 
 export async function deleteAiRule(id: string): Promise<RulesResult> {
+  if (!(await isMasterAdmin())) return { ok: false, rules: [], message: "Only the master admin can do this." };
   const next = (await loadRules()).filter((r) => r.id !== id);
   await storeRules(next);
   return { ok: true, rules: next, message: "Rule deleted." };
@@ -107,6 +113,7 @@ export async function deleteAiRule(id: string): Promise<RulesResult> {
 
 /** Sends one tiny request with the current settings so a developer can see the key, model and latency work. */
 export async function testAi(): Promise<AiFormState> {
+  if (!(await isMasterAdmin())) return { ok: false, message: "Only the master admin can do this." };
   invalidateAiConfig();
   const started = Date.now();
   try {

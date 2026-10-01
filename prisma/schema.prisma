@@ -205,6 +205,12 @@ model Property {
   status           PropertyStatus    @default(PENDING_REVIEW)
   extractionConfidence Float?        // 0..1, null if not AI-derived
 
+  // AI-verified place, used by the City / Area filters (addressText stays the raw source text)
+  geoCity          String?
+  geoLocality      String?
+  geoState         String?
+  geoCheckedAt     DateTime?
+
   attributes       PropertyAttribute[]
   amenities        PropertyAmenity[]
   auctions         Auction[]
@@ -220,6 +226,7 @@ model Property {
 
   @@index([category, status])
   @@index([cityId])
+  @@index([geoCity])
   @@map("properties")
 }
 
@@ -685,12 +692,18 @@ model Locality {
   @@map("localities")
 }
 
+enum AdminRole {
+  MASTER // everything, including sources, AI, payments and team
+  ADMIN  // content only: dashboard, properties, add property, blog, locations
+}
+
 model AdminUser {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String    @id @default(cuid())
+  email        String    @unique
   name         String?
   passwordHash String
-  active       Boolean  @default(true)
+  role         AdminRole @default(ADMIN)
+  active       Boolean   @default(true)
   createdAt    DateTime @default(now())
 
   @@map("admin_users")
@@ -706,6 +719,7 @@ model FeedSource {
   lastStatus  String?   // ok | error
   lastMessage String?   @db.Text
   contentHash String?   // hash of the last scanned page text; unchanged page => no AI call
+  sheetState  String?   @db.Text // JSON: per-tab content hash and the AI column mapping (Google Sheets / CSV)
   createdAt   DateTime  @default(now())
 
   @@map("feed_sources")
@@ -732,6 +746,38 @@ model SourceRunLog {
 }
 
 // Single-row developer settings for the AI (Relay Models) layer. Environment variables are the fallback.
+// Single-row payment gateway settings. Secret keys live in environment variables only, never here.
+model PaymentSettings {
+  id        String   @id @default("default")
+  provider  String   @default("razorpay")
+  enabled   Boolean  @default(false)
+  mode      String   @default("test") // test | live
+  keyId     String?
+  currency  String   @default("INR")
+  plans     String?  @db.Text // JSON array of plans
+  updatedAt DateTime @updatedAt
+
+  @@map("payment_settings")
+}
+
+model Payment {
+  id         String    @id @default(cuid())
+  provider   String    @default("razorpay")
+  orderId    String?   @unique
+  paymentId  String?
+  email      String?
+  planId     String?
+  amount     Int       // in paise
+  currency   String    @default("INR")
+  status     String    @default("created") // created | paid | failed | refunded
+  note       String?   @db.Text
+  createdAt  DateTime  @default(now())
+  paidAt     DateTime?
+
+  @@index([status, createdAt])
+  @@map("payments")
+}
+
 model AiSettings {
   id              String   @id @default("default")
   enabled         Boolean  @default(true)

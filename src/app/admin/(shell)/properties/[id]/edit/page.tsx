@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import SubmitButton from "@/components/admin/SubmitButton";
 import { updateProperty } from "../../actions";
+import { isMasterAdmin } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -41,16 +42,22 @@ export default async function EditPropertyPage({ params, searchParams }: { param
   });
   if (!p) notFound();
   const a = p.auctions[0];
+  const master = await isMasterAdmin();
   const source = p.sourceRecords[0]?.source.name ?? a?.statusSource ?? "Added manually";
+  const statuses = master ? STATUSES : STATUSES.filter(([v]) => v !== "DUPLICATE");
 
   return (
     <div className="max-w-3xl">
       <Link href="/admin/properties" className="text-xs text-brand-muted hover:text-brand">← Back to properties</Link>
       <h1 className="text-2xl font-semibold text-brand mt-2 mb-1">Edit property</h1>
       <p className="text-xs text-brand-muted mb-5">
-        Source: {source}
-        {a?.bank ? ` · ${a.bank.name}` : ""}
-        {p.sourceRecords.length > 0 && " · If the source page changes, the crawler may refresh title, description and dates."}
+        {a?.bank ? a.bank.name : ""}
+        {master && (
+          <>
+            {a?.bank ? " · " : ""}Source: {source}
+            {p.sourceRecords.length > 0 && " · If the source page changes, the crawler may refresh title, description and dates."}
+          </>
+        )}
       </p>
 
       {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2 mb-4">{error}</div>}
@@ -75,7 +82,7 @@ export default async function EditPropertyPage({ params, searchParams }: { param
             <div>
               <label className={label}>Status</label>
               <select name="status" defaultValue={p.status} className={input}>
-                {STATUSES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                {statuses.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
           </div>

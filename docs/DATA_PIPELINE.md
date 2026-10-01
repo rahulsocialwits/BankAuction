@@ -33,6 +33,36 @@ scheduler (every 30 min)
 | Publish | `importRecords` | Creates `Property` + `Auction` as `PUBLISHED` (no review step). |
 | Hide / delete | `admin/properties/actions.ts` | "Delete" sets `REMOVED` (row kept so a crawler can't resurrect it). `DUPLICATE` is the same idea. |
 
+## Locations (AI-verified)
+
+`lib/pipeline/geo.ts` `enrichLocations()` runs on every tick (and after imports). It sends new listings to the
+Relay AI in batches of 12 and stores the real `geoCity`, `geoLocality` and `geoState` on the property
+(`geoCheckedAt` marks it done). The City / Area filters, `/cities`, `/city/[slug]` and the home "Browse by
+Location" use these fields (`lib/queries/cities.ts`, `lib/queries/localities.ts`, `lib/queries/listProperties.ts`).
+Listings not yet checked fall back to a text match. Manually added properties set the place themselves.
+
+## Spreadsheets with any column layout
+
+`lib/import/tabular.ts` `importTabular()`: a CSV with a `title` column goes straight in; anything else is mapped by
+the AI **once** (header row + a few sample rows → which column is title/bank/price/date …), then applied to every
+row in code. Dates are read day-first (12/10/2026) and prices like "₹ 45,00,000" are cleaned. The mapping is kept
+in `FeedSource.sheetState` while the header is unchanged, and a tab whose content hash is unchanged is skipped.
+For a Google Sheet, `data-sources/feeds/sheets.ts` lists **every tab** (public `htmlview` page) and exports each as
+CSV. The sheet must be shared "Anyone with the link".
+
+## Admin roles
+
+`AdminUser.role` is `MASTER` or `ADMIN`; the master password (no email) is always a master. The session cookie
+carries the role (`lib/auth/adminSession.ts`). `proxy.ts` limits a normal admin to Dashboard, Properties, Add
+Property, Blog and Locations (`canAccessAdminPath`), and every master-only server action calls `requireMaster()` /
+`isMasterAdmin()` as a second lock. A normal admin sees no source, duplicate or pipeline information anywhere.
+
+## Payments
+
+`PaymentSettings` / `Payment` tables, Admin → Payments (master only). Keys: the public Razorpay key id is stored in the
+DB; `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET` live only in environment variables. Plans are edited there and
+shown on `/pricing`. Online checkout and the webhook handler are not built yet (the page is the foundation).
+
 ## Adding a new kind of source
 
 1. Write a function that returns `ListingRecord[]` (see the type in `csvImport.ts`) — via CSV parsing, an API, or `scanWebPage`.

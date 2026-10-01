@@ -98,6 +98,11 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
   const auction = property.auctions[0];
   const legalSchedule = property.attributes.find((a) => a.key === "legal_schedule")?.value;
   const rawType = property.attributes.find((a) => a.key === "source_property_type")?.value;
+  // Everything else an admin or source attached (area size, floor, …), as "Label: value".
+  const HIDDEN_ATTRS = new Set(["legal_schedule", "source_property_type"]);
+  const extraDetails = property.attributes
+    .filter((a) => a.value && !HIDDEN_ATTRS.has(a.key))
+    .map((a) => ({ key: a.key, label: a.key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()), value: a.value as string }));
 
   return (
     <main className="w-full px-5 lg:px-10 xl:px-16 py-10">
@@ -132,6 +137,14 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
               <Field label="Application Deadline" value={formatDate(auction?.applicationDeadline ?? null)} />
               <Field label="Auction Method" value={auction?.auctionMethod ?? "Not Available"} />
               <Field label="Possession Status" value={auction?.possessionStatus ?? "Not Available"} />
+              {auction?.noticeNumber && <Field label="Notice Number" value={auction.noticeNumber} />}
+              {auction?.minimumIncrement && <Field label="Minimum Bid Increment" value={formatMoney(auction.minimumIncrement)} />}
+              {(auction?.inspectionDate || auction?.inspectionLocation) && (
+                <Field
+                  label="Inspection"
+                  value={[auction.inspectionDate ? formatDate(auction.inspectionDate) : null, auction.inspectionTime, auction.inspectionLocation].filter(Boolean).join(" · ")}
+                />
+              )}
               <div>
                 <dt className="text-xs text-brand-muted mb-0.5">Borrower</dt>
                 <dd className="text-sm font-medium">
@@ -153,6 +166,17 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
             <p className="text-sm leading-6 text-black/80 whitespace-pre-line">{tidyText(property.description) || "No description provided."}</p>
             {rawType && <p className="text-xs text-brand-muted mt-2">Listed type: {rawType}</p>}
           </section>
+
+          {extraDetails.length > 0 && (
+            <section className="mb-6">
+              <h2 className="font-semibold mb-2">Property Details</h2>
+              <dl className="grid grid-cols-2 gap-4 bg-white border border-brand-border rounded-2xl p-5">
+                {extraDetails.map((d) => (
+                  <Field key={d.key} label={d.label} value={d.value} />
+                ))}
+              </dl>
+            </section>
+          )}
 
           {legalSchedule && (
             <section className="mb-6">

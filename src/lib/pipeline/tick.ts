@@ -3,7 +3,7 @@ import { runBankAuctionsIngestion } from "@/data-sources/bankauctions/adapter";
 import { runAllFeeds } from "@/data-sources/feeds/run";
 import { autoCleanExactDuplicates } from "./duplicates";
 import { logRun } from "./runLog";
-import { syncLocationsFromProperties } from "./locations";
+import { enrichLocations } from "./geo";
 import { revalidateTag } from "next/cache";
 
 export type TickTrigger = "cron" | "visitor";
@@ -16,7 +16,8 @@ export async function runTick(opts: { limit?: number; trigger?: TickTrigger; via
     const summary = await runBankAuctionsIngestion({ limit: opts.limit ?? 100, triggeredBy: "http-cron" });
     const feeds = await runAllFeeds();
     const hidden = await autoCleanExactDuplicates();
-    const places = await syncLocationsFromProperties();
+    const geo = await enrichLocations(48).catch(() => ({ processed: 0, tokens: 0, failed: true }));
+    const places = geo.processed;
     if (places > 0) {
       try {
         revalidateTag("localities", "max");
@@ -29,7 +30,8 @@ export async function runTick(opts: { limit?: number; trigger?: TickTrigger; via
       kind: "cron",
       trigger: trigger === "visitor" ? "schedule" : "cron",
       status: "ok",
-      message: `via ${opts.via ?? "HTTP"}; built-in: ${summary.skipped ? "paused" : `${summary.newProperties} new`}; feeds run: ${feeds.length}; exact duplicates hidden: ${hidden}; new areas added: ${places}`,
+      message: `via ${opts.via ?? "HTTP"}; built-in: ${summary.skipped ? "paused" : `${summary.newProperties} new`}; feeds run: ${feeds.length}; exact duplicates hidden: ${hidden}; locations checked by AI: ${places}`,
+      aiTokens: geo.tokens,
       startedAt,
     });
     return { ...summary, feeds };

@@ -1,161 +1,195 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const QUICK_TYPES = [
   { label: "Residential", value: "RESIDENTIAL" },
   { label: "Commercial", value: "COMMERCIAL" },
   { label: "Industrial", value: "INDUSTRIAL" },
-  { label: "Vehicles", value: "VEHICLE" },
+  { label: "Land & Plot", value: "LAND_PLOT" },
+  { label: "Agricultural", value: "AGRICULTURAL" },
 ];
-
-const FALLBACK: Record<string, string[]> = {
-  Mumbai: ["Ghatkopar", "Kurla", "Dadar", "Bhandup", "Borivali", "Andheri"],
-  Delhi: ["Dwarka", "Rohini", "Saket"],
-  Pune: ["Kothrud", "Hinjewadi", "Viman Nagar"],
-  Bangalore: ["Whitefield", "Koramangala", "Electronic City"],
-  Ahmedabad: ["Satellite", "Navrangpura", "Bopal"],
-  Surat: ["Adajan", "Vesu", "Katargam"],
-};
 
 let cache: Record<string, string[]> | null = null;
 
+type Item = { key: string; label: string; hint: string; params: Record<string, string> };
+
+/**
+ * Search box with live suggestions. Typing lists matching cities and areas; picking one (click, or arrow keys
+ * + Enter) opens that place straight away; plain Enter searches the typed words. With an empty box it offers
+ * popular cities and property types, one click each.
+ */
 export default function SearchBar({ size = "md" }: { size?: "md" | "lg" }) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const [expandedCity, setExpandedCity] = useState<string | null>(null);
-  const [localities, setLocalities] = useState<Record<string, string[]>>(cache ?? FALLBACK);
+  const [active, setActive] = useState(-1);
+  const [localities, setLocalities] = useState<Record<string, string[]>>(cache ?? {});
+  const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open || cache) return;
+    if (cache) return;
+    let cancelled = false;
     fetch("/api/localities")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data) {
+        if (data && !cancelled) {
           cache = data;
           setLocalities(data);
         }
       })
       .catch(() => {});
-  }, [open]);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const cities = Object.keys(localities);
+  useEffect(() => {
+    function close(e: MouseEvent) {
+      if (!boxRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
   const query = q.trim().toLowerCase();
+  const cities = Object.keys(localities);
 
-  const matchedLocalities = query
-    ? Object.entries(localities)
-        .flatMap(([city, list]) => list.filter((l) => l.toLowerCase().includes(query)).map((l) => ({ city, locality: l })))
-        .slice(0, 6)
-    : [];
-  const matchedCities = query ? cities.filter((c) => c.toLowerCase().includes(query)).slice(0, 4) : [];
+  const suggestions: Item[] = useMemo(() => {
+    if (!query) return [];
+    const out: Item[] = [];
+    for (const c of cities) {
+      if (c.toLowerCase().includes(query)) out.push({ key: `c-${c}`, label: c, hint: "City", params: { city: c, status: "all" } });
+    }
+    for (const [city, list] of Object.entries(localities)) {
+      for (const l of list) {
+        if (l.toLowerCase().includes(query)) out.push({ key: `a-${city}-${l}`, label: l, hint: `Area · ${city}`, params: { city, locality: l, status: "all" } });
+      }
+    }
+    // cities that start with the text first, then the rest
+    out.sort((a, b) => Number(b.label.toLowerCase().startsWith(query)) - Number(a.label.toLowerCase().startsWith(query)));
+    return out.slice(0, 8);
+  }, [query, cities, localities]);
 
   function go(params: Record<string, string>) {
-    const usp = new URLSearchParams(params);
-    router.push(`/properties?${usp.toString()}`);
+    router.push(`/properties?${new URLSearchParams(params).toString()}`);
     setOpen(false);
+    setActive(-1);
   }
 
+  function submit() {
+    if (active >= 0 && suggestions[active]) return go(suggestions[active].params);
+    go(q.trim() ? { q: q.trim(), status: "all" } : {});
+  }
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setOpen(true);
+      setActive((a) => Math.min(a + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((a) => Math.max(a - 1, -1));
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  }
+
+  const lg = size === "lg";
+  const popular = cities.slice(0, 12);
+
   return (
-    <div className="relative w-full text-left">
+    <div ref={boxRef} className="relative w-full text-left">
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          go(q ? { q } : {});
+          submit();
         }}
         className="flex items-center bg-white border border-brand-border rounded-xl overflow-hidden shadow-sm"
       >
         <input
           type="text"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setActive(-1);
+            setOpen(true);
+          }}
           onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
-          placeholder={size === "lg" ? "Search city, area (Kurla, Ghatkopar), bank or title" : "Search city, area, bank..."}
+          onKeyDown={onKeyDown}
+          placeholder={lg ? "Search city, area (Kurla, Mira Road), bank or title" : "Search city, area, bank..."}
           aria-label="Search auction properties"
-          className={`flex-1 min-w-0 outline-none px-4 text-black ${size === "lg" ? "py-3.5 text-base" : "py-2 text-sm"}`}
+          aria-autocomplete="list"
+          autoComplete="off"
+          className={`flex-1 min-w-0 outline-none px-4 text-black ${lg ? "py-3.5 text-base" : "py-2 text-sm"}`}
         />
-        <button type="submit" className={`bg-brand text-white font-medium hover:bg-brand-dark ${size === "lg" ? "px-6 py-3.5" : "px-4 py-2 text-sm"}`}>
+        {q && (
+          <button type="button" aria-label="Clear" onClick={() => { setQ(""); setActive(-1); }} className="px-2 text-brand-muted hover:text-black">
+            ✕
+          </button>
+        )}
+        <button type="submit" className={`bg-brand text-white font-medium hover:bg-brand-dark ${lg ? "px-6 py-3.5" : "px-4 py-2 text-sm"}`}>
           Search
         </button>
       </form>
 
       {open && (
-        <div className="absolute z-30 top-full mt-2 left-0 right-0 bg-white text-black border border-brand-border rounded-xl shadow-xl p-4 max-h-96 overflow-y-auto">
-          {query && (matchedCities.length > 0 || matchedLocalities.length > 0) && (
-            <div className="mb-3">
-              <div className="text-xs font-semibold text-brand-muted mb-2">Suggestions</div>
-              <div className="flex flex-col">
-                {matchedCities.map((c) => (
-                  <button key={c} type="button" onMouseDown={() => go({ city: c })} className="text-left text-sm px-2 py-1.5 rounded hover:bg-brand-bg">
-                    <span className="font-medium">{c}</span> <span className="text-xs text-brand-muted">· City</span>
+        <div className="absolute z-30 top-full mt-2 left-0 right-0 bg-white text-black border border-brand-border rounded-xl shadow-xl p-3 max-h-96 overflow-y-auto">
+          {query ? (
+            <>
+              <button
+                type="button"
+                onClick={() => go({ q: q.trim(), status: "all" })}
+                className="w-full text-left text-sm px-2 py-2 rounded hover:bg-brand-bg"
+              >
+                Search properties for <span className="font-semibold">“{q.trim()}”</span>
+              </button>
+              {suggestions.map((s, i) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => go(s.params)}
+                  onMouseEnter={() => setActive(i)}
+                  className={`w-full text-left text-sm px-2 py-2 rounded flex items-center justify-between gap-3 ${i === active ? "bg-brand-bg" : "hover:bg-brand-bg"}`}
+                >
+                  <span className="font-medium">{s.label}</span>
+                  <span className="text-xs text-brand-muted">{s.hint}</span>
+                </button>
+              ))}
+              {suggestions.length === 0 && <div className="text-xs text-brand-muted px-2 py-2">No matching city or area — press Search to look through titles and addresses.</div>}
+            </>
+          ) : (
+            <>
+              <div className="text-xs font-semibold text-brand-muted px-2 mb-2">Popular cities</div>
+              <div className="flex flex-wrap gap-2 mb-4 px-1">
+                {popular.length === 0 && <span className="text-xs text-brand-muted px-1">Loading…</span>}
+                {popular.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => go({ city: c, status: "all" })}
+                    className="text-xs px-3 py-1.5 rounded-full border border-brand-border hover:border-brand hover:bg-brand hover:text-white transition-colors"
+                  >
+                    {c}
                   </button>
                 ))}
-                {matchedLocalities.map((m) => (
+                <a href="/cities" className="text-xs px-3 py-1.5 rounded-full text-brand font-medium hover:underline">All cities →</a>
+              </div>
+              <div className="text-xs font-semibold text-brand-muted px-2 mb-2">Property types</div>
+              <div className="flex flex-wrap gap-2 px-1">
+                {QUICK_TYPES.map((t) => (
                   <button
-                    key={`${m.city}-${m.locality}`}
+                    key={t.value}
                     type="button"
-                    onMouseDown={() => go({ city: m.city, locality: m.locality })}
-                    className="text-left text-sm px-2 py-1.5 rounded hover:bg-brand-bg"
+                    onClick={() => go({ category: t.value, status: "all" })}
+                    className="text-xs px-3 py-1.5 rounded-full border border-brand-border hover:border-brand hover:bg-brand hover:text-white transition-colors"
                   >
-                    <span className="font-medium">{m.locality}</span> <span className="text-xs text-brand-muted">· {m.city}</span>
+                    {t.label}
                   </button>
                 ))}
               </div>
-            </div>
-          )}
-
-          <div className="text-xs font-semibold text-brand-muted mb-2">Property types</div>
-          <div className="flex flex-wrap gap-2 mb-3">
-            {QUICK_TYPES.map((t) => (
-              <button
-                key={t.value}
-                type="button"
-                onMouseDown={() => go({ category: t.value })}
-                className="text-xs px-3 py-1.5 rounded-full border border-brand-border hover:border-brand hover:text-brand"
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="text-xs font-semibold text-brand-muted mb-2">Browse by city</div>
-          <div className="flex flex-wrap gap-2 mb-1">
-            {cities.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setExpandedCity((prev) => (prev === c ? null : c));
-                }}
-                className={`text-xs px-3 py-1.5 rounded-full border ${expandedCity === c ? "bg-brand text-white border-brand" : "border-brand-border hover:border-brand hover:text-brand"}`}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-
-          {expandedCity && (
-            <div className="mt-3 pl-3 border-l-2 border-gold">
-              <div className="text-xs font-semibold text-brand-muted mb-2">Areas in {expandedCity}</div>
-              <div className="flex flex-wrap gap-2 mb-2">
-                {(localities[expandedCity] ?? []).map((loc) => (
-                  <button
-                    key={loc}
-                    type="button"
-                    onMouseDown={() => go({ city: expandedCity, locality: loc })}
-                    className="text-xs px-3 py-1 rounded-full bg-brand-bg hover:bg-brand-border"
-                  >
-                    {loc}
-                  </button>
-                ))}
-              </div>
-              <button type="button" onMouseDown={() => go({ city: expandedCity })} className="text-xs text-brand font-medium hover:underline">
-                View all in {expandedCity} →
-              </button>
-            </div>
+            </>
           )}
         </div>
       )}

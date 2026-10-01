@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
+import { isMasterAdmin } from "@/lib/auth/adminAuth";
 import { ensureSiteSettingsRow, SETTINGS_TAG } from "@/lib/queries/siteSettings";
 import { revalidatePath, updateTag } from "next/cache";
 import type { SaveState } from "@/components/admin/SettingsForm";
@@ -9,6 +10,7 @@ const MAX_IMAGE_BYTES = 400 * 1024;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon", "image/gif"];
 
 export async function saveSiteSettings(_prev: SaveState, formData: FormData): Promise<SaveState> {
+  if (!(await isMasterAdmin())) return { ok: false, message: "Only the master admin can do this." };
   try {
     await save(formData);
     return { ok: true, message: "Saved — live on the site now." };
