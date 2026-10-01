@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import ScrollRow from "./ScrollRow";
 
 export interface CityEntry {
   city: string;
@@ -31,20 +32,28 @@ export default function CityDirectory({ groups }: { groups: StateGroup[] }) {
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+      {/* Search on top; the state chips below it form one swipeable row (arrows on desktop). */}
+      <div className="mb-6 pb-4 border-b border-brand-border">
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search a state or city…"
           aria-label="Search a state or city"
-          className="w-full sm:w-80 border border-brand-border rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand"
+          className="w-full sm:max-w-md border border-brand-border rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand"
         />
-        <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {groups.slice(0, 12).map((g) => (
-            <a key={g.state} href={`#state-${g.state.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`} className="whitespace-nowrap text-xs px-3 py-1.5 rounded-full border border-brand-border bg-white hover:border-brand hover:text-brand">
-              {g.state} <span className="text-brand-muted">{g.total}</span>
-            </a>
-          ))}
+        <div className="mt-3 flex items-center gap-2">
+          <span className="shrink-0 text-xs font-semibold text-brand-muted">States</span>
+          <ScrollRow className="flex-1" tone="page">
+            {groups.map((g) => (
+              <a
+                key={g.state}
+                href={`#state-${g.state.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                className="snap-start shrink-0 whitespace-nowrap text-xs px-3.5 py-2 rounded-full border border-brand-border bg-white hover:border-brand hover:text-brand active:bg-brand-bg"
+              >
+                {g.state} <span className="text-brand-muted">{g.total}</span>
+              </a>
+            ))}
+          </ScrollRow>
         </div>
       </div>
 
@@ -66,7 +75,7 @@ export default function CityDirectory({ groups }: { groups: StateGroup[] }) {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-x-4 gap-y-2">
                 {g.cities.map((c) => (
                   <Link key={c.slug} href={`/city/${c.slug}`} className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm hover:bg-brand-bg">
-                    <span className="truncate">{c.city}</span>
+                    <span className="leading-tight break-words min-w-0 text-[13px] sm:text-sm">{c.city}</span>
                     <span className="text-xs text-brand-muted shrink-0">{c.count}</span>
                   </Link>
                 ))}
