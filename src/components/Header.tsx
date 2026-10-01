@@ -19,9 +19,9 @@ const NAV = [
 export default async function Header() {
   const settings = await getSiteSettings();
   return (
-    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-brand-border">
+    <header className="sticky top-0 z-50 bg-white border-b border-brand-border">
       <div className="bg-brand text-white">
-        <div className="w-full px-5 lg:px-10 xl:px-16 py-2 flex items-center justify-between text-[11px]">
+        <div className="w-full px-5 lg:px-10 xl:px-16 py-2.5 flex items-center justify-between text-xs">
           <div className="flex min-w-0 flex-wrap gap-x-4 gap-y-0.5 sm:gap-x-5">
             <a href={`tel:${settings.phone.replace(/\s/g, "")}`}>{settings.phone}</a>
             <a className="text-white/75 break-all" href={`mailto:${settings.generalEmail}`}>{settings.generalEmail}</a>

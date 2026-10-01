@@ -1,8 +1,10 @@
 import type { BlogPost } from "@prisma/client";
+import MediaPicker from "@/components/admin/MediaPicker";
 
-export default function PostForm({ post, action }: { post?: BlogPost; action: (formData: FormData) => void }) {
+export default function PostForm({ post, action, error }: { post?: BlogPost; action: (formData: FormData) => void; error?: string }) {
   return (
     <form action={action} className="space-y-4 max-w-2xl bg-white border border-brand-border rounded-xl p-5">
+      {error && <div role="alert" className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>}
       <div>
         <label className="block text-sm font-medium mb-1">Title</label>
         <input name="title" defaultValue={post?.title} required className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
@@ -23,8 +25,17 @@ export default function PostForm({ post, action }: { post?: BlogPost; action: (f
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium mb-1">Cover Image URL</label>
-        <input name="coverImageUrl" defaultValue={post?.coverImageUrl ?? ""} className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
+        <label className="block text-sm font-medium mb-1">Cover image <span className="font-normal text-brand-muted">(JPG, PNG or WebP under 1.5 MB; 1200 × 750 px works well)</span></label>
+        {post?.coverImageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={post.coverImageUrl} alt="Current cover" className="mb-2 h-32 w-auto rounded-lg border border-brand-border object-cover" />
+        )}
+        <input type="file" name="coverFile" accept="image/jpeg,image/png,image/webp" className="block w-full text-sm" />
+        <p className="mt-1 text-xs text-brand-muted">Uploading saves the picture in the Media Library too. Or pick one already there, or paste a link:</p>
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <input name="coverImageUrl" defaultValue={post?.coverImageUrl ?? ""} placeholder="/api/media/… or https://…" className="min-w-0 flex-1 border border-brand-border rounded-lg px-3 py-2 text-sm" />
+          <MediaPicker mode="url" inputName="coverImageUrl" />
+        </div>
       </div>
       <div>
         <label className="block text-sm font-medium mb-1">Body <span className="font-normal text-brand-muted">(blank line = new paragraph, "- " = bullet, **bold**)</span></label>
