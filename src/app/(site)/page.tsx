@@ -2,22 +2,16 @@ import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import PropertyCarousel from "@/components/PropertyCarousel";
 import { toPropertyCardData } from "@/lib/queries/listProperties";
-import SearchBar from "@/components/SearchBar";
+import HeroSearch from "@/components/HeroSearch";
+import ResponsiveImage from "@/components/ResponsiveImage";
 import BlogCarousel from "@/components/BlogCarousel";
 import AuctionCountdownTable, { CountdownRow } from "@/components/AuctionCountdownTable";
-import { getCityCounts } from "@/lib/queries/cities";
-import { getLocalityMap } from "@/lib/queries/localities";
+import { getCityCounts, citySlug } from "@/lib/queries/cities";
+import { getHomeConfig } from "@/lib/queries/homeConfig";
+import { canonCity } from "@/lib/pipeline/locations";
+import { PROPERTY_TYPE_TILES, cityKey, getImageVersions, heroKey, imageUrl, typeKey } from "@/lib/siteImages";
 
 export const revalidate = 120;
-
-const PROPERTY_TYPES = [
-  { label: "Residential", category: "RESIDENTIAL" },
-  { label: "Commercial", category: "COMMERCIAL" },
-  { label: "Industrial", category: "INDUSTRIAL" },
-  { label: "Land & Plot", category: "LAND_PLOT" },
-  { label: "Agricultural", category: "AGRICULTURAL" },
-  { label: "Vehicles", category: "VEHICLE" },
-];
 
 const WHY_CHOOSE = [
   { title: "Source-backed information", body: "Every figure and fact traces back to an official auction notice — nothing is invented." },
@@ -27,7 +21,7 @@ const WHY_CHOOSE = [
 ];
 
 export default async function Home() {
-  const [activeListings, banksCovered, upcomingAuctions, featured, cityGroups, topBanks, countdownAuctions, localityMap] = await Promise.all([
+  const [activeListings, banksCovered, upcomingAuctions, featured, cityCounts, topBanks, countdownAuctions, config, versions, typeGroups] = await Promise.all([
     prisma.property.count({ where: { status: "PUBLISHED" } }),
     prisma.bank.count({ where: { auctions: { some: { property: { status: "PUBLISHED" } } } } }),
     prisma.auction.count({ where: { status: { in: ["UPCOMING", "LIVE", "AUCTION_TODAY"] }, property: { status: "PUBLISHED" } } }),
@@ -49,7 +43,9 @@ export default async function Home() {
       take: 40,
       include: { bank: true, property: true },
     }),
-    getLocalityMap(),
+    getHomeConfig(),
+    getImageVersions(),
+    prisma.property.groupBy({ by: ["category"], where: { status: "PUBLISHED" }, _count: { _all: true } }),
   ]);
 
   const stats = [
@@ -58,10 +54,10 @@ export default async function Home() {
     { label: "Upcoming Auctions", value: upcomingAuctions },
   ];
 
-  // First six cities (priority cities lead, then by listing count): 3 columns x 2 rows on the home page.
-  // One row per property (soonest auction) -- a property can legitimately
-  // have multiple auction events (re-listings), but listing each separately
-  // here reads as a duplicate bug rather than useful information.
+  const countByCity = new Map(cityCounts.map((c) => [c.city, c.count]));
+  const countByType = new Map(typeGroups.map((g) => [g.category, g._count._all]));
+
+  // One row per property (soonest auction): a property can have several auction events, which would read as duplicates.
   const seenPropertyIds = new Set<string>();
   const countdownRows: CountdownRow[] = [];
   for (const a of countdownAuctions) {
@@ -78,53 +74,104 @@ export default async function Home() {
     });
   }
 
+  const heroDesktop = imageUrl(versions, heroKey("d"));
+  const heroMobile = imageUrl(versions, heroKey("m"));
+  const hasHeroImage = !!(heroDesktop || heroMobile);
+
   return (
     <main>
-      <section className="relative bg-brand overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-[0.07]"
-          style={{
-            backgroundImage: "radial-gradient(circle, #fff 1px, transparent 1px)",
-            backgroundSize: "22px 22px",
-          }}
-        />
-        <div className="relative w-full px-5 lg:px-10 xl:px-16 pt-20 pb-16 text-center">
-          <span className="inline-block text-xs font-semibold tracking-wide text-gold bg-white/10 px-3 py-1 rounded-full mb-5">
+      {/* HERO: background pictures come from Admin → Home Page (1440×480 desktop, 1080×1350 mobile). */}
+      <section className="relative z-20 bg-brand">
+        {hasHeroImage ? (
+          <>
+            <ResponsiveImage desktop={heroDesktop} mobile={heroMobile} priority className="absolute inset-0 -z-20 h-full w-full object-cover" />
+            <div className="absolute inset-0 -z-10 bg-gradient-to-b md:bg-gradient-to-r from-brand/85 via-brand/55 to-brand/25" />
+          </>
+        ) : (
+          <div
+            className="absolute inset-0 -z-10 opacity-[0.07]"
+            style={{ backgroundImage: "radial-gradient(circle, #fff 1px, transparent 1px)", backgroundSize: "22px 22px" }}
+          />
+        )}
+        <div className="w-full px-5 lg:px-10 xl:px-16 py-14 md:py-16 min-h-[520px] md:min-h-[480px] flex flex-col justify-center">
+          <span className="self-start text-[11px] font-semibold tracking-wide text-gold bg-white/10 backdrop-blur px-3 py-1 rounded-full mb-4">
             INDIA&apos;S BANK AUCTION DISCOVERY PLATFORM
           </span>
-          <h1 className="text-3xl sm:text-5xl font-bold text-white max-w-3xl mx-auto leading-tight">
-            Find Bank Auction Properties With Confidence
-          </h1>
-          <p className="text-white/70 mt-4 max-w-xl mx-auto">
-            Residential, commercial, industrial, agricultural and land auctions from banks across India —
-            discovered, verified, and kept up to date automatically.
-          </p>
-
-          <div className="max-w-xl mx-auto mt-8">
-            <SearchBar size="lg" />
-          </div>
-
-          <div className="flex items-center justify-center gap-3 mt-6">
-            <Link href="/properties" className="bg-gold text-white px-6 py-2.5 rounded-lg font-medium hover:bg-gold-dark">
-              Explore Auctions
-            </Link>
-            <Link href="/how-it-works" className="border border-white/30 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-white/10">
-              How It Works
-            </Link>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white max-w-3xl leading-tight">{config.heroTitle}</h1>
+          <p className="text-white/80 mt-4 max-w-2xl text-sm sm:text-base">{config.heroSubtitle}</p>
+          <div className="mt-8 max-w-5xl">
+            <HeroSearch />
           </div>
         </div>
       </section>
 
-      <div className="relative max-w-4xl mx-auto px-5 -mt-10 grid grid-cols-3 gap-4">
+      <div className="w-full px-5 lg:px-10 xl:px-16 -mt-6 relative z-10 grid grid-cols-3 gap-3 sm:gap-4 max-w-3xl">
         {stats.map((s) => (
-          <div key={s.label} className="bg-white border border-brand-border rounded-2xl py-5 text-center shadow-sm">
-            <div className="text-2xl font-bold text-brand">{s.value}</div>
-            <div className="text-xs text-brand-muted mt-1">{s.label}</div>
+          <div key={s.label} className="bg-white border border-brand-border rounded-2xl py-4 text-center shadow-sm">
+            <div className="text-xl sm:text-2xl font-bold text-brand">{s.value.toLocaleString("en-IN")}</div>
+            <div className="text-[11px] sm:text-xs text-brand-muted mt-1">{s.label}</div>
           </div>
         ))}
       </div>
 
-      <section className="w-full px-5 lg:px-10 xl:px-16 pt-14 pb-12">
+      {/* EXPLORE BY CITY: 8 tiles, 2 rows of 4 on desktop (picture 221×148). */}
+      <section className="w-full px-5 lg:px-10 xl:px-16 pt-14 pb-6">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-xl sm:text-2xl font-bold text-brand">Explore by City</h2>
+          <Link href="/cities" className="text-sm font-medium text-brand hover:underline">See All →</Link>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-6 md:gap-x-6">
+          {config.cities.slice(0, 8).map((name) => {
+            const city = canonCity(name);
+            const d = imageUrl(versions, cityKey(name, "d"));
+            const m = imageUrl(versions, cityKey(name, "m"));
+            const count = countByCity.get(city) ?? 0;
+            return (
+              <Link key={name} href={`/properties?city=${encodeURIComponent(city)}&status=all`} className="group block text-center">
+                <div className="relative aspect-[221/148] rounded-2xl overflow-hidden bg-gradient-to-br from-brand to-brand-dark shadow-sm group-hover:shadow-lg transition-shadow">
+                  {d || m ? (
+                    <ResponsiveImage desktop={d} mobile={m} alt={name} className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-white/90 text-2xl font-semibold tracking-wide">{city}</div>
+                  )}
+                </div>
+                <div className="mt-2.5 text-sm font-semibold text-black/90">{name}</div>
+                <div className="text-xs text-brand-muted">{count} listing{count === 1 ? "" : "s"}</div>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ASSETS AVAILABLE: five property-type cards (picture 236×300); a swipeable row on mobile. */}
+      <section className="w-full px-5 lg:px-10 xl:px-16 py-10">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-xl sm:text-2xl font-bold text-brand">Assets Available</h2>
+          <Link href="/property-types" className="text-sm font-medium text-brand hover:underline">All types →</Link>
+        </div>
+        <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-3 -mx-5 px-5 md:mx-0 md:px-0 md:grid md:grid-cols-5 md:gap-5 md:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {PROPERTY_TYPE_TILES.map((t) => {
+            const d = imageUrl(versions, typeKey(t.value, "d"));
+            const m = imageUrl(versions, typeKey(t.value, "m"));
+            return (
+              <Link
+                key={t.value}
+                href={`/properties?category=${t.value}&status=all`}
+                className="group relative shrink-0 w-[62%] sm:w-[40%] md:w-auto snap-start aspect-[236/300] rounded-2xl overflow-hidden bg-gradient-to-br from-brand to-brand-dark shadow-sm hover:shadow-xl transition-shadow"
+              >
+                {(d || m) && <ResponsiveImage desktop={d} mobile={m} alt={t.label} className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
+                <div className="absolute left-4 bottom-4 text-white">
+                  <div className="text-3xl font-bold leading-none">{(countByType.get(t.value) ?? 0).toLocaleString("en-IN")}</div>
+                  <div className="text-sm mt-1 text-white/90">{t.label}</div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="w-full px-5 lg:px-10 xl:px-16 py-10">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl sm:text-2xl font-bold text-brand">Featured Bank Auction Properties</h2>
           <Link href="/properties" className="text-sm text-brand font-medium">View all →</Link>
@@ -132,66 +179,12 @@ export default async function Home() {
         <PropertyCarousel properties={featured.map(toPropertyCardData)} />
       </section>
 
-      <section className="w-full px-5 lg:px-10 xl:px-16 py-12">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl sm:text-2xl font-bold text-brand">Upcoming Auctions</h2>
-          <Link href="/auctions" className="text-sm text-brand font-medium">View all auctions →</Link>
-        </div>
-        <AuctionCountdownTable rows={countdownRows} />
+      <section className="w-full px-5 lg:px-10 xl:px-16 py-10">
+        <h2 className="text-xl sm:text-2xl font-bold text-brand mb-5">Upcoming Auctions</h2>
+        <AuctionCountdownTable rows={countdownRows} viewAllHref="/properties?status=active" />
       </section>
 
-      <section className="w-full px-5 lg:px-10 xl:px-16 py-12">
-        <h2 className="text-xl sm:text-2xl font-bold text-brand mb-5">Browse by Property Type</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-          {PROPERTY_TYPES.map((t) => (
-            <Link
-              key={t.category}
-              href={`/property-type/${t.category.toLowerCase()}`}
-              className="bg-white border border-brand-border rounded-xl py-6 text-center text-sm font-medium hover:border-brand hover:text-brand transition-colors"
-            >
-              {t.label}
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className="w-full px-5 lg:px-10 xl:px-16 py-12">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-xl sm:text-2xl font-bold text-brand">Browse by Location</h2>
-          <Link href="/cities" className="text-sm font-medium text-brand border border-brand-border rounded-lg px-4 py-2 hover:bg-brand hover:text-white transition-colors">
-            View all locations →
-          </Link>
-        </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {cityGroups.slice(0, 6).map((c) => {
-            const areas = localityMap[c.city] ?? [];
-            return (
-              <div key={c.slug} className="bg-white border border-brand-border rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <Link href={`/properties?city=${encodeURIComponent(c.city)}&status=all`} className="font-semibold text-brand hover:underline">
-                    {c.city}
-                  </Link>
-                  <span className="text-xs text-brand-muted">{c.count} listing{c.count === 1 ? "" : "s"}</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5 min-h-[2rem]">
-                  {areas.slice(0, 6).map((a) => (
-                    <Link
-                      key={a}
-                      href={`/properties?city=${encodeURIComponent(c.city)}&locality=${encodeURIComponent(a)}&status=all`}
-                      className="text-xs px-2.5 py-1 rounded-full bg-brand-bg text-black/70 hover:bg-brand hover:text-white transition-colors"
-                    >
-                      {a}
-                    </Link>
-                  ))}
-                  {areas.length === 0 && <span className="text-xs text-brand-muted">Browse all listings in {c.city}</span>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="w-full px-5 lg:px-10 xl:px-16 py-12">
+      <section className="w-full px-5 lg:px-10 xl:px-16 py-10">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl sm:text-2xl font-bold text-brand">Browse by Bank</h2>
           <Link href="/banks" className="text-sm text-brand font-medium">All banks →</Link>
@@ -210,7 +203,7 @@ export default async function Home() {
         )}
       </section>
 
-      <section className="w-full px-5 lg:px-10 xl:px-16 py-12">
+      <section className="w-full px-5 lg:px-10 xl:px-16 py-10">
         <h2 className="text-xl sm:text-2xl font-bold text-brand mb-5">Why Choose BankAuction.co?</h2>
         <div className="grid sm:grid-cols-2 gap-5">
           {WHY_CHOOSE.map((w) => (
@@ -222,7 +215,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="w-full px-5 lg:px-10 xl:px-16 py-12">
+      <section className="w-full px-5 lg:px-10 xl:px-16 py-10">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl sm:text-2xl font-bold text-brand">Bank Auction Insights</h2>
           <Link href="/blog" className="text-sm text-brand font-medium">View all →</Link>

@@ -1,34 +1,39 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { getCityCounts } from "@/lib/queries/cities";
+import CityDirectory, { type StateGroup } from "@/components/CityDirectory";
+import { getPlaces } from "@/lib/queries/places";
+import { citySlug } from "@/lib/queries/cities";
 
 export const revalidate = 120;
 
 export const metadata: Metadata = {
-  title: "Bank Auction Properties by City",
-  description: "Find bank auction properties by city across India: Mumbai, Delhi, Pune, Bangalore, Hyderabad and more, with reserve prices and auction dates.",
+  title: "Bank Auction Properties by State and City",
+  description: "Find bank auction properties by state and city across India: Maharashtra, Gujarat, Karnataka, Tamil Nadu and more, with reserve prices and auction dates.",
   alternates: { canonical: "/cities" },
 };
 
 export default async function CitiesPage() {
-  const cities = await getCityCounts();
+  const { cities } = await getPlaces();
+
+  const byState = new Map<string, StateGroup>();
+  for (const c of cities) {
+    const state = c.state ?? "Other";
+    const g = byState.get(state) ?? { state, total: 0, cities: [] };
+    g.total += c.count;
+    g.cities.push({ city: c.city, slug: citySlug(c.city), count: c.count });
+    byState.set(state, g);
+  }
+  const groups = [...byState.values()]
+    .map((g) => ({ ...g, cities: g.cities.sort((a, b) => b.count - a.count || a.city.localeCompare(b.city)) }))
+    .sort((a, b) => (a.state === "Other" ? 1 : b.state === "Other" ? -1 : b.total - a.total || a.state.localeCompare(b.state)));
 
   return (
     <main className="w-full px-5 lg:px-10 xl:px-16 py-10">
-      <h1 className="text-2xl font-semibold mb-1">Browse by Location</h1>
-      <p className="text-brand-muted text-sm mb-6">Every city with live bank auction properties, most listings first.</p>
-
-      {cities.length === 0 ? (
+      <h1 className="text-2xl font-semibold mb-1">Browse by State and City</h1>
+      <p className="text-brand-muted text-sm mb-6">Every state and city with live bank auction properties, with the number of listings.</p>
+      {groups.length === 0 ? (
         <p className="text-brand-muted text-sm py-10 text-center">No published listings with a location yet.</p>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-          {cities.map((c) => (
-            <Link key={c.slug} href={`/city/${c.slug}`} className="bg-white border border-brand-border rounded-xl p-4 hover:border-brand transition-colors">
-              <div className="font-semibold">{c.city}</div>
-              <div className="text-xs text-brand-muted mt-1">{c.count} listing{c.count === 1 ? "" : "s"}</div>
-            </Link>
-          ))}
-        </div>
+        <CityDirectory groups={groups} />
       )}
     </main>
   );

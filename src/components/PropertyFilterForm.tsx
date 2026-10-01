@@ -2,13 +2,16 @@
 
 import { useState } from "react";
 import Dropdown from "./Dropdown";
+import type { PlaceData } from "@/lib/queries/places";
 
 interface Props {
   localities: Record<string, string[]>;
+  places: PlaceData;
   banks: { id: string; name: string }[];
   categories: { label: string; value: string }[];
   initial: {
     q?: string;
+    state?: string;
     city?: string;
     locality?: string;
     category?: string;
@@ -22,15 +25,17 @@ interface Props {
 const field = "w-full border border-brand-border rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand";
 const label = "block text-[11px] font-semibold text-brand-muted mb-1 uppercase tracking-wide";
 
-export default function PropertyFilterForm({ localities, banks, categories, initial }: Props) {
+export default function PropertyFilterForm({ localities, places, banks, categories, initial }: Props) {
+  const [state, setState] = useState(initial.state ?? "");
   const [city, setCity] = useState(initial.city ?? "");
   const [locality, setLocality] = useState(initial.locality ?? "");
   const [category, setCategory] = useState(initial.category ?? "");
   const [bank, setBank] = useState(initial.bank ?? "");
   const [status, setStatus] = useState(initial.status ?? "active");
-  const activeCount = [initial.q, initial.city, initial.locality, initial.category, initial.bank, initial.priceMin, initial.priceMax].filter(Boolean).length;
+  const activeCount = [initial.q, initial.state, initial.city, initial.locality, initial.category, initial.bank, initial.priceMin, initial.priceMax].filter(Boolean).length;
   const [open, setOpen] = useState(activeCount > 0);
-  const cities = Object.keys(localities);
+  // Choosing a state narrows the city list to that state's cities.
+  const cities = state ? places.cities.filter((c) => c.state?.toLowerCase() === state.toLowerCase()).map((c) => c.city) : Object.keys(localities);
   const areas = city ? (localities[city] ?? []) : [];
 
   return (
@@ -48,6 +53,18 @@ export default function PropertyFilterForm({ localities, banks, categories, init
         <div className="col-span-2">
           <label className={label}>Keyword</label>
           <input type="text" name="q" defaultValue={initial.q} placeholder="Title, address, keyword..." className={field} />
+        </div>
+        <div>
+          <label className={label}>State</label>
+          <Dropdown
+            name="state"
+            value={state}
+            onChange={(v) => { setState(v); setCity(""); setLocality(""); }}
+            options={places.states.map((s) => ({ value: s.name, label: s.name }))}
+            placeholder="All states"
+            searchable
+            className={field}
+          />
         </div>
         <div>
           <label className={label}>City</label>

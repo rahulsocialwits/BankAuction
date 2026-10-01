@@ -746,6 +746,31 @@ model SourceRunLog {
 }
 
 // Single-row developer settings for the AI (Relay Models) layer. Environment variables are the fallback.
+// Images uploaded by the master admin (home hero, city and property-type tiles). Served by /api/img/[key]
+// with long-lived caching, so a large picture is never embedded in page HTML.
+model SiteImage {
+  key         String   @id // e.g. "hero-desktop", "city-mumbai-d", "type-RESIDENTIAL-m"
+  contentType String
+  data        Bytes
+  sizeBytes   Int      @default(0)
+  width       Int?
+  height      Int?
+  updatedAt   DateTime @updatedAt
+
+  @@map("site_images")
+}
+
+// Single-row home page content that the master admin edits.
+model HomeConfig {
+  id           String   @id @default("default")
+  heroTitle    String?
+  heroSubtitle String?  @db.Text
+  cities       String?  @db.Text // JSON array of the 8 city names shown in "Explore by City"
+  updatedAt    DateTime @updatedAt
+
+  @@map("home_config")
+}
+
 // Single-row payment gateway settings. Secret keys live in environment variables only, never here.
 model PaymentSettings {
   id        String   @id @default("default")

@@ -9,6 +9,7 @@ export interface PropertyFilters {
   bankId?: string;
   addressText?: string;
   keyword?: string;
+  state?: string;
   city?: string;
   locality?: string;
   statusGroup?: StatusGroup;
@@ -44,6 +45,10 @@ export async function listPublishedProperties(filters: PropertyFilters = {}, tak
   const and: Prisma.PropertyWhereInput[] = [];
   if (filters.keyword) and.push(textMatch(filters.keyword));
   // AI-verified place first (exact); listings the AI has not checked yet fall back to a text match.
+  if (filters.state) {
+    const state = filters.state;
+    and.push({ OR: [{ geoState: { equals: state, mode: "insensitive" } }, { AND: [{ geoCheckedAt: null }, textMatch(state)] }] });
+  }
   if (filters.city) {
     const city = canonCity(filters.city);
     and.push({ OR: [{ geoCity: { equals: city, mode: "insensitive" } }, { AND: [{ geoCheckedAt: null }, textMatch(filters.city)] }] });

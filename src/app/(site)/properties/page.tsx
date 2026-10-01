@@ -3,6 +3,7 @@ import PropertyCard from "@/components/PropertyCard";
 import PropertyFilterForm from "@/components/PropertyFilterForm";
 import { listPublishedProperties, toPropertyCardData, StatusGroup } from "@/lib/queries/listProperties";
 import { getLocalityMap } from "@/lib/queries/localities";
+import { getPlaces } from "@/lib/queries/places";
 import { prisma } from "@/lib/db/prisma";
 import { PropertyCategory } from "@prisma/client";
 
@@ -16,11 +17,11 @@ const CATEGORIES: { label: string; value: PropertyCategory }[] = [
   { label: "Agricultural", value: "AGRICULTURAL" },
 ];
 
-type SP = { category?: string; q?: string; bank?: string; city?: string; locality?: string; status?: string; priceMin?: string; priceMax?: string };
+type SP = { category?: string; q?: string; bank?: string; state?: string; city?: string; locality?: string; status?: string; priceMin?: string; priceMax?: string };
 
 function placeLabel(sp: SP) {
   if (sp.locality && sp.city) return `${sp.locality}, ${sp.city}`;
-  return sp.city ?? sp.locality ?? "";
+  return sp.city ?? sp.locality ?? sp.state ?? "";
 }
 
 export async function generateMetadata({ searchParams }: { searchParams: Promise<SP> }): Promise<Metadata> {
@@ -46,15 +47,16 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 
 export default async function PropertiesPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
-  const { category, q, bank, city, locality, status, priceMin, priceMax } = sp;
+  const { category, q, bank, state, city, locality, status, priceMin, priceMax } = sp;
   const validCategory = CATEGORIES.find((c) => c.value === category)?.value;
   const statusGroup: StatusGroup = status === "completed" || status === "all" ? status : "active";
 
-  const [properties, banks, localities] = await Promise.all([
+  const [properties, banks, localities, places] = await Promise.all([
     listPublishedProperties(
       {
         category: validCategory,
         keyword: q || undefined,
+        state: state || undefined,
         city: city || undefined,
         locality: locality || undefined,
         statusGroup,
@@ -66,6 +68,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
     ),
     prisma.bank.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     getLocalityMap(),
+    getPlaces(),
   ]);
 
   const place = placeLabel(sp);
@@ -79,9 +82,10 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
 
       <PropertyFilterForm
         localities={localities}
+        places={places}
         banks={banks}
         categories={CATEGORIES}
-        initial={{ q, city, locality, category: validCategory, bank, status: statusGroup, priceMin, priceMax }}
+        initial={{ q, state, city, locality, category: validCategory, bank, status: statusGroup, priceMin, priceMax }}
       />
 
       {properties.length === 0 ? (

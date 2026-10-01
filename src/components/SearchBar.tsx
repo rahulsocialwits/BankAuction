@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { PlaceData } from "@/lib/queries/places";
 
 const QUICK_TYPES = [
   { label: "Residential", value: "RESIDENTIAL" },
@@ -11,7 +12,7 @@ const QUICK_TYPES = [
   { label: "Agricultural", value: "AGRICULTURAL" },
 ];
 
-let cache: Record<string, string[]> | null = null;
+let cache: PlaceData | null = null;
 
 type Item = { key: string; label: string; hint: string; params: Record<string, string> };
 
@@ -25,18 +26,18 @@ export default function SearchBar({ size = "md", onDone }: { size?: "md" | "lg";
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
-  const [localities, setLocalities] = useState<Record<string, string[]>>(cache ?? {});
+  const [places, setPlaces] = useState<PlaceData | null>(cache);
   const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (cache) return;
     let cancelled = false;
-    fetch("/api/localities")
+    fetch("/api/places")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data && !cancelled) {
           cache = data;
-          setLocalities(data);
+          setPlaces(data);
         }
       })
       .catch(() => {});
@@ -54,23 +55,22 @@ export default function SearchBar({ size = "md", onDone }: { size?: "md" | "lg";
   }, []);
 
   const query = q.trim().toLowerCase();
-  const cities = Object.keys(localities);
-
   const suggestions: Item[] = useMemo(() => {
-    if (!query) return [];
+    if (!query || !places) return [];
     const out: Item[] = [];
-    for (const c of cities) {
-      if (c.toLowerCase().includes(query)) out.push({ key: `c-${c}`, label: c, hint: "City", params: { city: c, status: "all" } });
+    for (const s of places.states) {
+      if (s.name.toLowerCase().includes(query)) out.push({ key: `s-${s.name}`, label: s.name, hint: "State", params: { state: s.name, status: "all" } });
     }
-    for (const [city, list] of Object.entries(localities)) {
-      for (const l of list) {
-        if (l.toLowerCase().includes(query)) out.push({ key: `a-${city}-${l}`, label: l, hint: `Area · ${city}`, params: { city, locality: l, status: "all" } });
-      }
+    for (const c of places.cities) {
+      if (c.city.toLowerCase().includes(query)) out.push({ key: `c-${c.city}`, label: c.city, hint: c.state ? `City · ${c.state}` : "City", params: { ...(c.state ? { state: c.state } : {}), city: c.city, status: "all" } });
     }
-    // cities that start with the text first, then the rest
+    for (const a of places.areas) {
+      if (a.area.toLowerCase().includes(query)) out.push({ key: `a-${a.city}-${a.area}`, label: a.area, hint: `Area · ${a.city}`, params: { city: a.city, locality: a.area, status: "all" } });
+    }
+    // names that start with the text first, then the rest
     out.sort((a, b) => Number(b.label.toLowerCase().startsWith(query)) - Number(a.label.toLowerCase().startsWith(query)));
     return out.slice(0, 8);
-  }, [query, cities, localities]);
+  }, [query, places]);
 
   function go(params: Record<string, string>) {
     router.push(`/properties?${new URLSearchParams(params).toString()}`);
@@ -98,7 +98,7 @@ export default function SearchBar({ size = "md", onDone }: { size?: "md" | "lg";
   }
 
   const lg = size === "lg";
-  const popular = cities.slice(0, 12);
+  const popular = (places?.cities ?? []).slice(0, 12).map((c) => c.city);
 
   return (
     <div ref={boxRef} className="relative w-full text-left">
@@ -119,7 +119,7 @@ export default function SearchBar({ size = "md", onDone }: { size?: "md" | "lg";
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder={lg ? "Search city, area (Kurla, Mira Road), bank or title" : "Search city, area, bank..."}
+          placeholder={lg ? "Search state, city, area, bank or title" : "Search state, city, bank…"}
           aria-label="Search auction properties"
           aria-autocomplete="list"
           autoComplete="off"

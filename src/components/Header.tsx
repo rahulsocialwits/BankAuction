@@ -9,9 +9,7 @@ import AccountLink from "./AccountLink";
 const NAV = [
   { href: "/", label: "Home" },
   { href: "/properties", label: "Properties" },
-  { href: "/auctions", label: "Auctions" },
   { href: "/banks", label: "Banks" },
-  { href: "/cities", label: "Cities" },
   { href: "/how-it-works", label: "How It Works" },
   { href: "/blog", label: "Insights" },
 ];
