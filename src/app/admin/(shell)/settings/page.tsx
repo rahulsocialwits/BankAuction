@@ -103,20 +103,11 @@ export default async function AdminSettingsPage() {
           <Field label="YouTube URL" name="youtubeUrl" defaultValue={s.youtubeUrl} />
         </section>
 
-        <section className="bg-white border border-brand-border rounded-xl p-5 space-y-4">
-          <h2 className="font-semibold">Policy Pages</h2>
-          <div>
-            <label className="block text-sm font-medium mb-1">Privacy Policy</label>
-            <textarea name="privacyPolicy" defaultValue={s.privacyPolicy} rows={5} className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Terms and Conditions</label>
-            <textarea name="termsAndConditions" defaultValue={s.termsAndConditions} rows={5} className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Disclaimer</label>
-            <textarea name="disclaimer" defaultValue={s.disclaimer} rows={5} className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
-          </div>
+        <section className="bg-white border border-brand-border rounded-xl p-5">
+          <h2 className="font-semibold">Policy pages</h2>
+          <p className="text-sm text-brand-muted mt-1">
+            Privacy Policy, Terms and Conditions, Disclaimer, About Us and FAQ are now edited under <a href="/admin/pages" className="text-brand underline">Pages</a>.
+          </p>
         </section>
 
       </SettingsForm>

@@ -1,20 +1,22 @@
 import type { Metadata } from "next";
-import { getSiteSettings } from "@/lib/queries/siteSettings";
+import PolicyView from "@/components/PolicyView";
+import JsonLd from "@/components/JsonLd";
+import { getPolicy } from "@/lib/pages/store";
+import { breadcrumbSchema, pageMetadata, plain, policySchema } from "@/lib/pages/seo";
 
-export const revalidate = 120;
+export const revalidate = 300;
 
-export const metadata: Metadata = {
-  title: "Terms and Conditions",
-  description: "The terms and conditions for using BankAuction.co.",
-  alternates: { canonical: "/terms-and-conditions" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const c = await getPolicy("terms");
+  return pageMetadata(c, "Terms and Conditions", c.heroSubtitle || plain(c.sections[0]?.body ?? ""), "/terms-and-conditions");
+}
 
-export default async function TermsPage() {
-  const s = await getSiteSettings();
+export default async function Page() {
+  const c = await getPolicy("terms");
   return (
-    <main className="w-full px-5 lg:px-10 xl:px-16 py-14">
-      <h1 className="text-2xl font-semibold mb-6">Terms and Conditions</h1>
-      <p className="text-sm leading-7 text-black/80 whitespace-pre-wrap">{s.termsAndConditions}</p>
-    </main>
+    <>
+      <JsonLd data={[policySchema(c, "/terms-and-conditions"), breadcrumbSchema([{ name: "Home", path: "/" }, { name: "Terms and Conditions", path: "/terms-and-conditions" }])]} />
+      <PolicyView content={c} path="/terms-and-conditions" />
+    </>
   );
 }

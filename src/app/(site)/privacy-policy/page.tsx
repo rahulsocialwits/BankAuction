@@ -1,20 +1,22 @@
 import type { Metadata } from "next";
-import { getSiteSettings } from "@/lib/queries/siteSettings";
+import PolicyView from "@/components/PolicyView";
+import JsonLd from "@/components/JsonLd";
+import { getPolicy } from "@/lib/pages/store";
+import { breadcrumbSchema, pageMetadata, plain, policySchema } from "@/lib/pages/seo";
 
-export const revalidate = 120;
+export const revalidate = 300;
 
-export const metadata: Metadata = {
-  title: "Privacy Policy",
-  description: "How BankAuction.co collects, uses and protects your information.",
-  alternates: { canonical: "/privacy-policy" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const c = await getPolicy("privacy");
+  return pageMetadata(c, "Privacy Policy", c.heroSubtitle || plain(c.sections[0]?.body ?? ""), "/privacy-policy");
+}
 
-export default async function PrivacyPolicyPage() {
-  const s = await getSiteSettings();
+export default async function Page() {
+  const c = await getPolicy("privacy");
   return (
-    <main className="w-full px-5 lg:px-10 xl:px-16 py-14">
-      <h1 className="text-2xl font-semibold mb-6">Privacy Policy</h1>
-      <p className="text-sm leading-7 text-black/80 whitespace-pre-wrap">{s.privacyPolicy}</p>
-    </main>
+    <>
+      <JsonLd data={[policySchema(c, "/privacy-policy"), breadcrumbSchema([{ name: "Home", path: "/" }, { name: "Privacy Policy", path: "/privacy-policy" }])]} />
+      <PolicyView content={c} path="/privacy-policy" />
+    </>
   );
 }

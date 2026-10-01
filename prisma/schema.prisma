@@ -760,6 +760,15 @@ model SiteImage {
   @@map("site_images")
 }
 
+// Editable public pages (about, privacy, terms, disclaimer, faq). `data` is the page content the master admin edits.
+model SitePage {
+  key       String   @id // about | privacy | terms | disclaimer | faq
+  data      Json
+  updatedAt DateTime @updatedAt
+
+  @@map("site_pages")
+}
+
 // The media library: every image the master admin has uploaded, reusable in any slot without uploading again.
 model MediaAsset {
   id          String   @id @default(cuid())

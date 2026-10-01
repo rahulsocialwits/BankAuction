@@ -1,20 +1,22 @@
 import type { Metadata } from "next";
-import { getSiteSettings } from "@/lib/queries/siteSettings";
+import PolicyView from "@/components/PolicyView";
+import JsonLd from "@/components/JsonLd";
+import { getPolicy } from "@/lib/pages/store";
+import { breadcrumbSchema, pageMetadata, plain, policySchema } from "@/lib/pages/seo";
 
-export const revalidate = 120;
+export const revalidate = 300;
 
-export const metadata: Metadata = {
-  title: "Disclaimer",
-  description: "BankAuction.co lists publicly available auction information. Always verify details with the bank and official documents before bidding.",
-  alternates: { canonical: "/disclaimer" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const c = await getPolicy("disclaimer");
+  return pageMetadata(c, "Disclaimer", c.heroSubtitle || plain(c.sections[0]?.body ?? ""), "/disclaimer");
+}
 
-export default async function DisclaimerPage() {
-  const s = await getSiteSettings();
+export default async function Page() {
+  const c = await getPolicy("disclaimer");
   return (
-    <main className="w-full px-5 lg:px-10 xl:px-16 py-14">
-      <h1 className="text-2xl font-semibold mb-6">Disclaimer</h1>
-      <p className="text-sm leading-7 text-black/80 whitespace-pre-wrap">{s.disclaimer}</p>
-    </main>
+    <>
+      <JsonLd data={[policySchema(c, "/disclaimer"), breadcrumbSchema([{ name: "Home", path: "/" }, { name: "Disclaimer", path: "/disclaimer" }])]} />
+      <PolicyView content={c} path="/disclaimer" />
+    </>
   );
 }
