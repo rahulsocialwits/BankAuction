@@ -39,8 +39,9 @@ export const getHomeConfig = unstable_cache(
       heroSubtitle: row?.heroSubtitle || DEFAULT_HERO_SUBTITLE,
       cities: savedCities && savedCities.length >= 4 ? savedCities.slice(0, 8) : DEFAULT_TILE_CITIES,
       types: orderTypes(parse(row?.typeOrder)),
+      banks: (parse(row?.banks) ?? []).slice(0, 10),
     };
   },
-  ["home-config-v2"],
+  ["home-config-v3"],
   { revalidate: 300, tags: [IMAGE_TAG] },
 );

@@ -202,8 +202,8 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
           )}
         </div>
 
-        <aside className="lg:col-span-1">
-          <div className="bg-white border border-brand-border rounded-2xl p-5 sticky top-24">
+        <aside className="lg:col-span-1 lg:sticky lg:top-24 lg:self-start">
+          <div className="bg-white border border-brand-border rounded-2xl p-5">
             <h2 className="font-semibold mb-1">Interested in this property?</h2>
             <p className="text-xs text-brand-muted mb-4">Send an enquiry and our team will get back to you.</p>
 

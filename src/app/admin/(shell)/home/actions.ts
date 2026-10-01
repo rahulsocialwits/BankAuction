@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { requireMaster } from "@/lib/auth/adminAuth";
 import { storeMedia } from "@/lib/media";
-import { DEFAULT_TILE_CITIES, IMAGE_TAG, PROPERTY_TYPE_TILES, citySlugOf, imageSize } from "@/lib/siteImages";
+import { DEFAULT_TILE_CITIES, bankKey, IMAGE_TAG, PROPERTY_TYPE_TILES, citySlugOf, imageSize } from "@/lib/siteImages";
 
 const MAX_BYTES = 1.5 * 1024 * 1024;
 const TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -24,6 +24,8 @@ async function allowedKeys(): Promise<Set<string>> {
   }
   if (cities.length === 0) cities = DEFAULT_TILE_CITIES; // nothing saved yet: the default eight
   const keys = new Set<string>(["hero-desktop", "hero-mobile"]);
+  const banks = await prisma.bank.findMany({ select: { slug: true } });
+  for (const b of banks) keys.add(bankKey(b.slug));
   for (const c of cities) for (const v of ["d", "m"]) keys.add(`city-${citySlugOf(c)}-${v}`);
   for (const t of PROPERTY_TYPE_TILES) for (const v of ["d", "m"]) keys.add(`type-${t.value}-${v}`);
   return keys;
@@ -89,7 +91,7 @@ export async function removeSiteImage(formData: FormData) {
  */
 export async function saveHomeConfig(formData: FormData) {
   await requireMaster();
-  const data: { heroTitle?: string | null; heroSubtitle?: string | null; cities?: string; typeOrder?: string } = {};
+  const data: { heroTitle?: string | null; heroSubtitle?: string | null; cities?: string; typeOrder?: string; banks?: string } = {};
   const text = (n: string, max: number) => String(formData.get(n) ?? "").trim().slice(0, max) || null;
 
   if (formData.has("heroTitle") || formData.has("heroSubtitle")) {
@@ -117,6 +119,16 @@ export async function saveHomeConfig(formData: FormData) {
     }
     for (const v of valid) if (!order.includes(v)) order.push(v);
     data.typeOrder = JSON.stringify(order);
+  }
+
+  if (formData.has("banksForm")) {
+    const known = new Set((await prisma.bank.findMany({ select: { slug: true } })).map((b) => b.slug));
+    const slugs: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const v = String(formData.get(`bank_${i}`) ?? "");
+      if (known.has(v) && !slugs.includes(v)) slugs.push(v);
+    }
+    data.banks = JSON.stringify(slugs);
   }
 
   await prisma.homeConfig.upsert({ where: { id: "default" }, create: { id: "default", ...data }, update: data });

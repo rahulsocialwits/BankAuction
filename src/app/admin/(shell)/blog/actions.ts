@@ -11,6 +11,10 @@ function readPost(formData: FormData) {
     excerpt: String(formData.get("excerpt") ?? "").trim() || null,
     body: String(formData.get("body") ?? "").trim(),
     coverImageUrl: String(formData.get("coverImageUrl") ?? "").trim() || null,
+    category: String(formData.get("category") ?? "").trim().slice(0, 40) || null,
+    tags: [...new Set(String(formData.get("tags") ?? "").split(",").map((t) => t.trim().toLowerCase().slice(0, 30)).filter(Boolean))].slice(0, 8),
+    seoTitle: String(formData.get("seoTitle") ?? "").trim().slice(0, 70) || null,
+    seoDescription: String(formData.get("seoDescription") ?? "").trim().slice(0, 170) || null,
     status: formData.get("status") === "PUBLISHED" ? ("PUBLISHED" as const) : ("DRAFT" as const),
   };
 }

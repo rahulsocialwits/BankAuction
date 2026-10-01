@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
+import { dayLabel } from "@/lib/seo";
 
+/** Four latest posts: 4 across on desktop, a swipeable row showing two cards at a time on a phone. */
 export default async function BlogCarousel() {
   const posts = await prisma.blogPost.findMany({
     where: { status: "PUBLISHED" },
     orderBy: { createdAt: "desc" },
-    take: 8,
+    take: 4,
   });
 
   if (posts.length === 0) {
@@ -17,15 +19,21 @@ export default async function BlogCarousel() {
   }
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory">
+    <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-5 px-5 md:mx-0 md:px-0 md:grid md:grid-cols-4 md:gap-5 md:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {posts.map((p) => (
-        <Link
-          key={p.id}
-          href={`/blog/${p.slug}`}
-          className="snap-start shrink-0 w-64 bg-white border border-brand-border rounded-xl p-4 hover:border-brand transition-colors"
-        >
-          <div className="font-semibold text-sm mb-1 line-clamp-2">{p.title}</div>
-          {p.excerpt && <p className="text-xs text-brand-muted line-clamp-3">{p.excerpt}</p>}
+        <Link key={p.id} href={`/blog/${p.slug}`} className="group snap-start shrink-0 w-[calc(50%-6px)] md:w-auto flex flex-col bg-white border border-brand-border rounded-xl overflow-hidden hover:border-brand hover:shadow-md transition">
+          <div className="relative aspect-[16/10] bg-gradient-to-br from-brand to-brand-dark">
+            {p.coverImageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={p.coverImageUrl} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
+            )}
+            {p.category && <span className="absolute left-2 top-2 rounded-full bg-gold px-2 py-0.5 text-[10px] font-semibold text-white">{p.category}</span>}
+          </div>
+          <div className="flex flex-1 flex-col p-3 sm:p-4">
+            <div className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-brand">{p.title}</div>
+            {p.excerpt && <p className="mt-1.5 text-xs text-brand-muted line-clamp-3">{p.excerpt}</p>}
+            <div className="mt-auto pt-3 text-[11px] text-brand-muted">{dayLabel(p.createdAt)}</div>
+          </div>
         </Link>
       ))}
     </div>

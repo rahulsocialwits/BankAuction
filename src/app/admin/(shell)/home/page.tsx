@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireMaster } from "@/lib/auth/adminAuth";
 import SubmitButton from "@/components/admin/SubmitButton";
 import { getHomeConfig } from "@/lib/queries/homeConfig";
-import { PROPERTY_TYPE_TILES, SLOT_SPECS, cityKey, heroKey, typeKey } from "@/lib/siteImages";
+import { SLOT_SPECS, bankKey, cityKey, heroKey, typeKey } from "@/lib/siteImages";
 import MediaPicker from "@/components/admin/MediaPicker";
 import OrderEditor from "@/components/admin/OrderEditor";
 import { chooseLibraryImage, removeSiteImage, saveHomeConfig, uploadSiteImage } from "./actions";
@@ -22,7 +22,7 @@ function Slot({ k, title, spec, meta }: { k: string; title: string; spec: { w: n
       <div className="rounded-lg bg-brand-bg overflow-hidden flex items-center justify-center mb-2" style={{ aspectRatio: `${spec.w} / ${spec.h}`, maxHeight: 180 }}>
         {meta ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={`/api/img/${k}?v=${meta.updatedAt.getTime()}`} alt={title} className="w-full h-full object-cover" />
+          <img src={`/api/img/${k}?v=${meta.updatedAt.getTime()}`} alt={title} className={`w-full h-full ${k.startsWith("bank-") ? "object-contain p-1" : "object-cover"}`} />
         ) : (
           <span className="text-xs text-brand-muted">No image yet</span>
         )}
@@ -52,10 +52,13 @@ function Slot({ k, title, spec, meta }: { k: string; title: string; spec: { w: n
 export default async function HomeManagerPage({ searchParams }: { searchParams: Promise<{ ok?: string; error?: string }> }) {
   await requireMaster();
   const { ok, error } = await searchParams;
-  const [cfg, rows] = await Promise.all([
+  const [cfg, rows, allBanks] = await Promise.all([
     getHomeConfig(),
     prisma.siteImage.findMany({ select: { key: true, updatedAt: true, sizeBytes: true, width: true, height: true } }),
+    prisma.bank.findMany({ select: { slug: true, name: true }, orderBy: { name: "asc" } }),
   ]);
+  const bankName = new Map(allBanks.map((b) => [b.slug, b.name]));
+  const bankOptions = allBanks.map((b) => ({ value: b.slug, label: b.name }));
   const meta = new Map<string, Meta>(rows.map((r) => [r.key, r]));
   const thumb = (key: string) => { const m = meta.get(key); return m ? `/api/img/${key}?v=${m.updatedAt.getTime()}` : null; };
 
@@ -123,8 +126,33 @@ export default async function HomeManagerPage({ searchParams }: { searchParams: 
         </div>
       </section>
 
+      <section className="bg-white border border-brand-border rounded-xl p-5 mb-6">
+        <h2 className="font-semibold mb-1">4. Promoter Banks (logo grid)</h2>
+        <p className="text-xs text-brand-muted mb-5 max-w-3xl">
+          Choose up to 10 banks for the logo grid (2 rows of 5 on desktop, a swipeable row on phones). Position 1 is top-left. If you choose none, the 10 banks with the most listings are shown. Each logo is {SLOT_SPECS.bank.d.w} × {SLOT_SPECS.bank.d.h} px; a bank without a logo shows its name.
+        </p>
+        <form action={saveHomeConfig} className="grid gap-4 max-w-2xl">
+          <input type="hidden" name="banksForm" value="1" />
+          <OrderEditor prefix="bank" columns={5} nameEditable max={10} addLabel="+ Add a bank" options={bankOptions} initial={cfg.banks.map((s) => ({ value: s, label: bankName.get(s) ?? s, thumb: thumb(bankKey(s)) }))} />
+          <div><SubmitButton className="bg-brand text-white text-sm font-medium rounded-lg px-6 py-2.5 hover:bg-brand-dark">Save banks</SubmitButton></div>
+        </form>
+        {cfg.banks.length > 0 && (
+          <div className="mt-6">
+            <div className="text-sm font-semibold mb-3">Logos <span className="font-normal text-brand-muted">(save the banks first, then upload a logo for each)</span></div>
+            <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-4">
+              {cfg.banks.map((s) => (
+                <div key={s} className="space-y-2">
+                  <div className="font-medium text-sm line-clamp-1">{bankName.get(s) ?? s}</div>
+                  <Slot k={bankKey(s)} title="Logo" spec={SLOT_SPECS.bank.d} meta={meta.get(bankKey(s))} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
       <section className="bg-white border border-brand-border rounded-xl p-5">
-        <h2 className="font-semibold mb-1">4. Property type cards — pictures</h2>
+        <h2 className="font-semibold mb-1">5. Property type cards — pictures</h2>
         <p className="text-xs text-brand-muted mb-4">Five cards ({SLOT_SPECS.type.d.w} × {SLOT_SPECS.type.d.h} px). On mobile they become a swipeable row.</p>
         <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-4">
           {cfg.types.map((t) => (

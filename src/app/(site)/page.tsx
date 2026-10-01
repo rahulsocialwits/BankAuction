@@ -9,9 +9,12 @@ import AuctionCountdownTable, { CountdownRow } from "@/components/AuctionCountdo
 import { getCityCounts, citySlug } from "@/lib/queries/cities";
 import { getHomeConfig } from "@/lib/queries/homeConfig";
 import { canonCity } from "@/lib/pipeline/locations";
-import { cityKey, getImageVersions, heroKey, imageUrl, typeKey } from "@/lib/siteImages";
+import { bankKey, cityKey, getImageVersions, heroKey, imageUrl, typeKey } from "@/lib/siteImages";
 
 export const revalidate = 120;
+
+// "Other" tab = land & plots and anything without a category.
+const COUNTDOWN_CATEGORIES = ["RESIDENTIAL", "COMMERCIAL", "INDUSTRIAL", "AGRICULTURAL", "LAND_PLOT", null] as const;
 
 const WHY_CHOOSE = [
   { title: "Source-backed information", body: "Every figure and fact traces back to an official auction notice — nothing is invented." },
@@ -35,18 +38,31 @@ export default async function Home() {
     prisma.bank.findMany({
       include: { _count: { select: { auctions: { where: { property: { status: "PUBLISHED" } } } } } },
       orderBy: { auctions: { _count: "desc" } },
-      take: 6,
+      take: 10,
     }),
-    prisma.auction.findMany({
-      where: { status: { in: ["UPCOMING", "LIVE", "AUCTION_TODAY"] }, property: { status: "PUBLISHED" } },
-      orderBy: { auctionStart: "asc" },
-      take: 40,
-      include: { bank: true, property: true },
-    }),
+    // Eight per tab, fetched per tab: one busy category can never push the others out of the list.
+    Promise.all(
+      COUNTDOWN_CATEGORIES.map((category) =>
+        prisma.auction.findMany({
+          where: { status: { in: ["UPCOMING", "LIVE", "AUCTION_TODAY"] }, property: { status: "PUBLISHED", category } },
+          orderBy: { auctionStart: "asc" },
+          take: 24,
+          include: { bank: true, property: true },
+        }),
+      ),
+    ).then((lists) => lists.flat()),
     getHomeConfig(),
     getImageVersions(),
     prisma.property.groupBy({ by: ["category"], where: { status: "PUBLISHED" }, _count: { _all: true } }),
   ]);
+
+  // Admin-chosen banks (in their order); with none chosen, the ten with the most listings.
+  const chosen = config.banks.length
+    ? await prisma.bank.findMany({ where: { slug: { in: config.banks } } })
+    : [];
+  const promoBanks = chosen.length
+    ? config.banks.map((slug) => chosen.find((b) => b.slug === slug)).filter((b): b is (typeof chosen)[number] => !!b)
+    : topBanks.filter((b) => b._count.auctions > 0);
 
   const stats = [
     { label: "Active Listings", value: activeListings },
@@ -185,21 +201,29 @@ export default async function Home() {
         <AuctionCountdownTable rows={countdownRows} viewAllHref="/properties?status=active" />
       </section>
 
+      {/* PROMOTER BANKS: 10 logos (224×80), 2 rows of 5; two swipeable rows on a phone. Chosen in Admin → Home Page. */}
       <section className="w-full px-5 lg:px-10 xl:px-16 py-10">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl sm:text-2xl font-bold text-brand">Browse by Bank</h2>
           <Link href="/banks" className="text-sm text-brand font-medium">All banks →</Link>
         </div>
-        {topBanks.filter((b) => b._count.auctions > 0).length === 0 ? (
+        {promoBanks.length === 0 ? (
           <p className="text-brand-muted text-sm">No banks with published listings yet.</p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {topBanks.filter((b) => b._count.auctions > 0).map((b) => (
-              <Link key={b.id} href={`/bank/${b.slug}`} className="bg-white border border-brand-border rounded-xl p-4 hover:border-brand transition-colors">
-                <div className="font-semibold text-sm">{b.name}</div>
-                <div className="text-xs text-brand-muted mt-1">{b._count.auctions} listing(s)</div>
-              </Link>
-            ))}
+          <div className="grid grid-rows-2 grid-flow-col auto-cols-[44%] sm:auto-cols-[30%] gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-5 px-5 md:mx-0 md:px-0 md:pb-0 md:grid-rows-none md:grid-flow-row md:grid-cols-5 md:auto-cols-auto md:gap-4 md:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {promoBanks.map((b) => {
+              const logo = imageUrl(versions, bankKey(b.slug));
+              return (
+                <Link key={b.id} href={`/bank/${b.slug}`} title={b.name} className="group snap-start flex aspect-[224/80] items-center justify-center overflow-hidden rounded-xl border border-brand-border bg-white p-2 hover:border-brand hover:shadow-md transition">
+                  {logo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={logo} alt={b.name} loading="lazy" className="h-full w-full object-contain" />
+                  ) : (
+                    <span className="px-1 text-center text-xs sm:text-sm font-semibold leading-tight text-brand line-clamp-2">{b.name}</span>
+                  )}
+                </Link>
+              );
+            })}
           </div>
         )}
       </section>

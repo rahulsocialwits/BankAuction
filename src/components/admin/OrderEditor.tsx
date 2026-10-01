@@ -22,6 +22,7 @@ export default function OrderEditor({
   nameEditable,
   max,
   addLabel,
+  options,
 }: {
   prefix: string;
   initial: OrderItem[];
@@ -29,6 +30,8 @@ export default function OrderEditor({
   nameEditable: boolean;
   max: number;
   addLabel?: string;
+  /** When given, a name is picked from this list instead of typed. */
+  options?: { value: string; label: string }[];
 }) {
   const [items, setItems] = useState(initial);
 
@@ -71,7 +74,17 @@ export default function OrderEditor({
               )}
             </div>
             <div className="min-w-0 flex-1">
-              {nameEditable ? (
+              {nameEditable && options ? (
+                <select
+                  value={it.value}
+                  onChange={(e) => setItems((l) => l.map((x, j) => (j === i ? { ...x, value: e.target.value, label: options.find((op) => op.value === e.target.value)?.label ?? "" } : x)))}
+                  aria-label={`Position ${i + 1} bank`}
+                  className="w-full rounded-lg border border-brand-border bg-white px-3 py-1.5 text-sm font-medium"
+                >
+                  <option value="">Choose…</option>
+                  {options.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}
+                </select>
+              ) : nameEditable ? (
                 <input
                   value={it.label}
                   onChange={(e) => setItems((l) => l.map((x, j) => (j === i ? { ...x, value: e.target.value, label: e.target.value } : x)))}

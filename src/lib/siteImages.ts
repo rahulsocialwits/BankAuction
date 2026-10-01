@@ -8,6 +8,7 @@ export const SLOT_SPECS = {
   hero: { d: { w: 1440, h: 480 }, m: { w: 1080, h: 1350 } },
   city: { d: { w: 221, h: 148 }, m: { w: 221, h: 148 } },
   type: { d: { w: 236, h: 300 }, m: { w: 236, h: 300 } },
+  bank: { d: { w: 224, h: 80 }, m: { w: 224, h: 80 } },
 } as const;
 
 export const PROPERTY_TYPE_TILES = [
@@ -24,6 +25,7 @@ export const citySlugOf = (city: string) => city.toLowerCase().replace(/[^a-z0-9
 
 export const heroKey = (v: "d" | "m") => `hero-${v === "d" ? "desktop" : "mobile"}`;
 export const cityKey = (city: string, v: "d" | "m") => `city-${citySlugOf(city)}-${v}`;
+export const bankKey = (slug: string) => `bank-${slug}`;
 export const typeKey = (value: string, v: "d" | "m") => `type-${value}-${v}`;
 
 /** key -> version (updatedAt ms) of every uploaded image. Tiny table; cached 5 minutes and refreshed on upload. */
