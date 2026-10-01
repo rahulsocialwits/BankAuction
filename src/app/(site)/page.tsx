@@ -158,7 +158,7 @@ export default async function Home() {
       <section className="w-full px-5 lg:px-10 xl:px-16 py-12">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl sm:text-2xl font-bold text-brand">Browse by Location</h2>
-          <Link href="/cities" className="hidden sm:inline-block text-sm font-medium text-brand border border-brand-border rounded-lg px-4 py-2 hover:bg-brand hover:text-white transition-colors">
+          <Link href="/cities" className="text-sm font-medium text-brand border border-brand-border rounded-lg px-4 py-2 hover:bg-brand hover:text-white transition-colors">
             View all locations →
           </Link>
         </div>
@@ -188,11 +188,6 @@ export default async function Home() {
               </div>
             );
           })}
-        </div>
-        <div className="mt-5 text-center">
-          <Link href="/cities" className="inline-block text-sm font-medium bg-brand text-white rounded-lg px-6 py-2.5 hover:bg-brand-dark">
-            View all locations
-          </Link>
         </div>
       </section>
 
