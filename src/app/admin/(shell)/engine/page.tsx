@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
-import { SOURCE_REGISTRY } from "@/data-sources/registry";
 import { getAiConfig } from "@/lib/ai/aiConfig";
 import SubmitButton from "@/components/admin/SubmitButton";
 import EngineTabs from "@/components/admin/EngineTabs";
@@ -58,7 +57,6 @@ export default async function DataEnginePage() {
   const liveFeeds = feeds.filter((f) => f.active);
   const liveCount = (builtInPaused ? 0 : 1) + liveFeeds.length;
   const pausedCount = (builtInPaused ? 1 : 0) + feeds.filter((f) => !f.active).length;
-  const blocked = SOURCE_REGISTRY.filter((s) => s.key !== "bankauctions" && s.accessStatus !== "ALLOWED");
 
   // Scheduler health: a tick should arrive at least every ~90 minutes.
   const tickAgeMin = lastTick ? (Date.now() - lastTick.startedAt.getTime()) / 60000 : null;
@@ -81,11 +79,10 @@ export default async function DataEnginePage() {
       <h1 className="text-2xl font-semibold text-brand mb-1">Data Engine</h1>
       <EngineTabs />
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
           { label: "Live sources", value: liveCount, tone: "text-green-700" },
           { label: "Paused", value: pausedCount, tone: "text-amber-700" },
-          { label: "Not allowed", value: blocked.length, tone: "text-gray-500" },
           { label: "Published", value: published, tone: "text-brand" },
           { label: "AI tokens (24h)", value: (tokens24._sum.aiTokens ?? 0).toLocaleString("en-IN"), tone: "text-brand" },
         ].map((t) => (
@@ -208,22 +205,6 @@ export default async function DataEnginePage() {
         <Link href="/admin/feeds" className="text-sm text-brand font-medium hover:underline">
           + Add a link source (website, Google Sheet or CSV)
         </Link>
-      </div>
-
-      <h2 className="font-semibold mb-1">Not available</h2>
-      <p className="text-xs text-brand-muted mb-3">
-        These are never fetched automatically — robots.txt, terms of use or anti-bot protection do not allow it.
-      </p>
-      <div className="grid gap-2 mb-8">
-        {blocked.map((s) => (
-          <div key={s.key} className="bg-white border border-brand-border rounded-xl p-3 flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0 max-w-2xl">
-              <div className="text-sm font-medium">{s.name}</div>
-              <div className="text-xs text-brand-muted">{s.accessNotes}</div>
-            </div>
-            <Badge tone="gray">{s.accessStatus === "UNAVAILABLE" ? "Unavailable" : "Not allowed"}</Badge>
-          </div>
-        ))}
       </div>
 
       <section className="bg-white border border-brand-border rounded-xl p-4 text-xs text-brand-muted">

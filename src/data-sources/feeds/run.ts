@@ -1,13 +1,15 @@
 import { prisma } from "@/lib/db/prisma";
 import { importCsvText, importRecords, type ImportResult } from "@/lib/import/csvImport";
-import { robotsAllows, scanWebPage, UA } from "./webScan";
+import { robotsCheck, scanWebPage, UA } from "./webScan";
 import { logRun } from "@/lib/pipeline/runLog";
 import { enrichLocations } from "@/lib/pipeline/geo";
 import { importTabular, type TabState } from "@/lib/import/tabular";
 import { fetchTabCsv, listSheetTabs, sheetIdFromUrl } from "./sheets";
 
 // Sites whose terms or robots.txt disallow copying; never accept these as links.
-const BLOCKED_HOSTS = ["baanknet.com", "auctionbazaar.com", "bankauction.co", "eauctionsindia.com"];
+// eauctionsindia.com is NOT here: its robots.txt allows crawling. If its Cloudflare returns 403 to our server, the
+// run reports a technical "Blocked" for that reason alone (see BlockedError below).
+const BLOCKED_HOSTS = ["baanknet.com", "auctionbazaar.com", "bankauction.co"];
 
 const BLOCKED_REASON = "This website refuses automated access (its terms or anti-bot protection)";
 
@@ -120,8 +122,15 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
 
     // Plain web pages must be allowed by the site's robots.txt; CSV links are data the owner shared.
     const looksCsv = /\.csv(\?|$)/i.test(target);
-    if (!looksCsv && !(await robotsAllows(target))) {
-      throw new BlockedError("Blocked: this site's robots.txt does not allow automated access to this page. Paused automatically.");
+    if (!looksCsv) {
+      const verdict = await robotsCheck(target);
+      if (verdict === "disallowed") {
+        throw new BlockedError("Blocked: this site's robots.txt says automated access to this page is not allowed. Paused automatically.");
+      }
+      if (verdict === "unreachable") {
+        // Not a refusal: the site simply did not answer properly. Stay Live and try again on the next run.
+        throw new Error("The site did not answer (timeout or server error) while checking its robots.txt. It will be tried again automatically.");
+      }
     }
 
     let res: Response;
@@ -132,7 +141,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
       throw new Error(`Could not reach the site (${cause?.code ?? cause?.message ?? "network error"})`);
     }
     if (res.status === 401 || res.status === 403) {
-      throw new BlockedError(`Blocked: the site refuses automated access (HTTP ${res.status}, likely anti-bot protection). Paused automatically.`);
+      throw new BlockedError(`Blocked: the site answered HTTP ${res.status} to our server (usually anti-bot protection such as Cloudflare). Paused automatically.`);
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();

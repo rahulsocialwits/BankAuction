@@ -5,17 +5,26 @@ import type { ListingRecord } from "@/lib/import/csvImport";
 
 export const UA = "BankAuctionBot/1.0 (+https://auction.bizsocio.com)";
 
-/** Minimal robots.txt check for our user agent. 4xx = no rules; network/5xx = treat as not allowed. */
-export async function robotsAllows(pageUrl: string): Promise<boolean> {
+export type RobotsVerdict = "allowed" | "disallowed" | "unreachable";
+
+/**
+ * Minimal robots.txt check for our user agent.
+ *  - "disallowed": the site's own rules say no (or it answers 401/403) — a real refusal.
+ *  - "unreachable": the site did not answer properly (timeout, network error, 5xx). That says nothing about
+ *    permission, so the caller must treat it as a temporary problem, never as a block.
+ *  - 4xx (no robots file) or a page that is not a robots file at all = no rules = allowed.
+ */
+export async function robotsCheck(pageUrl: string): Promise<RobotsVerdict> {
   const u = new URL(pageUrl);
   let res: Response;
   try {
     res = await fetch(`${u.origin}/robots.txt`, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(15_000) });
   } catch {
-    return false;
+    return "unreachable";
   }
-  if (res.status >= 400 && res.status < 500) return true;
-  if (!res.ok) return false;
+  if (res.status === 401 || res.status === 403) return "disallowed";
+  if (res.status >= 400 && res.status < 500) return "allowed";
+  if (!res.ok) return "unreachable";
 
   const groups: { agents: string[]; disallow: string[]; allow: string[] }[] = [];
   let cur: (typeof groups)[number] | null = null;
@@ -47,7 +56,7 @@ export async function robotsAllows(pageUrl: string): Promise<boolean> {
     for (const p of g.disallow) if (path.startsWith(p) && p.length > bestLen) { bestLen = p.length; allowed = false; }
     for (const p of g.allow) if (path.startsWith(p) && p.length >= bestLen) { bestLen = p.length; allowed = true; }
   }
-  return allowed;
+  return allowed ? "allowed" : "disallowed";
 }
 
 function htmlToText(html: string): string {

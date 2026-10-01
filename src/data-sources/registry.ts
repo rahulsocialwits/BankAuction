@@ -39,7 +39,7 @@ export const SOURCE_REGISTRY: SourceDefinition[] = [
     baseUrl: "https://www.eauctionsindia.com",
     accessStatus: "RESTRICTED",
     accessNotes:
-      "Cloudflare managed-challenge intercepts even robots.txt. Do not attempt to solve/bypass the challenge; no automated access without an authorized/official channel.",
+      "robots.txt allows crawling, but Cloudflare answers 403 / a challenge to server traffic. We never solve or bypass the challenge; add it as a link source and it works only if the site lets our server in.",
   },
   {
     key: "auction_tiger_drt",
