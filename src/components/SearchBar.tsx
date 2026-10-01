@@ -20,7 +20,7 @@ type Item = { key: string; label: string; hint: string; params: Record<string, s
  * + Enter) opens that place straight away; plain Enter searches the typed words. With an empty box it offers
  * popular cities and property types, one click each.
  */
-export default function SearchBar({ size = "md" }: { size?: "md" | "lg" }) {
+export default function SearchBar({ size = "md", onDone }: { size?: "md" | "lg"; onDone?: () => void }) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -76,6 +76,7 @@ export default function SearchBar({ size = "md" }: { size?: "md" | "lg" }) {
     router.push(`/properties?${new URLSearchParams(params).toString()}`);
     setOpen(false);
     setActive(-1);
+    onDone?.(); // e.g. close the mobile menu so the results are visible
   }
 
   function submit() {

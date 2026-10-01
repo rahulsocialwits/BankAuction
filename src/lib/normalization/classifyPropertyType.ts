@@ -11,6 +11,8 @@ export function classifyPropertyType(raw: string | null | undefined): PropertyCa
   if (!raw) return null;
   const s = raw.toLowerCase();
 
+  // "Movable" assets (machinery, stock, vehicles) are not real estate, so they are treated like vehicles: never listed.
+  if (/\b(movables?|movable assets?)\b/.test(s)) return "VEHICLE";
   if (/\b(car|truck|bus|tractor|jcb|two[\s-]?wheeler|motorcycle|scooter|vehicle|commercial vehicle|heavy machinery)\b/.test(s) &&
       !/plant\s*(and|&)\s*machinery/.test(s)) {
     return "VEHICLE";
@@ -21,10 +23,10 @@ export function classifyPropertyType(raw: string | null | undefined): PropertyCa
   if (/agricultural|farm(?!\s*house)|orchard|plantation/.test(s)) {
     return "AGRICULTURAL";
   }
-  if (/shop|showroom|office|commercial building|retail|mall|restaurant|hotel|hospital|clinic|school/.test(s)) {
+  if (/shop|showroom|office|commercial|retail|mall|restaurant|hotel|hospital|clinic|school/.test(s)) {
     return "COMMERCIAL";
   }
-  if (/\bplot\b|\bland\b(?!\s*(and|&)\s*building)|open land|na plot/.test(s)) {
+  if (/\bplots?\b|\bsite\b|\bland\b(?!\s*(and|&)\s*building)|open land|na plot/.test(s)) {
     return "LAND_PLOT";
   }
   if (/land\s*(and|&)\s*building|house|flat|apartment|residential|villa|duplex|penthouse|builder floor/.test(s)) {

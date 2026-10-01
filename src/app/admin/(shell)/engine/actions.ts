@@ -36,6 +36,13 @@ export async function toggleFeedSource(formData: FormData) {
   refresh();
 }
 
+/** Remove a link source for good (used for sources that refuse automated access). */
+export async function deleteFeedSource(formData: FormData) {
+  await requireMaster();
+  await prisma.feedSource.deleteMany({ where: { id: String(formData.get("id")) } });
+  refresh();
+}
+
 export async function runFeedSourceNow(formData: FormData) {
   await requireMaster();
   const id = String(formData.get("id"));

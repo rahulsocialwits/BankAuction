@@ -4,6 +4,7 @@ import { runAllFeeds } from "@/data-sources/feeds/run";
 import { autoCleanExactDuplicates } from "./duplicates";
 import { logRun } from "./runLog";
 import { enrichLocations } from "./geo";
+import { autoReviewPending } from "./review";
 import { revalidateTag } from "next/cache";
 
 export type TickTrigger = "cron" | "visitor";
@@ -18,6 +19,8 @@ export async function runTick(opts: { limit?: number; trigger?: TickTrigger; via
     const hidden = await autoCleanExactDuplicates();
     const geo = await enrichLocations(48).catch(() => ({ processed: 0, tokens: 0, failed: true }));
     const places = geo.processed;
+    // Listings the importer was unsure about are reviewed automatically (rules first, AI only when needed).
+    const review = await autoReviewPending(60).catch(() => ({ published: 0, removed: 0, stillPending: 0, tokens: 0 }));
     if (places > 0) {
       try {
         revalidateTag("localities", "max");
@@ -30,8 +33,8 @@ export async function runTick(opts: { limit?: number; trigger?: TickTrigger; via
       kind: "cron",
       trigger: trigger === "visitor" ? "schedule" : "cron",
       status: "ok",
-      message: `via ${opts.via ?? "HTTP"}; built-in: ${summary.skipped ? "paused" : `${summary.newProperties} new`}; feeds run: ${feeds.length}; exact duplicates hidden: ${hidden}; locations checked by AI: ${places}`,
-      aiTokens: geo.tokens,
+      message: `via ${opts.via ?? "HTTP"}; built-in: ${summary.skipped ? "paused" : `${summary.newProperties} new`}; feeds run: ${feeds.length}; exact duplicates hidden: ${hidden}; locations checked by AI: ${places}; auto-review: ${review.published} published, ${review.removed} removed, ${review.stillPending} left`,
+      aiTokens: geo.tokens + review.tokens,
       startedAt,
     });
     return { ...summary, feeds };

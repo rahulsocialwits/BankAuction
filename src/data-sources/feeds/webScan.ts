@@ -82,8 +82,59 @@ export async function scanWebPage(html: string, previousHash?: string | null): P
   const system =
     (cfg.extractionPrompt ?? DEFAULT_EXTRACTION_PROMPT) +
     (cfg.rules ? `\n\nStanding rules from the site owner (follow strictly; they override anything above):\n${cfg.rules}` : "");
-  const out = await chatJSONDetailed<ListingRecord[]>(system, text);
-  if (out.data === null) throw new Error("AI extraction unavailable (check AI_API_KEY / AI_BASE_URL) or the reply was not valid JSON");
-  const records = Array.isArray(out.data) ? out.data.filter((r) => r && typeof r === "object") : [];
-  return { records, tokens: out.tokens, model: out.model, hash, unchanged: false };
+  // A long page is cut into pieces that are read side by side. One huge request to a slow model can run past the
+  // time limit ("operation was aborted due to timeout"); several small ones finish quickly and in parallel.
+  const chunks = splitText(text, CHUNK_CHARS);
+  let tokens = 0;
+  let model = cfg.model;
+  let ok = 0;
+  let firstError: unknown;
+  const found: ListingRecord[] = [];
+
+  async function readChunk(chunk: string) {
+    try {
+      const out = await chatJSONDetailed<ListingRecord[]>(system, chunk);
+      tokens += out.tokens;
+      model = out.model;
+      if (out.data === null) return;
+      ok++;
+      if (Array.isArray(out.data)) found.push(...out.data.filter((r) => r && typeof r === "object"));
+    } catch (e) {
+      firstError ??= e;
+    }
+  }
+  for (let i = 0; i < chunks.length; i += 4) await Promise.all(chunks.slice(i, i + 4).map(readChunk));
+
+  if (ok === 0) {
+    if (firstError instanceof Error) throw firstError;
+    throw new Error("AI extraction unavailable (check AI_API_KEY / AI_BASE_URL) or the reply was not valid JSON");
+  }
+
+  // The same listing can appear at a chunk boundary: keep one per title.
+  const seen = new Set<string>();
+  const records = found.filter((r) => {
+    const k = String(r.title ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  return { records, tokens, model, hash, unchanged: false };
+}
+
+const CHUNK_CHARS = 12_000;
+
+/** Splits on line breaks so a listing is rarely cut in half. */
+function splitText(text: string, size: number): string[] {
+  if (text.length <= size) return [text];
+  const parts: string[] = [];
+  let cur = "";
+  for (const line of text.split("\n")) {
+    if (cur.length + line.length + 1 > size && cur) {
+      parts.push(cur);
+      cur = "";
+    }
+    cur += (cur ? "\n" : "") + line.slice(0, size);
+  }
+  if (cur) parts.push(cur);
+  return parts;
 }

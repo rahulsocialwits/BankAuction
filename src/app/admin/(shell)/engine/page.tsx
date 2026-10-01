@@ -4,7 +4,7 @@ import { SOURCE_REGISTRY } from "@/data-sources/registry";
 import { getAiConfig } from "@/lib/ai/aiConfig";
 import SubmitButton from "@/components/admin/SubmitButton";
 import EngineTabs from "@/components/admin/EngineTabs";
-import { toggleBuiltIn, toggleFeedSource } from "./actions";
+import { toggleBuiltIn, toggleFeedSource, deleteFeedSource } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -72,9 +72,9 @@ export default async function DataEnginePage() {
   if (tickAgeMin === null) problems.push({ title: "Scheduler has never run", detail: "No automatic run has been recorded.", fix: "Set up a 30-minute scheduler (see the card below)." });
   else if (tickAgeMin > 90) problems.push({ title: "Scheduler is late", detail: `Last automatic run was ${ago(lastTick!.startedAt)}.`, fix: "Check GitHub Actions or your cron-job.org job." });
   for (const f of feeds) {
-    if (f.lastStatus === "error") problems.push({ title: `${f.name}: last run failed`, detail: f.lastMessage ?? "", fix: f.lastMessage?.startsWith("Blocked") ? "The site does not allow automated access. Delete this source." : "Fix the cause and press Run now." });
+    if (f.lastStatus === "error") problems.push({ title: `${f.name}: last run failed`, detail: f.lastMessage ?? "", fix: f.lastMessage?.startsWith("Blocked") ? "The site does not allow automated access. Press Remove on the source below." : "Press Run on the source below to try again." });
   }
-  if (pending > 0) problems.push({ title: `${pending} properties wait for review`, detail: "They are not visible on the site yet.", fix: "Open Properties → Pending review and publish or remove them." });
+  if (pending > 0) problems.push({ title: `${pending} properties still wait for review`, detail: "The AI reviews new listings automatically; these are the ones it was not sure about, so they are not on the site yet.", fix: "Open Properties → Pending review and publish or remove them (only the unsure ones land here)." });
 
   return (
     <div className="w-full">
@@ -182,10 +182,18 @@ export default async function DataEnginePage() {
                 ) : (
                   <Badge tone="gray">Paused</Badge>
                 )}
-                <form action={toggleFeedSource}>
-                  <input type="hidden" name="id" value={f.id} />
-                  <SubmitButton className={f.active ? btn : "text-xs bg-brand text-white rounded-lg px-4 py-1.5 hover:bg-brand-dark"}>{f.active ? "Pause" : "Run"}</SubmitButton>
-                </form>
+                {!f.active && f.lastMessage?.startsWith("Blocked") ? (
+                  // The site refuses automated access: running it again can never work, so the only useful action is removing it.
+                  <form action={deleteFeedSource}>
+                    <input type="hidden" name="id" value={f.id} />
+                    <SubmitButton className="text-xs border border-red-200 text-red-600 rounded-lg px-4 py-1.5 hover:bg-red-50">Remove</SubmitButton>
+                  </form>
+                ) : (
+                  <form action={toggleFeedSource}>
+                    <input type="hidden" name="id" value={f.id} />
+                    <SubmitButton className={f.active ? btn : "text-xs bg-brand text-white rounded-lg px-4 py-1.5 hover:bg-brand-dark"}>{f.active ? "Pause" : "Run"}</SubmitButton>
+                  </form>
+                )}
               </div>
             </div>
             <div className="mt-3 text-xs text-brand-muted flex flex-wrap items-start gap-x-6 gap-y-1">

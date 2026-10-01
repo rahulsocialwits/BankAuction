@@ -74,6 +74,13 @@ function similar(a: Set<string>, b: Set<string>): boolean {
   return inter / (a.size + b.size - inter) >= 0.8;
 }
 
+function overlap(a: Set<string>, b: Set<string>): number {
+  if (!a.size || !b.size) return 0;
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter++;
+  return inter / (a.size + b.size - inter);
+}
+
 function sameDay(a: Date, b: Date) {
   return a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
 }
@@ -135,7 +142,10 @@ export async function importRecords(
         (k) =>
           similar(titleTokens, k.tokens) ||
           // Same bank, same reserve price, same auction day = same property even if titled differently.
-          (reservePrice > 0 && k.reserve === reservePrice && !!validStart && !!k.start && sameDay(validStart, k.start)),
+          (reservePrice > 0 && k.reserve === reservePrice && !!validStart && !!k.start && sameDay(validStart, k.start)) ||
+          // Same bank and the very same reserve price with a clearly overlapping title: the AI sometimes words a
+          // title differently from one run to the next, and many pages carry no auction date to compare.
+          (reservePrice > 0 && k.reserve === reservePrice && overlap(titleTokens, k.tokens) >= 0.4),
       );
       if (isDup) { skipped++; continue; }
       list.push({ tokens: titleTokens, reserve: reservePrice > 0 ? reservePrice : null, start: validStart });

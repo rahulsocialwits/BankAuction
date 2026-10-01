@@ -115,6 +115,28 @@ export async function autoCleanExactDuplicates(): Promise<number> {
     const keep = [...list].sort((x, y) => (y.auctions[0].auctionStart?.getTime() ?? 0) - (x.auctions[0].auctionStart?.getTime() ?? 0) || x.createdAt.getTime() - y.createdAt.getTime())[0];
     for (const p of list) if (p.id !== keep.id) hide.push(p.id);
   }
+  // Second pass: same bank and the very same reserve price, with clearly overlapping titles (a source that words the
+  // same listing differently from run to run). Greedy: the keeper is chosen first, later look-alikes are hidden.
+  const hidden = new Set(hide);
+  const byPrice = new Map<string, typeof props>();
+  for (const p of props) {
+    const a = p.auctions[0];
+    if (hidden.has(p.id) || !a?.bankId || !a.reservePrice) continue;
+    const key = `${a.bankId}|${a.reservePrice.toString()}`;
+    byPrice.set(key, [...(byPrice.get(key) ?? []), p]);
+  }
+  for (const list of byPrice.values()) {
+    if (list.length < 2) continue;
+    const ordered = [...list].sort((x, y) => (y.auctions[0].auctionStart?.getTime() ?? 0) - (x.auctions[0].auctionStart?.getTime() ?? 0) || x.createdAt.getTime() - y.createdAt.getTime());
+    const kept: { id: string; tokens: Set<string> }[] = [];
+    for (const p of ordered) {
+      const t = tokens(p.title);
+      if (kept.some((k) => jaccard(t, k.tokens) >= 0.4)) {
+        hide.push(p.id);
+        hidden.add(p.id);
+      } else kept.push({ id: p.id, tokens: t });
+    }
+  }
   if (hide.length) await prisma.property.updateMany({ where: { id: { in: hide } }, data: { status: "DUPLICATE" } });
   return hide.length;
 }

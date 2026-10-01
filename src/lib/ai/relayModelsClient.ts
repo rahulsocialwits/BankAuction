@@ -47,7 +47,14 @@ export async function chatJSONDetailed<T>(systemPrompt: string, userPrompt: stri
 
   // One model: short retries with backoff for temporary provider trouble (503/429/capacity).
   const attempt = async (m: string) => {
-    let r = await request(m);
+    let r: Response;
+    try {
+      r = await request(m);
+    } catch (e) {
+      // A request that ran past the time limit: try the same model once more before giving up.
+      if (!(e instanceof Error) || !/abort|timeout/i.test(`${e.name} ${e.message}`)) throw e;
+      r = await request(m);
+    }
     let body = r.ok ? "" : await r.text();
     for (let n = 0; !r.ok && n < 2 && ([429, 502, 503, 504].includes(r.status) || TRANSIENT.test(body)); n++) {
       await new Promise((ok) => setTimeout(ok, 2500 * (n + 1)));

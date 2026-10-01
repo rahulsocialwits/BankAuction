@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import SearchBar from "./SearchBar";
 import { useMe } from "@/lib/auth/useMe";
@@ -17,8 +17,11 @@ export default function MobileNav({
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
+  // Close the menu whenever the page changes (a search or a link was used).
+  useEffect(() => setOpen(false), [pathname]);
+
   return (
-    <div className="md:hidden ml-auto flex items-center gap-2">
+    <div className="lg:hidden ml-auto flex items-center gap-2">
       <button
         aria-label={open ? "Close menu" : "Open menu"}
         onClick={() => setOpen((v) => !v)}
@@ -36,10 +39,12 @@ export default function MobileNav({
       </button>
 
       {open && (
-        <div className="fixed inset-x-0 top-[89px] bottom-0 bg-white z-40 overflow-y-auto px-5 py-5">
+        // Hangs directly under the header (the sticky header is its positioning parent), so it can never
+        // cover the logo whatever the header's height is.
+        <div className="absolute inset-x-0 top-full bg-white z-40 overflow-y-auto border-t border-brand-border shadow-xl max-h-[calc(100dvh-7.5rem)] px-5 py-5">
           {pathname !== "/" && (
             <div className="mb-5">
-              <SearchBar />
+              <SearchBar onDone={() => setOpen(false)} />
             </div>
           )}
           <nav className="flex flex-col gap-1 text-sm font-medium">
