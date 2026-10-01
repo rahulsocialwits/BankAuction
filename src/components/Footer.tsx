@@ -22,10 +22,13 @@ function FooterColumn({ title, children }: { title: string; children: React.Reac
   return (
     <div className="min-w-0">
       <div className="font-semibold mb-3 text-sm">{title}</div>
-      <ul className="space-y-1.5 text-sm text-brand-muted [&_li]:truncate">{children}</ul>
+      <ul className="space-y-2 text-sm text-brand-muted leading-snug">{children}</ul>
     </div>
   );
 }
+
+// "Cholamandalam Investment And Finance Company Limited" -> "Cholamandalam Investment And Finance": the legal suffix adds nothing in a footer.
+const shortBank = (name: string) => name.replace(/\s+(limited|ltd\.?|pvt\.?|private)\b/gi, "").replace(/\s+company$/i, "").trim() || name;
 
 export default async function Footer() {
   const [s, topBanks, localityMap] = await Promise.all([getSiteSettings(), getTopBanks(), getLocalityMap().catch(() => null)]);
@@ -33,7 +36,7 @@ export default async function Footer() {
 
   return (
     <footer className="bg-brand-bg border-t border-brand-border mt-16">
-      <div className="w-full px-5 lg:px-10 xl:px-16 py-12 grid grid-cols-2 lg:grid-cols-[1.4fr_1fr_1.5fr_1fr_1.7fr] gap-x-10 gap-y-10">
+      <div className="w-full px-5 lg:px-10 xl:px-16 py-12 grid grid-cols-2 lg:grid-cols-[1.3fr_0.9fr_1.5fr_0.9fr_minmax(260px,1.6fr)] gap-x-8 xl:gap-x-12 gap-y-10">
         <div className="col-span-2 lg:col-span-1 min-w-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={s.footerLogoUrl} alt="BankAuction.co" height={36} loading="lazy" className="h-9 w-auto mb-3" />
@@ -72,7 +75,7 @@ export default async function Footer() {
 
         <FooterColumn title="Banks">
           {topBanks.map((b) => (
-            <li key={b.id}><Link href={`/properties?bank=${b.id}&status=all`} title={b.name} className="hover:text-brand">{b.name}</Link></li>
+            <li key={b.id}><Link href={`/properties?bank=${b.id}&status=all`} title={b.name} className="hover:text-brand">{shortBank(b.name)}</Link></li>
           ))}
           <li><Link href="/banks" className="hover:text-brand font-medium">All Bank</Link></li>
         </FooterColumn>
@@ -86,11 +89,11 @@ export default async function Footer() {
 
         <div className="col-span-2 lg:col-span-1 min-w-0">
           <div className="font-semibold mb-3 text-sm">Contact Info.</div>
-          <ul className="space-y-1.5 text-sm text-brand-muted [&_li]:truncate">
-            <li>Call: {s.phone}</li>
-            <li title={s.generalEmail}>General: {s.generalEmail}</li>
-            <li title={s.listingsEmail}>Listings: {s.listingsEmail}</li>
-            <li title={s.partnershipsEmail}>Partnerships: {s.partnershipsEmail}</li>
+          <ul className="space-y-3 text-sm text-brand-muted leading-snug">
+            <li><span className="block text-[11px] uppercase tracking-wide opacity-70">Call</span><a href={`tel:${s.phone.replace(/\s/g, "")}`} className="hover:text-brand">{s.phone}</a></li>
+            <li><span className="block text-[11px] uppercase tracking-wide opacity-70">General</span><a href={`mailto:${s.generalEmail}`} className="hover:text-brand break-all">{s.generalEmail}</a></li>
+            <li><span className="block text-[11px] uppercase tracking-wide opacity-70">Listings</span><a href={`mailto:${s.listingsEmail}`} className="hover:text-brand break-all">{s.listingsEmail}</a></li>
+            <li><span className="block text-[11px] uppercase tracking-wide opacity-70">Partnerships</span><a href={`mailto:${s.partnershipsEmail}`} className="hover:text-brand break-all">{s.partnershipsEmail}</a></li>
           </ul>
         </div>
       </div>

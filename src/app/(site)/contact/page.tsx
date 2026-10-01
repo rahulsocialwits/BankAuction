@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { getSiteSettings } from "@/lib/queries/siteSettings";
+import SubmitButton from "@/components/admin/SubmitButton";
 import { submitContactLead } from "./actions";
 
 export const metadata: Metadata = {
@@ -7,52 +9,122 @@ export const metadata: Metadata = {
   alternates: { canonical: "/contact" },
 };
 
-export default async function ContactPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ sent?: string; error?: string }>;
-}) {
+const ERRORS: Record<string, string> = {
+  name: "Please enter your name.",
+  reach: "Please give an email or a phone number so we can reply.",
+  email: "That email address does not look right.",
+  phone: "That phone number looks too short.",
+  message: "Please write a short message (at least 5 characters).",
+};
+
+const SUBJECTS = ["General enquiry", "About a property", "List a property / partnership", "Premium plan", "Report a problem"];
+
+const field = "w-full border border-brand-border rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand";
+
+function InfoCard({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white border border-brand-border rounded-2xl p-5 flex gap-4">
+      <div className="w-10 h-10 shrink-0 rounded-full bg-brand-bg flex items-center justify-center text-lg" aria-hidden="true">{icon}</div>
+      <div className="min-w-0">
+        <div className="font-semibold text-sm mb-1">{title}</div>
+        <div className="text-sm text-brand-muted space-y-1 break-words">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+export default async function ContactPage({ searchParams }: { searchParams: Promise<{ sent?: string; error?: string }> }) {
   const { sent, error } = await searchParams;
+  const s = await getSiteSettings();
+  const digits = s.phone.replace(/\D/g, "");
+  const wa = digits.length === 10 ? `91${digits}` : digits;
 
   return (
-    <main className="w-full px-5 lg:px-10 xl:px-16 py-14">
-      <h1 className="text-2xl font-semibold mb-2">Contact Us</h1>
-      <p className="text-brand-muted text-sm mb-8">
-        Questions about a listing or the platform? Send us a message.
-      </p>
+    <main className="w-full px-5 lg:px-10 xl:px-16 py-12">
+      <div className="mb-8">
+        <h1 className="text-3xl font-semibold mb-2">Contact Us</h1>
+        <p className="text-brand-muted text-sm max-w-2xl">
+          Questions about a listing, a premium plan or listing your own property? Send us a message or reach us directly. We reply during working hours.
+        </p>
+      </div>
 
-      {sent && (
-        <div className="bg-green-50 text-green-700 text-sm rounded-lg px-4 py-3 mb-6">
-          Thanks — we&apos;ve received your message and will get back to you.
-        </div>
-      )}
-      {error && (
-        <div className="bg-red-50 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">Please enter your name.</div>
-      )}
+      <div className="grid lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-8 items-start">
+        <section aria-labelledby="send-message">
+          <h2 id="send-message" className="sr-only">Send a message</h2>
 
-      <form action={submitContactLead} className="space-y-4 bg-white border border-brand-border rounded-xl p-6 max-w-2xl">
-        <div>
-          <label className="block text-sm font-medium mb-1" htmlFor="name">Name</label>
-          <input id="name" name="name" required className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="email">Email</label>
-            <input id="email" name="email" type="email" className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="phone">Phone</label>
-            <input id="phone" name="phone" className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1" htmlFor="message">Message</label>
-          <textarea id="message" name="message" rows={4} className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
-        </div>
-        <button type="submit" className="bg-brand text-white font-medium rounded-lg px-6 py-2.5 hover:bg-brand-dark">
-          Send Message
-        </button>
-      </form>
+          {sent && (
+            <div role="status" className="bg-green-50 text-green-800 text-sm rounded-xl px-4 py-3 mb-5">
+              ✓ Thank you — we have received your message and will get back to you shortly.
+            </div>
+          )}
+          {error && (
+            <div role="alert" className="bg-red-50 text-red-700 text-sm rounded-xl px-4 py-3 mb-5">{ERRORS[error] ?? "Something went wrong. Please try again."}</div>
+          )}
+
+          <form action={submitContactLead} className="bg-white border border-brand-border rounded-2xl p-6 sm:p-8 space-y-5">
+            {/* Honeypot: real visitors never see or fill this. */}
+            <div className="hidden" aria-hidden="true">
+              <label>Website <input name="website" tabIndex={-1} autoComplete="off" /></label>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="name">Your name <span className="text-red-600">*</span></label>
+                <input id="name" name="name" required minLength={2} autoComplete="name" className={field} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="subject">What is this about?</label>
+                <select id="subject" name="subject" defaultValue={SUBJECTS[0]} className={field}>
+                  {SUBJECTS.map((x) => <option key={x}>{x}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="email">Email</label>
+                <input id="email" name="email" type="email" autoComplete="email" placeholder="you@example.com" className={field} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="phone">Phone / WhatsApp</label>
+                <input id="phone" name="phone" type="tel" autoComplete="tel" placeholder="+91 98XXX XXXXX" className={field} />
+              </div>
+            </div>
+            <p className="text-xs text-brand-muted -mt-2">Give at least one of email or phone so we can reply.</p>
+
+            <div>
+              <label className="block text-sm font-medium mb-1.5" htmlFor="message">Message <span className="text-red-600">*</span></label>
+              <textarea id="message" name="message" rows={6} required minLength={5} maxLength={2000} placeholder="Tell us how we can help. If it is about a property, paste its link or name." className={field} />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4">
+              <SubmitButton className="bg-brand text-white font-medium rounded-lg px-8 py-3 hover:bg-brand-dark">Send message</SubmitButton>
+              <span className="text-xs text-brand-muted">We use your details only to reply to you.</span>
+            </div>
+          </form>
+        </section>
+
+        <aside className="space-y-4" aria-label="Contact details">
+          <InfoCard icon="📞" title="Call us">
+            <a href={`tel:${s.phone.replace(/\s/g, "")}`} className="text-brand font-medium hover:underline">{s.phone}</a>
+            <div>{s.workingHours}</div>
+          </InfoCard>
+
+          <InfoCard icon="💬" title="WhatsApp">
+            <a
+              href={`https://wa.me/${wa}?text=${encodeURIComponent("Hi, I have a question about BankAuction.co")}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center rounded-lg bg-[#25D366] text-white font-medium px-4 py-2 hover:bg-[#1ebe5a]"
+            >
+              Chat on WhatsApp
+            </a>
+          </InfoCard>
+
+          <InfoCard icon="✉️" title="Email">
+            <div><span className="text-xs uppercase tracking-wide">General</span><br /><a href={`mailto:${s.generalEmail}`} className="text-brand hover:underline break-all">{s.generalEmail}</a></div>
+            <div><span className="text-xs uppercase tracking-wide">List a property</span><br /><a href={`mailto:${s.listingsEmail}`} className="text-brand hover:underline break-all">{s.listingsEmail}</a></div>
+            <div><span className="text-xs uppercase tracking-wide">Partnerships</span><br /><a href={`mailto:${s.partnershipsEmail}`} className="text-brand hover:underline break-all">{s.partnershipsEmail}</a></div>
+          </InfoCard>
+        </aside>
+      </div>
     </main>
   );
 }
