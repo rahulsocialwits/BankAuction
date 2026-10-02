@@ -113,7 +113,7 @@ export default function DemoRunner() {
           <div>
             <label className={label} htmlFor="d-url">Source URL</label>
             <input id="d-url" name="url" type="url" placeholder="https://…" className={field} />
-            <p className="mt-1 text-[11px] text-brand-muted">Checked first: blocked sites, robots.txt and HTTP 401/403 all stop the run as REFUSED. One page only, no redirects, public websites only.</p>
+            <p className="mt-1 text-[11px] text-brand-muted">Checked first: robots.txt, then one request. robots disallow, HTTP 401/403 and anti-bot or login walls stop the run as REFUSED; the real answer is shown. One page only, no redirects, no retries.</p>
           </div>
         )}
         {type === "paste" && (
@@ -155,13 +155,32 @@ export default function DemoRunner() {
               </div>
               {r.reason && (
                 <div role="alert" className={`mb-4 rounded-lg px-3 py-2 text-sm ${r.status === "REFUSED" ? "bg-red-50 text-red-700" : "bg-orange-50 text-orange-800"}`}>
-                  {r.status === "REFUSED" ? "Refused: " : "Failed: "}
                   {r.reason}
                   {r.status === "REFUSED" && <div className="mt-1 text-xs">Permitted alternatives: the bank&apos;s own public notice, a PDF or CSV you supply, a Google Sheet, pasted text, or an authorised API/partner feed.</div>}
                 </div>
               )}
               <Pipeline r={r} />
             </section>
+
+            {r.source.type === "url" && (
+              <section className="rounded-xl border border-brand-border bg-white p-5">
+                <h2 className="mb-3 font-semibold">Access check</h2>
+                <dl className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
+                  <dt className="text-brand-muted">Host</dt>
+                  <dd className="break-words font-medium">{r.access.host ?? "—"}</dd>
+                  <dt className="text-brand-muted">Matched demo deny-list</dt>
+                  <dd className="font-medium">{r.access.denyListMatch ? `Yes (${r.access.denyListMatch})` : "No (the demo deny-list is empty)"}</dd>
+                  <dt className="text-brand-muted">Access check (robots.txt)</dt>
+                  <dd className="font-medium">{r.access.robots ?? "not reached"}</dd>
+                  <dt className="text-brand-muted">HTTP status</dt>
+                  <dd className="font-medium">{r.access.httpStatus ?? "no page request made"}</dd>
+                  <dt className="text-brand-muted">Collection status</dt>
+                  <dd className="font-medium">{r.access.collection}</dd>
+                  <dt className="text-brand-muted">Reason</dt>
+                  <dd className="break-words font-medium">{r.reason ?? (r.access.collection === "COLLECTED" ? "HTTP 200: page collected" : "—")}</dd>
+                </dl>
+              </section>
+            )}
 
             {r.status === "COMPLETED" && (
               <>

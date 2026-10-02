@@ -2,12 +2,11 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { prisma } from "@/lib/db/prisma";
 import { robotsCheck, scanWebPage, UA } from "@/data-sources/feeds/webScan";
-import { validateFeedUrl } from "@/data-sources/feeds/run";
 import type { ListingRecord } from "@/lib/import/csvImport";
 import { canonState } from "@/lib/queries/places";
 import { titleCase } from "@/lib/pipeline/locations";
 import { MOCK_RECORDS, SAMPLE_NOTICE } from "./sample";
-import type { DemoRecord, DemoResult, DemoSourceType, DemoStep, StepState } from "./types";
+import type { DemoAccess, DemoRecord, DemoResult, DemoSourceType, DemoStep, StepState } from "./types";
 
 /*
  * AI Python Scrap — DEMO (isolated).
@@ -110,38 +109,71 @@ async function duplicateOf(title: string | null, price: number | null): Promise<
   }
 }
 
-// Same do-not-fetch list as the existing pipeline (copied, not imported: that list is private to the existing code).
-const DO_NOT_FETCH = ["baanknet.com", "auctionbazaar.com", "bankauction.co"];
+// DEMO-ONLY deny-list. It is empty on purpose: the demo performs the normal access checks below and shows the site's real answer.
+// (The production pipeline keeps its own, separate list; nothing here changes it.)
+const DEMO_DENY_LIST: string[] = [];
 
-async function collectUrl(raw: string) {
-  let host = "";
-  try { host = new URL(raw.trim()).hostname; } catch { /* validateFeedUrl reports it below */ }
-  const listed = DO_NOT_FETCH.find((h) => host === h || host.endsWith("." + h));
-  if (listed) throw new Refused(`REASON: project do-not-fetch list. "${host}" matches "${listed}", which this project never fetches (its terms/robots refuse automated copying). No request was sent.`);
-  const v = validateFeedUrl(raw);
-  if (!v.ok) throw new Refused(`REASON: ${v.reason}. Use a full https:// address.`);
-  const u = new URL(v.url);
+/** Signs that a page is a bot-challenge or login wall rather than the content. */
+const CHALLENGE = /(just a moment|attention required|cf-chl|cf-browser-verification|captcha|are you a human|verify you are human|access denied|request blocked|enable javascript and cookies)/i;
+
+async function collectUrl(raw: string, access: DemoAccess) {
+  let u: URL;
+  try { u = new URL(raw.trim()); } catch { throw new Failed("REASON: not a valid web address. Use a full https:// address."); }
+  if (u.protocol !== "https:") throw new Failed("REASON: only https addresses are used in the demo.");
+  access.host = u.hostname;
+  const listed = DEMO_DENY_LIST.find((h) => u.hostname === h || u.hostname.endsWith("." + h));
+  access.denyListMatch = listed ?? null;
+  if (listed) throw new Refused(`REFUSED — demo deny-list: "${u.hostname}" matches "${listed}". No request was sent.`);
   await assertPublicHost(u.hostname);
 
+  // 1) robots.txt first. If it disallows us (or itself answers 401/403) we stop and never request the page.
   const verdict = await robotsCheck(u.toString());
-  if (verdict === "disallowed") throw new Refused(`REASON: robots.txt. ${u.hostname}/robots.txt does not allow our crawler on ${u.pathname || "/"} (or it answers 401/403). Try another page of the site, or use pasted text.`);
-  if (verdict === "unreachable") throw new Failed("The website did not answer properly (temporary problem). Try again later.");
+  access.robots = verdict;
+  if (verdict === "disallowed") {
+    access.collection = "REFUSED";
+    throw new Refused(`REFUSED — robots.txt: ${u.hostname}/robots.txt does not allow our crawler on ${u.pathname || "/"} (or robots.txt itself answers 401/403). The page was not requested.`);
+  }
+  if (verdict === "unreachable") {
+    access.collection = "FAILED";
+    throw new Failed(`FAILED — ${u.hostname}/robots.txt did not answer properly (timeout, network error or 5xx). No page request was made; try again later.`);
+  }
 
+  // 2) One polite GET, no redirects, no retries.
   let res: Response;
   try {
     res = await fetch(u, { headers: { "User-Agent": UA, Accept: "text/html,text/plain" }, redirect: "manual", signal: AbortSignal.timeout(20_000) });
-  } catch {
-    throw new Failed("The website did not answer in time.");
+  } catch (e) {
+    access.collection = "FAILED";
+    const timeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+    throw new Failed(timeout ? `FAILED — timeout: ${u.hostname} did not answer within 20 seconds.` : `FAILED — network error while contacting ${u.hostname}.`);
   }
-  if (res.status >= 300 && res.status < 400) throw new Failed("The page redirects somewhere else. The demo does not follow redirects; paste the final page address instead.");
-  if (res.status === 401 || res.status === 403) throw new Refused(`REASON: HTTP ${res.status} from ${u.hostname}. The site refuses automated requests (anti-bot or login). The demo does not retry or work around this.`);
-  if (!res.ok) throw new Failed(`The website answered HTTP ${res.status}.`);
-  const contentType = res.headers.get("content-type") ?? "";
-  if (!/text\/(html|plain)/i.test(contentType)) throw new Failed(`Content type "${contentType || "unknown"}" is not supported in the demo (PDF and file upload come in the next phase).`);
-  const body = (await res.text()).slice(0, MAX_BYTES);
-  return { text: contentType.includes("html") ? htmlToText(body) : body, httpStatus: res.status, contentType };
-}
+  access.httpStatus = res.status;
+  const server = (res.headers.get("server") ?? "").toLowerCase();
+  const challenged = res.headers.get("cf-mitigated") === "challenge";
+  if (res.status === 401 || res.status === 403 || challenged) {
+    access.collection = "REFUSED";
+    throw new Refused(challenged || server.includes("cloudflare") ? `REFUSED — protected access: ${u.hostname} answered HTTP ${res.status} with an anti-bot challenge. The demo does not retry or work around it.` : `REFUSED — HTTP ${res.status}: ${u.hostname} refuses automated requests. The demo does not retry or work around it.`);
+  }
+  if (res.status >= 300 && res.status < 400) {
+    const loc = res.headers.get("location") ?? "";
+    access.collection = /login|signin|sign-in|auth|account/i.test(loc) ? "REFUSED" : "FAILED";
+    if (access.collection === "REFUSED") throw new Refused(`REFUSED — protected access: the page redirects to a login (${loc.slice(0, 120)}).`);
+    throw new Failed(`FAILED — the page redirects (HTTP ${res.status}). The demo does not follow redirects; use the final page address.`);
+  }
+  if (res.status === 429) { access.collection = "REFUSED"; throw new Refused(`REFUSED — HTTP 429: ${u.hostname} is rate-limiting automated requests. The demo does not retry.`); }
+  if (!res.ok) { access.collection = "FAILED"; throw new Failed(`FAILED — HTTP ${res.status} from ${u.hostname}.`); }
 
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!/text\/(html|plain)/i.test(contentType)) { access.collection = "FAILED"; throw new Failed(`FAILED — content type "${contentType || "unknown"}" is not supported in the demo (PDF and file upload come in the next phase).`); }
+  const body = (await res.text()).slice(0, MAX_BYTES);
+  const text = contentType.includes("html") ? htmlToText(body) : body;
+  if (CHALLENGE.test(text.slice(0, 3000)) && text.length < 4000) {
+    access.collection = "REFUSED";
+    throw new Refused(`REFUSED — protected access: HTTP 200 but the page is a challenge or access-denied screen, not content.`);
+  }
+  access.collection = "COLLECTED";
+  return { text, httpStatus: res.status, contentType };
+}
 export async function runDemo(input: { name: string; type: DemoSourceType; url: string; pasted: string; mock: boolean }): Promise<DemoResult> {
   const t0 = Date.now();
   const steps: DemoStep[] = [];
@@ -152,6 +184,7 @@ export async function runDemo(input: { name: string; type: DemoSourceType; url: 
     durationMs: 0,
     source: { name: input.name || "Demo source", type: input.type, url },
     steps,
+    access: { host: null, denyListMatch: null, robots: null, httpStatus: null, collection: input.type === "url" ? "NOT STARTED" : "n/a (not a URL source)" },
     collected: { items: 0, chars: 0, lines: 0, httpStatus: null, contentType: null, preview: "" },
     extraction: { mode: "NONE", model: null, tokens: null },
     counts: { extracted: 0, ok: 0, incomplete: 0, rejected: 0, duplicates: 0 },
@@ -182,7 +215,7 @@ export async function runDemo(input: { name: string; type: DemoSourceType; url: 
           return { text: input.pasted.slice(0, MAX_BYTES), httpStatus: null as number | null, contentType: "text/plain (pasted)" };
         }
         if (!url) throw new Failed("Enter a source URL.");
-        return collectUrl(url);
+        return collectUrl(url, result.access);
       },
       (c) => `${c.text.length.toLocaleString("en-IN")} characters collected${c.httpStatus ? ` (HTTP ${c.httpStatus})` : ""}`,
     );

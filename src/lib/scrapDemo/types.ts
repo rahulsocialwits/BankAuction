@@ -33,12 +33,21 @@ export interface DemoRecord {
   rejectedReason: string | null;
 }
 
+export interface DemoAccess {
+  host: string | null;
+  denyListMatch: string | null; // demo deny-list entry that matched (the list is empty in the demo)
+  robots: "allowed" | "disallowed" | "unreachable" | null;
+  httpStatus: number | null;
+  collection: "NOT STARTED" | "COLLECTED" | "REFUSED" | "FAILED" | "n/a (not a URL source)";
+}
+
 export interface DemoResult {
   status: DemoStatus;
   reason: string | null;
   durationMs: number;
   source: { name: string; type: DemoSourceType; url: string | null };
   steps: DemoStep[];
+  access: DemoAccess;
   collected: { items: number; chars: number; lines: number; httpStatus: number | null; contentType: string | null; preview: string };
   extraction: { mode: "AI" | "MOCK" | "NONE"; model: string | null; tokens: number | null };
   counts: { extracted: number; ok: number; incomplete: number; rejected: number; duplicates: number };
