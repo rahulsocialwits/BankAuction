@@ -30,6 +30,7 @@ const NAV: NavItem[] = [
   { href: "/admin/payments", label: "Payments", master: true },
   { href: "/admin/ai", label: "AI Admin", master: true },
   { href: "/admin/api", label: "API", master: true },
+  { href: "/admin/scrap-demo", label: "AI Python Scrap — DEMO", master: true },
   { href: "/admin/admins", label: "Admin Team", master: true },
   { href: "/admin/settings", label: "Settings", master: true },
 ];
