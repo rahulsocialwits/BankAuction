@@ -110,14 +110,21 @@ async function duplicateOf(title: string | null, price: number | null): Promise<
   }
 }
 
+// Same do-not-fetch list as the existing pipeline (copied, not imported: that list is private to the existing code).
+const DO_NOT_FETCH = ["baanknet.com", "auctionbazaar.com", "bankauction.co"];
+
 async function collectUrl(raw: string) {
+  let host = "";
+  try { host = new URL(raw.trim()).hostname; } catch { /* validateFeedUrl reports it below */ }
+  const listed = DO_NOT_FETCH.find((h) => host === h || host.endsWith("." + h));
+  if (listed) throw new Refused(`REASON: project do-not-fetch list. "${host}" matches "${listed}", which this project never fetches (its terms/robots refuse automated copying). No request was sent.`);
   const v = validateFeedUrl(raw);
-  if (!v.ok) throw new Refused(v.reason);
+  if (!v.ok) throw new Refused(`REASON: ${v.reason}. Use a full https:// address.`);
   const u = new URL(v.url);
   await assertPublicHost(u.hostname);
 
   const verdict = await robotsCheck(u.toString());
-  if (verdict === "disallowed") throw new Refused("The website's robots.txt (or an access block) does not permit automated access to this page.");
+  if (verdict === "disallowed") throw new Refused(`REASON: robots.txt. ${u.hostname}/robots.txt does not allow our crawler on ${u.pathname || "/"} (or it answers 401/403). Try another page of the site, or use pasted text.`);
   if (verdict === "unreachable") throw new Failed("The website did not answer properly (temporary problem). Try again later.");
 
   let res: Response;
@@ -127,7 +134,7 @@ async function collectUrl(raw: string) {
     throw new Failed("The website did not answer in time.");
   }
   if (res.status >= 300 && res.status < 400) throw new Failed("The page redirects somewhere else. The demo does not follow redirects; paste the final page address instead.");
-  if (res.status === 401 || res.status === 403) throw new Refused(`The website answered HTTP ${res.status}: it refuses automated access. The demo does not retry or work around this.`);
+  if (res.status === 401 || res.status === 403) throw new Refused(`REASON: HTTP ${res.status} from ${u.hostname}. The site refuses automated requests (anti-bot or login). The demo does not retry or work around this.`);
   if (!res.ok) throw new Failed(`The website answered HTTP ${res.status}.`);
   const contentType = res.headers.get("content-type") ?? "";
   if (!/text\/(html|plain)/i.test(contentType)) throw new Failed(`Content type "${contentType || "unknown"}" is not supported in the demo (PDF and file upload come in the next phase).`);
