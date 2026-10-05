@@ -31,19 +31,19 @@ export interface PlaceData {
  */
 export const getPlaces = unstable_cache(
   async (): Promise<PlaceData> => {
-    const rows = await prisma.property.groupBy({
-      by: ["geoState", "geoCity", "geoLocality"],
-      where: { status: "PUBLISHED", geoCity: { not: null } },
-      _count: { _all: true },
+    const rows = await prisma.property.findMany({
+      where: { status: "PUBLISHED" },
+      select: { geoState: true, geoCity: true, geoLocality: true, city: { select: { name: true, state: { select: { name: true } } } } },
     });
 
     const states = new Map<string, number>();
     const cities = new Map<string, { city: string; state: string | null; count: number }>();
     const areas = new Map<string, { city: string; area: string }>();
     for (const r of rows) {
-      const city = canonCity(r.geoCity!);
-      const state = r.geoState ? canonState(r.geoState) : null;
-      const n = r._count._all;
+      const city = canonCity(r.geoCity ?? r.city?.name ?? "");
+      if (!city) continue;
+      const state = r.geoState ? canonState(r.geoState) : (r.city?.state?.name ? canonState(r.city.state.name) : null);
+      const n = 1;
       if (state) states.set(state, (states.get(state) ?? 0) + n);
       const c = cities.get(city) ?? { city, state, count: 0 };
       c.count += n;
