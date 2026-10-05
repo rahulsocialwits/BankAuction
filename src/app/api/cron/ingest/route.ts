@@ -21,9 +21,5 @@ export async function GET(request: NextRequest) {
 
   const limit = Number(request.nextUrl.searchParams.get("limit") ?? "100");
 
-  // Schedulers like cron-job.org give up after ~30 s. Answer immediately and do the work after the response;
-  // add ?wait=1 to run synchronously and see the full result (debugging).
-  if (request.nextUrl.searchParams.get("wait") === "1") return NextResponse.json(await runTick({ limit, via: "HTTP" }));
-  after(() => runTick({ limit, via: "HTTP" }).catch(() => undefined));
-  return NextResponse.json({ accepted: true, note: "Running in the background; see Admin → Data Engine → Run History." }, { status: 202 });
+  // Execute the ingestion tick inside this Node.js function so the scheduler cannot\n  // return successfully while the background work is discarded.\n  return NextResponse.json(await runTick({ limit, via: "HTTP" }));\n
 }
