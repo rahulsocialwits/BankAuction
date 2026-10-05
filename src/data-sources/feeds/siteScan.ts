@@ -137,8 +137,9 @@ async function discoverCore(
           if (!via.has(rec.source_url)) via.set(rec.source_url, url);
         }
       }
-      // Next.js Flight payloads may escape the quotes around these keys. Accept both forms.
-      const pageNumber = (name: string) => Number((page.html.match(new RegExp('\\\\?"' + name + '\\\\?"\\\\s*:\\\\s*(\\\\d+)')) ?? [])[1] ?? "1");
+      // Next.js Flight payloads can contain escaped quotes; normalize those before reading pagination metadata.
+      const metaHtml = page.html.replace(/\\\"/g, '"');
+      const pageNumber = (name: string) => Number((metaHtml.match(new RegExp('"' + name + '"\\s*:\\s*(\\d+)')) ?? [])[1] ?? "1");
       const current = pageNumber("currentPage");
       const total = pageNumber("totalPages");
       if (current >= 1 && total > current) {
