@@ -4,6 +4,8 @@ import type { Prisma, PropertyStatus } from "@prisma/client";
 import SubmitButton from "@/components/admin/SubmitButton";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import { approveProperty, bulkRemoveProperties, removeProperty, restoreProperty } from "./actions";
+import { fixThinNow } from "../engine/actions";
+import { countThin } from "@/lib/pipeline/thinFix";
 import { ISSUES, propertyWhere } from "@/lib/admin/propertyFilter";
 import { isMasterAdmin } from "@/lib/auth/adminAuth";
 
@@ -47,6 +49,7 @@ export default async function AdminPropertiesPage({ searchParams }: { searchPara
         prisma.bank.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
       ])
     : [[], []];
+  const thin = master ? await countThin() : 0;
   const narrowed = !!(q || srcF || bankF || issue);
 
   const [properties, total] = await Promise.all([
@@ -71,6 +74,15 @@ export default async function AdminPropertiesPage({ searchParams }: { searchPara
         </div>
         <Link href="/admin/properties/new" className="rounded-xl bg-brand text-white px-4 py-2.5 text-sm font-semibold text-center">+ Add property</Link>
       </div>
+
+      {thin > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span><b>{thin}</b> website listing(s) have no reserve price (visitors see “Not Available”). Fix them automatically: each one’s own page is read again; a price found is filled in, otherwise the listing is hidden.</span>
+          <form action={fixThinNow} className="ml-auto">
+            <SubmitButton className="rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white">Fix or hide them now (60 at a time)</SubmitButton>
+          </form>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         {tabs.map(([label, value]) => (

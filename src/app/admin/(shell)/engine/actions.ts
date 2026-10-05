@@ -8,6 +8,8 @@ import { prisma } from "@/lib/db/prisma";
 import { ensureSourceRow } from "@/data-sources/bankauctions/adapter";
 import { isAiFeed, runFeedFull, runWebDiscovery, UNREACHABLE } from "@/data-sources/feeds/run";
 import { webStateOf, withWebState } from "@/data-sources/feeds/siteScan";
+import { fixThinListings } from "@/lib/pipeline/thinFix";
+import { logRun } from "@/lib/pipeline/runLog";
 
 function refresh() {
   revalidatePath("/admin/engine");
@@ -98,5 +100,20 @@ export async function pauseImportingEverything() {
   await requireMaster();
   const feeds = (await prisma.feedSource.findMany()).filter((f) => isAiFeed(f.url) && webStateOf(f.sheetState).importAll);
   for (const f of feeds) await prisma.feedSource.update({ where: { id: f.id }, data: { sheetState: withWebState(f.sheetState, { ...webStateOf(f.sheetState), importAll: false }) } });
+  refresh();
+}
+
+/** Reads the own page of every thin website listing again (60 per press): price found = filled, still no price = hidden. */
+export async function fixThinNow() {
+  await requireMaster();
+  after(async () => {
+    const startedAt = new Date();
+    try {
+      const r = await fixThinListings({ max: 60 });
+      await logRun({ source: "Thin listing fix", kind: "feed", trigger: "manual", status: "ok", created: 0, duplicates: 0, rejected: r.hidden, aiTokens: r.tokens, message: `${r.fixed} filled with their reserve price, ${r.hidden} hidden (no price on their own page), ${r.left} still waiting${r.left ? " — press again" : ""}`, startedAt });
+    } catch (e) {
+      await logRun({ source: "Thin listing fix", kind: "feed", trigger: "manual", status: "error", message: e instanceof Error ? e.message : String(e), startedAt });
+    }
+  });
   refresh();
 }

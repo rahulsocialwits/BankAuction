@@ -2,7 +2,9 @@ import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { isAiFeed, UNREACHABLE } from "@/data-sources/feeds/run";
 import { webStateOf } from "@/data-sources/feeds/siteScan";
-import { importAllNow, importEverythingNow, pauseImportAll, pauseImportingEverything } from "../engine/actions";
+import { importAllNow, importEverythingNow, pauseImportAll, pauseImportingEverything, fixThinNow } from "../engine/actions";
+import { countThin } from "@/lib/pipeline/thinFix";
+import SubmitButton from "@/components/admin/SubmitButton";
 
 const inr = (n: unknown) => (n === null || n === undefined ? "—" : "₹" + Number(n).toLocaleString("en-IN"));
 const day = (d: Date | null) => (d ? d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -30,6 +32,7 @@ export default async function LiveView() {
       property: { select: { slug: true, title: true, addressText: true, geoCity: true, _count: { select: { documents: true } } } },
     },
   });
+  const thin = await countThin();
   const importing = feeds.some((f) => f.active && (webStateOf(f.sheetState).importAll || /Fetching|Importing/.test(f.lastMessage ?? "")));
 
   return (
@@ -48,6 +51,15 @@ export default async function LiveView() {
           </form>
         </div>
       </div>
+
+      {thin > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span><b>{thin}</b> website listing(s) have no reserve price (visitors see “Not Available”). Fix them automatically: each one’s own page is read again; a price found is filled in, otherwise the listing is hidden.</span>
+          <form action={fixThinNow} className="ml-auto">
+            <SubmitButton className="rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white">Fix or hide them now (60 at a time)</SubmitButton>
+          </form>
+        </div>
+      )}
 
       {feeds.length === 0 ? (
         <p className="rounded-xl border border-dashed border-brand-border bg-white px-6 py-8 text-center text-sm text-brand-muted">No website sources yet. Run the demo on a website and press “Add as Live source”.</p>

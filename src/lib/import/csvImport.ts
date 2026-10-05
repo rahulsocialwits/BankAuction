@@ -89,7 +89,7 @@ function sameDay(a: Date, b: Date) {
   return a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
 }
 
-interface Known { tokens: Set<string>; reserve: number | null; start: Date | null; auctionId: string; propertyId: string; ext: string | null }
+export interface Known { tokens: Set<string>; reserve: number | null; start: Date | null; auctionId: string; propertyId: string; ext: string | null }
 
 /** Source times are Indian Standard Time. A time written without an offset is IST, never "whatever the server's zone is". */
 export function parseListingDate(s: string | undefined): Date | null {
@@ -176,7 +176,7 @@ async function isThin(hit: Known): Promise<boolean> {
   return !done;
 }
 
-async function enrichExisting(hit: Known, rec: ListingRecord, statusSource: string, strong: boolean): Promise<boolean> {
+export async function enrichExisting(hit: Known, rec: ListingRecord, statusSource: string, strong: boolean): Promise<boolean> {
   const [a, p] = await Promise.all([
     prisma.auction.findUnique({ where: { id: hit.auctionId } }),
     prisma.property.findUnique({ where: { id: hit.propertyId }, select: { addressText: true, latitude: true, longitude: true, description: true, attributes: { select: { key: true } } } }),
