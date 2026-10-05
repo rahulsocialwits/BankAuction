@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import type { Prisma, PropertyStatus } from "@prisma/client";
 import SubmitButton from "@/components/admin/SubmitButton";
 import ConfirmButton from "@/components/admin/ConfirmButton";
-import { approveProperty, bulkRemoveProperties, removeProperty, restoreProperty } from "./actions";
+import { approveProperty, bulkRemoveProperties, removeProperty, restoreProperty, publishAllDrafts } from "./actions";
 import { fixThinNow } from "../engine/actions";
 import { countThin } from "@/lib/pipeline/thinFix";
 import { ISSUES, propertyWhere } from "@/lib/admin/propertyFilter";
@@ -31,8 +31,8 @@ const STYLES: Record<string, string> = {
 
 const small = "text-xs border border-brand-border rounded-lg px-2.5 py-1 hover:bg-brand-bg";
 
-export default async function AdminPropertiesPage({ searchParams }: { searchParams: Promise<{ status?: string; q?: string; source?: string; bank?: string; issue?: string; bulk?: string }> }) {
-  const { status, q, source: srcF, bank: bankF, issue, bulk } = await searchParams;
+export default async function AdminPropertiesPage({ searchParams }: { searchParams: Promise<{ status?: string; q?: string; source?: string; bank?: string; issue?: string; bulk?: string; published?: string }> }) {
+  const { status, q, source: srcF, bank: bankF, issue, bulk, published } = await searchParams;
   const master = await isMasterAdmin();
   // A normal admin never sees pipeline concepts (duplicates, sources); they only manage listings.
   const tabs = master ? TABS : TABS.filter(([, v]) => v !== "DUPLICATE");
@@ -72,7 +72,10 @@ export default async function AdminPropertiesPage({ searchParams }: { searchPara
           <h1 className="text-2xl font-semibold text-brand">Properties</h1>
           <p className="text-sm text-brand-muted mt-1">Edit, publish, hide or restore any listing — imported or added by hand.</p>
         </div>
-        <Link href="/admin/properties/new" className="rounded-xl bg-brand text-white px-4 py-2.5 text-sm font-semibold text-center">+ Add property</Link>
+        <div className="flex flex-wrap gap-2">
+          {master && <form action={publishAllDrafts}><SubmitButton className="rounded-xl border border-green-600 bg-green-600 text-white px-4 py-2.5 text-sm font-semibold">Publish all drafts</SubmitButton></form>}
+          <Link href="/admin/properties/new" className="rounded-xl bg-brand text-white px-4 py-2.5 text-sm font-semibold text-center">+ Add property</Link>
+        </div>
       </div>
 
       {thin > 0 && (
@@ -118,7 +121,9 @@ export default async function AdminPropertiesPage({ searchParams }: { searchPara
         </form>
       </div>
 
-      {bulk && <div role="status" className="rounded-xl border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">{bulk} listing(s) hidden (Removed). They can be restored one by one from the Removed tab.</div>}
+      {bulk && {published && <div role="status" className="rounded-xl border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">{published} draft listing(s) published.</div>}
+
+      <div role="status" className="rounded-xl border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">{bulk} listing(s) hidden (Removed). They can be restored one by one from the Removed tab.</div>}
 
       <div className="bg-white border border-brand-border rounded-xl overflow-hidden">
         <div className="p-3 border-b border-brand-border text-xs text-brand-muted flex flex-wrap items-center gap-3">
