@@ -291,12 +291,21 @@ export async function runWebDiscovery(feedId: string, trigger: "schedule" | "man
   const lock = await acquireAiLock(feed.name);
   if (!lock) return null;
   const startedAt = new Date();
-  const budgetMs = opts.budgetMs ?? (all ? 270_000 : trigger === "manual" ? 200_000 : 70_000);
+  // the serverless function ends at 300 s: leave room to save the result (a run that is cut off saves nothing)
+  const budgetMs = opts.budgetMs ?? (all ? 230_000 : trigger === "manual" ? 180_000 : 70_000);
   try {
-    const res = await scanSiteForNew({ startUrl: check.url, feedName: feed.name, seen: state.seen, maxNew: all ? 150 : trigger === "manual" ? 25 : 10, concurrency: all ? 6 : trigger === "manual" ? 4 : 3, deadline: Date.now() + budgetMs });
+    // Live progress: the admin sees what the scan is doing (at most one write every 8 s), not a message that stays unchanged for minutes.
+    let lastWrite = 0;
+    const progress = (line: string) => {
+      if (Date.now() - lastWrite < 8_000) return;
+      lastWrite = Date.now();
+      prisma.feedSource.update({ where: { id: feedId }, data: { lastMessage: `Running: ${line.trim()}`.slice(0, 280) } }).catch(() => undefined);
+    };
+    progress(`site scan started ${new Date().toISOString().slice(11, 16)} UTC …`);
+    const res = await scanSiteForNew({ startUrl: check.url, feedName: feed.name, seen: state.seen, maxNew: all ? 150 : trigger === "manual" ? 25 : 10, concurrency: all ? 6 : trigger === "manual" ? 4 : 3, deadline: Date.now() + budgetMs, onProgress: progress });
     const note = `Site scan: ${res.discovered} listing page(s) found, ${res.unseen} new, ${res.read} read in full (${res.import.created} new, ${res.import.skipped} already on the site, ${res.import.failed} rejected${res.import.held ? `, ${res.import.held} held for borrower name` : ""}, ${res.tokens} tokens${res.pdfs ? `, ${res.pdfs} notice PDF(s)` : ""}${res.rendered ? `, ${res.rendered} page(s) rendered in a browser` : ""}).${rejectionNote(res.rejections)}${res.pending ? ` ${SITE_SCAN_PENDING}` : ""}${res.notes.length ? ` Note: ${[...new Set(res.notes)].join("; ")}.` : ""}`;
     const fresh = await prisma.feedSource.findUnique({ where: { id: feedId }, select: { sheetState: true, lastMessage: true } });
-    const keep = (fresh?.lastMessage ?? "").split(" | Site scan:")[0].replace(SITE_SCAN_PENDING, "").replace("Importing all properties of this website…", "").replace(/^[\s|]+/, "").trim();
+    const keep = (fresh?.lastMessage?.startsWith("Running:") ? "" : fresh?.lastMessage ?? "").split(" | Site scan:")[0].replace(SITE_SCAN_PENDING, "").replace("Importing all properties of this website…", "").replace(/^[\s|]+/, "").trim();
     await prisma.feedSource.update({
       where: { id: feedId },
       data: { sheetState: withWebState(fresh?.sheetState, { seen: res.seen, lastAt: new Date().toISOString(), importAll: all ? res.pending : false }), lastMessage: `${keep} | ${note}`.slice(0, 1800) },
@@ -306,7 +315,9 @@ export async function runWebDiscovery(feedId: string, trigger: "schedule" | "man
     if (res.import.created > 0 && (trigger === "manual" || aiWindow().open)) await enrichLocations(30).catch(() => null);
     return note;
   } catch (e) {
-    await logRun({ source: feed.name, kind: "feed", trigger, status: "error", message: `Site scan failed: ${e instanceof Error ? e.message : String(e)}`, startedAt });
+    const failure = `Site scan failed: ${e instanceof Error ? e.message : String(e)}`;
+    await logRun({ source: feed.name, kind: "feed", trigger, status: "error", message: failure, startedAt });
+    await prisma.feedSource.update({ where: { id: feedId }, data: { lastMessage: failure.slice(0, 600) } }).catch(() => undefined); // shown in the admin, not only in History
     return null;
   } finally {
     await releaseAiLock(lock);
