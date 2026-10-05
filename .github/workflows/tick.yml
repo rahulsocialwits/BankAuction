@@ -19,8 +19,8 @@ jobs:
           if [ -z "$CRON_SECRET" ]; then
             echo "Add the repository secret CRON_SECRET (Settings > Secrets and variables > Actions)."; exit 1
           fi
-          code=$(curl -sS -o response.txt -w "%{http_code}" --max-time 60 \
+          code=$(curl -sS -o response.txt -w "%{http_code}" --max-time 240 \
             -H "x-cron-secret: $CRON_SECRET" \
-            "https://auction.bizsocio.com/api/cron/ingest?limit=100")
+            "https://auction.bizsocio.com/api/cron/ingest?limit=100&wait=1")
           echo "HTTP $code"; cat response.txt; echo
           [ "$code" = "202" ] || [ "$code" = "200" ]
