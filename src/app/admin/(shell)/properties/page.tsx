@@ -121,9 +121,9 @@ export default async function AdminPropertiesPage({ searchParams }: { searchPara
         </form>
       </div>
 
-      {bulk && {published && <div role="status" className="rounded-xl border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">{published} draft listing(s) published.</div>}
+      {published && <div role="status" className="rounded-xl border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">{published} draft listing(s) published.</div>}
 
-      <div role="status" className="rounded-xl border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">{bulk} listing(s) hidden (Removed). They can be restored one by one from the Removed tab.</div>}
+      {bulk && <div role="status" className="rounded-xl border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">{bulk} listing(s) hidden (Removed). They can be restored one by one from the Removed tab.</div>}
 
       <div className="bg-white border border-brand-border rounded-xl overflow-hidden">
         <div className="p-3 border-b border-brand-border text-xs text-brand-muted flex flex-wrap items-center gap-3">
