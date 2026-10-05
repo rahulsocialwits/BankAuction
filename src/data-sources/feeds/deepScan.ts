@@ -63,7 +63,7 @@ export interface DeepDeps {
    * `via`: the list page that links to this address. A single-page app that shows nothing when its detail address is typed in is
    * opened the way a visitor does it: from that list page, by clicking the card.
    */
-  fetchDoc: (url: string, opts?: { via?: string }) => Promise<DocFetch | null>;
+  fetchDoc: (url: string, opts?: { via?: string; noRender?: boolean }) => Promise<DocFetch | null>;
   pdfToText: (bytes: Uint8Array) => Promise<string>;
   ask: (system: string, user: string) => Promise<{ data: unknown; tokens: number }>;
   /** Exact reason code of the last failed fetchDoc per address. */
@@ -305,7 +305,7 @@ export function realDeps(o: { onEvent?: (line: string) => void } = {}): DeepDeps
 
       // An empty JavaScript application shell (almost no visible text, scripts / an app root): the properties are filled in by the
       // page's own JavaScript. Run that JavaScript in a browser, for this same address, and read what the page then shows.
-      if (RENDER_ENABLED && isJsShell(html).shell) {
+      if (RENDER_ENABLED && !fopts?.noRender && isJsShell(html).shell) {
         if (!renderer) {
           renderer = new RenderingFetcher(gate);
           const t = Date.now();

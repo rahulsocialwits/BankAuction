@@ -74,7 +74,7 @@ export interface SiteDiscovery {
 
 export async function discoverListingUrls(
   start: string,
-  deps: Pick<DeepDeps, "fetchDoc">,
+  deps: Pick<DeepDeps, "fetchDoc" | "failure">,
   opts: { maxPages?: number; maxDetails?: number; deadline?: number; scoped?: boolean; trusted?: string[]; verifyBudgetMs?: number } = {},
 ): Promise<SiteDiscovery> {
   // Started from a page inside a section (/auction-property/view-auction-property.aspx)? Stay in that section first.
@@ -91,7 +91,7 @@ export async function discoverListingUrls(
 
 async function discoverCore(
   start: string,
-  deps: Pick<DeepDeps, "fetchDoc">,
+  deps: Pick<DeepDeps, "fetchDoc" | "failure">,
   opts: { maxPages?: number; maxDetails?: number; deadline?: number; trusted?: string[]; verifyBudgetMs?: number },
   scope: string,
 ): Promise<SiteDiscovery> {
@@ -117,7 +117,9 @@ async function discoverCore(
       if (n >= MAX_PER_INDEX_SHAPE) continue;
       perShape.set(shape, n + 1);
     }
-    const page = await deps.fetchDoc(url);
+    // Index pages are read as plain HTML only (rendering one costs 30+ seconds on a small server); the property links the plain HTML
+    // carries are enough to start, and the browser is kept for the pages that hold the real property data.
+    const page = await deps.fetchDoc(url, { noRender: true });
     if (!page || page.kind !== "html" || !page.html) { if (url === origin) notes.push("the start page could not be read (refused by robots.txt or the site)"); continue; }
     pages++;
     const $ = cheerio.load(page.html);
@@ -148,13 +150,21 @@ async function discoverCore(
   // Verifying a group means reading one sample page (for a JavaScript site: rendering it in a browser, seconds each). A group that was
   // verified on an earlier scan is trusted without any request, and the rest has its own time allowance: a scan must never spend
   // minutes here and then be cut off before it saves anything.
-  const verifyUntil = Date.now() + (opts.verifyBudgetMs ?? 60_000);
+  const verifyUntil = Date.now() + (opts.verifyBudgetMs ?? 100_000);
   for (const [s, set] of candidates) {
     const urls = [...set];
     let verified = !!opts.trusted?.includes(s);
+    let assumed = false;
     if (!verified && Date.now() > verifyUntil) { notes.push(`group ${s} was not checked: the time allowance for checking groups was used up`); shapes.push({ shape: s, count: set.size, verified: false, sample: urls[0] }); continue; }
     for (const sample of verified ? [] : urls.slice(0, 2)) {
       const page = await deps.fetchDoc(sample, { via: via.get(sample) });
+      // A sample that could not be rendered in time says nothing about the group: it is accepted for reading (each page is still
+      // checked when it is read, and a non-property page is rejected with its reason) but NOT remembered as verified.
+      if (!page && /^render_/.test(deps.failure?.get(sample) ?? "")) {
+        assumed = true;
+        notes.push(`group ${s}: the sample page could not be rendered in time (${deps.failure?.get(sample)}), accepted without verification`);
+        break;
+      }
       if (page?.kind === "html" && page.html) {
         const text = page.text ?? htmlToText(page.html);
         if (PROPERTY_WORDS.test(text) && AUCTION_WORDS.test(text) && MONEY.test(text)) { verified = true; break; }
@@ -162,9 +172,9 @@ async function discoverCore(
       if (Date.now() > verifyUntil) break;
     }
     shapes.push({ shape: s, count: set.size, verified, sample: urls[0] });
-    if (verified) details.push(...urls);
+    if (verified || assumed) details.push(...urls);
   }
-  if (!shapes.some((x) => x.verified)) notes.push("no group of addresses looked like property pages (the site may load its listings with JavaScript)");
+  if (!details.length) notes.push("no group of addresses looked like property pages (the site may load its listings with JavaScript)");
   const sorted = [...new Set(details)].sort((a, b) => idOf(b) - idOf(a)).slice(0, maxDetails);
   return { details: sorted, via: Object.fromEntries(sorted.map((u) => [u, via.get(u) ?? origin])), pagesRead: pages, shapes, notes };
 }
