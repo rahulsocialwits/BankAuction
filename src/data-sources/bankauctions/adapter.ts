@@ -427,7 +427,7 @@ async function ingestOnePage(
         description: normalized.description,
         category: normalized.category ?? undefined,
         addressText: normalized.cityRaw,
-        status: validation.needsReview ? "PENDING_REVIEW" : "PUBLISHED",
+        status: "PUBLISHED",
       },
     });
     propertyId = property.id;
