@@ -1,10 +1,10 @@
 name: Scheduler tick
 
-# Calls the site's own /api/cron/ingest every 15 minutes.
+# Calls the site's own /api/cron/ingest every 5 minutes.
 # ONE secret (CRON_SECRET, the same value as in Vercel). GitHub may start scheduled jobs a few minutes late.
 on:
   schedule:
-    - cron: "7,22,37,52 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
