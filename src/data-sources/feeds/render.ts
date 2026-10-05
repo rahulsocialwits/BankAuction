@@ -64,7 +64,23 @@ export class RenderingFetcher {
     return this.browser.status();
   }
 
+  /** One page never takes longer than this: a browser that hangs is closed (the next page starts a fresh one) and reported as render_timeout. */
+  private async guarded<T extends { ok: boolean }>(work: Promise<T>, ms = 55_000): Promise<T | { ok: false; failure: RenderFailure; reason: string }> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<{ ok: false; failure: RenderFailure; reason: string }>((resolve) => {
+      timer = setTimeout(() => resolve({ ok: false, failure: "render_timeout", reason: `the browser did not finish this page within ${ms / 1000}s` }), ms);
+    });
+    const res = await Promise.race([work, timeout]);
+    clearTimeout(timer);
+    if (!res.ok && "failure" in res && res.failure === "render_timeout") await this.close().catch(() => undefined);
+    return res;
+  }
+
   async render(url: string): Promise<{ ok: true; page: RenderedPage } | { ok: false; failure: RenderFailure; reason: string }> {
+    return this.guarded(this.renderInner(url));
+  }
+
+  private async renderInner(url: string): Promise<{ ok: true; page: RenderedPage } | { ok: false; failure: RenderFailure; reason: string }> {
     const origin = new URL(url).hostname.replace(/^www\./, "");
     const gate: RenderGate = {
       sameFamily: (u) => { try { const h = new URL(u).hostname.toLowerCase().replace(/^www\./, ""); return h === origin || h.endsWith("." + origin); } catch { return false; } },
@@ -82,6 +98,10 @@ export class RenderingFetcher {
 
   /** Renders a detail page by clicking its card on `listUrl` (for single-page apps that build the real address on click). */
   async renderLinked(listUrl: string, url: string): Promise<{ ok: true; page: RenderedPage } | { ok: false; failure: RenderFailure; reason: string }> {
+    return this.guarded(this.renderLinkedInner(listUrl, url));
+  }
+
+  private async renderLinkedInner(listUrl: string, url: string): Promise<{ ok: true; page: RenderedPage } | { ok: false; failure: RenderFailure; reason: string }> {
     const origin = new URL(url).hostname.replace(/^www\./, "");
     if ((await this.gate.check(listUrl)) !== "allowed" || (await this.gate.check(url)) !== "allowed") return { ok: false, failure: "robots_disallowed", reason: "robots.txt does not allow this address; the browser was not started" };
     const gate: RenderGate = {

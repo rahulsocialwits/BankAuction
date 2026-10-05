@@ -75,7 +75,7 @@ export interface SiteDiscovery {
 export async function discoverListingUrls(
   start: string,
   deps: Pick<DeepDeps, "fetchDoc">,
-  opts: { maxPages?: number; maxDetails?: number; deadline?: number; scoped?: boolean } = {},
+  opts: { maxPages?: number; maxDetails?: number; deadline?: number; scoped?: boolean; trusted?: string[]; verifyBudgetMs?: number } = {},
 ): Promise<SiteDiscovery> {
   // Started from a page inside a section (/auction-property/view-auction-property.aspx)? Stay in that section first.
   const startSeg = new URL(start).pathname.split("/").filter(Boolean)[0] ?? "";
@@ -92,7 +92,7 @@ export async function discoverListingUrls(
 async function discoverCore(
   start: string,
   deps: Pick<DeepDeps, "fetchDoc">,
-  opts: { maxPages?: number; maxDetails?: number; deadline?: number },
+  opts: { maxPages?: number; maxDetails?: number; deadline?: number; trusted?: string[]; verifyBudgetMs?: number },
   scope: string,
 ): Promise<SiteDiscovery> {
   const maxPages = opts.maxPages ?? 30;
@@ -145,15 +145,21 @@ async function discoverCore(
   const candidates = [...byShape.entries()].filter(([s, set]) => isDetailShape(s) && set.size >= 3).sort((a, b) => b[1].size - a[1].size).slice(0, 4);
   const shapes: SiteDiscovery["shapes"] = [];
   const details: string[] = [];
+  // Verifying a group means reading one sample page (for a JavaScript site: rendering it in a browser, seconds each). A group that was
+  // verified on an earlier scan is trusted without any request, and the rest has its own time allowance: a scan must never spend
+  // minutes here and then be cut off before it saves anything.
+  const verifyUntil = Date.now() + (opts.verifyBudgetMs ?? 60_000);
   for (const [s, set] of candidates) {
     const urls = [...set];
-    let verified = false;
-    for (const sample of urls.slice(0, 2)) {
+    let verified = !!opts.trusted?.includes(s);
+    if (!verified && Date.now() > verifyUntil) { notes.push(`group ${s} was not checked: the time allowance for checking groups was used up`); shapes.push({ shape: s, count: set.size, verified: false, sample: urls[0] }); continue; }
+    for (const sample of verified ? [] : urls.slice(0, 2)) {
       const page = await deps.fetchDoc(sample, { via: via.get(sample) });
       if (page?.kind === "html" && page.html) {
         const text = page.text ?? htmlToText(page.html);
         if (PROPERTY_WORDS.test(text) && AUCTION_WORDS.test(text) && MONEY.test(text)) { verified = true; break; }
       }
+      if (Date.now() > verifyUntil) break;
     }
     shapes.push({ shape: s, count: set.size, verified, sample: urls[0] });
     if (verified) details.push(...urls);
@@ -174,6 +180,8 @@ export interface SiteScanResult {
   seen: string[]; // addresses to remember
   notes: string[];
   shapes: SiteDiscovery["shapes"];
+  /** Groups of addresses that were verified as property pages (remembered, so the next scan does not check them again). */
+  verifiedShapes: string[];
   /** Every listing that was NOT imported, with the exact reason(s) (never just a count). */
   rejections: { url: string; title?: string; reasons: string[] }[];
   rendered: number; // pages read after running their JavaScript in a browser
@@ -189,18 +197,20 @@ export async function scanSiteForNew(opts: {
   deadline?: number;
   dryRun?: boolean;
   deps?: DeepDeps;
+  /** Groups verified on an earlier scan (see verifiedShapes). */
+  trustedShapes?: string[];
   /** How many listing pages are read side by side (the AI is the slow part). */
   concurrency?: number;
   onProgress?: (line: string) => void;
 }): Promise<SiteScanResult> {
   const say = opts.onProgress ?? (() => undefined);
-  const deps = opts.deps ?? realDeps();
+  const deps = opts.deps ?? realDeps({ onEvent: opts.onProgress });
   const deadline = opts.deadline ?? Date.now() + 150_000;
   const seen = new Set(opts.seen);
   const maxNew = opts.maxNew ?? 10;
 
   say(`Scanning ${opts.startUrl} …`);
-  const disc = await discoverListingUrls(opts.startUrl, deps, { maxPages: opts.maxIndexPages ?? 30, deadline: Math.min(deadline, Date.now() + 90_000) });
+  const disc = await discoverListingUrls(opts.startUrl, deps, { maxPages: opts.maxIndexPages ?? 30, deadline: Math.min(deadline, Date.now() + 90_000), trusted: opts.trustedShapes });
   say(`  ${disc.pagesRead} index page(s) read, ${disc.details.length} listing page(s) found${disc.shapes.length ? ` (${disc.shapes.map((s) => `${s.shape}: ${s.count}${s.verified ? "" : " ✗"}`).join(", ")})` : ""}`);
   // A browser that cannot start (or a page it could not render) is stated in the run message, not hidden behind "0 listing pages".
   if (deps.renderStats?.failed) disc.notes.push(`the JavaScript render fallback failed ${deps.renderStats.failed} time(s) — ${deps.renderStats.lastError ?? "unknown reason"}`);
@@ -217,7 +227,7 @@ export async function scanSiteForNew(opts: {
   for (const u of known) seen.add(u);
   say(`  ${fresh.length} new listing page(s) (${unseen.length - fresh.length} already on the site)`);
 
-  const out: SiteScanResult = { discovered: disc.details.length, unseen: fresh.length, read: 0, import: { created: 0, skipped: 0, failed: 0, updated: 0 }, tokens: 0, pdfs: 0, pending: fresh.length > maxNew, seen: [], notes: disc.notes, shapes: disc.shapes, rejections: [], rendered: 0 };
+  const out: SiteScanResult = { discovered: disc.details.length, unseen: fresh.length, read: 0, import: { created: 0, skipped: 0, failed: 0, updated: 0 }, tokens: 0, pdfs: 0, pending: fresh.length > maxNew, seen: [], notes: disc.notes, shapes: disc.shapes, verifiedShapes: disc.shapes.filter((x) => x.verified).map((x) => x.shape), rejections: [], rendered: 0 };
   if (opts.dryRun) {
     for (const u of fresh.slice(0, 15)) say(`    would read: ${u}`);
     out.seen = [...seen];
@@ -273,13 +283,14 @@ export async function scanSiteForNew(opts: {
 export interface WebState {
   seen: string[];
   lastAt: string | null;
+  verified?: string[]; // address groups already verified as property pages (not checked again)
   importAll?: boolean; // "Import all now": every tick keeps reading new listings (fast mode) until none are left
 }
 
 export function webStateOf(raw: string | null | undefined): WebState {
   try {
     const w = (raw ? JSON.parse(raw) : null)?.web;
-    return { seen: Array.isArray(w?.seen) ? w.seen.filter((s: unknown): s is string => typeof s === "string") : [], lastAt: typeof w?.lastAt === "string" ? w.lastAt : null, importAll: w?.importAll === true };
+    return { seen: Array.isArray(w?.seen) ? w.seen.filter((s: unknown): s is string => typeof s === "string") : [], lastAt: typeof w?.lastAt === "string" ? w.lastAt : null, importAll: w?.importAll === true, verified: Array.isArray(w?.verified) ? w.verified.filter((x: unknown): x is string => typeof x === "string") : [] };
   } catch {
     return { seen: [], lastAt: null };
   }

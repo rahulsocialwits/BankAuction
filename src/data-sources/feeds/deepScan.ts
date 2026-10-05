@@ -264,7 +264,7 @@ export function toListings(data: unknown, docs: { type: string; title: string; u
 /** JavaScript rendering is on by default; set RENDER_JS_PAGES=0 to switch it off. */
 const RENDER_ENABLED = process.env.RENDER_JS_PAGES !== "0";
 
-export function realDeps(): DeepDeps {
+export function realDeps(o: { onEvent?: (line: string) => void } = {}): DeepDeps {
   const gate = new RobotsGate(); // robots.txt is read once per site
   let nextSlot = 0; // requests start at least PAUSE_MS apart, even when several pages are being read side by side
   const failure = new Map<string, string>();
@@ -306,10 +306,19 @@ export function realDeps(): DeepDeps {
       // An empty JavaScript application shell (almost no visible text, scripts / an app root): the properties are filled in by the
       // page's own JavaScript. Run that JavaScript in a browser, for this same address, and read what the page then shows.
       if (RENDER_ENABLED && isJsShell(html).shell) {
-        renderer ??= new RenderingFetcher(gate);
+        if (!renderer) {
+          renderer = new RenderingFetcher(gate);
+          const t = Date.now();
+          o.onEvent?.("browser: starting …");
+          const st = await renderer.status();
+          o.onEvent?.(`browser: ${st.ok ? "ready" : "NOT available"} after ${((Date.now() - t) / 1000).toFixed(1)}s - ${st.reason}`.slice(0, 250));
+        }
+        const t1 = Date.now();
+        const path = new URL(url).pathname;
         const r = fopts?.via ? await renderer.renderLinked(fopts.via, url) : await renderer.render(url);
-        if (!r.ok) { renderStats.failed++; renderStats.lastError = `${r.failure}: ${r.reason}`.slice(0, 300); console.log(`[crawler] render failed (${r.failure}): ${r.reason} (${url})`); return fail(r.failure); }
+        if (!r.ok) { renderStats.failed++; renderStats.lastError = `${r.failure}: ${r.reason}`.slice(0, 300); console.log(`[crawler] render failed (${r.failure}): ${r.reason} (${url})`); o.onEvent?.(`render failed ${path}: ${r.failure} after ${((Date.now() - t1) / 1000).toFixed(1)}s`); return fail(r.failure); }
         renderStats.rendered++;
+        o.onEvent?.(`rendered ${path} in ${((Date.now() - t1) / 1000).toFixed(1)}s (${renderStats.rendered} done)`);
         return { kind: "html", html: r.page.html.slice(0, MAX_HTML_BYTES), text: r.page.text, rendered: true };
       }
       return { kind: "html", html };
