@@ -77,7 +77,7 @@ export interface SiteDiscovery {
 export async function discoverListingUrls(
   start: string,
   deps: Pick<DeepDeps, "fetchDoc" | "failure">,
-  opts: { maxPages?: number; maxDetails?: number; deadline?: number; scoped?: boolean; trusted?: string[]; verifyBudgetMs?: number } = {},
+  opts: { maxPages?: number; maxDetails?: number; deadline?: number; scoped?: boolean; trusted?: string[]; verifyBudgetMs?: number; baanknetStartPage?: number } = {},
 ): Promise<SiteDiscovery> {
   // Started from a page inside a section (/auction-property/view-auction-property.aspx)? Stay in that section first.
   const startSeg = new URL(start).pathname.split("/").filter(Boolean)[0] ?? "";
@@ -104,7 +104,7 @@ async function discoverCore(
   const startUrl = (() => { const u = new URL(origin); const n = opts.baanknetStartPage ?? 1; if (siteOf(u.hostname) === "baanknet.com" && n > 1) u.searchParams.set("page", String(n)); return normalizeUrl(u.toString(), origin)!; })();
   const queue: string[] = [startUrl];
   const visited = new Set<string>();
-  const queued = new Set<string>([origin]);
+  const queued = new Set<string>([startUrl]);
   const perShape = new Map<string, number>();
   const directDetails = new Set<string>();
   const byShape = new Map<string, Set<string>>();
