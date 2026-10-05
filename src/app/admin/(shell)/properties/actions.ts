@@ -59,7 +59,13 @@ export async function bulkRemoveProperties(formData: FormData) {
 /** Publish every currently-drafted property. Master admin only. */
 export async function publishAllDrafts() {
   await requireMaster();
-  const res = await prisma.property.updateMany({ where: { status: "DRAFT" }, data: { status: "PUBLISHED" } });
+  const drafts = await prisma.property.findMany({ where: { status: "DRAFT" }, select: { id: true } });
+  if (!drafts.length) {
+    redirect("/admin/properties?status=PUBLISHED&published=0");
+  }
+  const ids = drafts.map((p) => p.id);
+  const res = await prisma.property.updateMany({ where: { id: { in: ids }, status: "DRAFT" }, data: { status: "PUBLISHED" } });
+  await prisma.propertyAttribute.deleteMany({ where: { propertyId: { in: ids }, key: "enrichment_status" } });
   refresh();
   redirect(`/admin/properties?status=PUBLISHED&published=${res.count}`);
 }
