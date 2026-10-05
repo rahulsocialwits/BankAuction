@@ -24,11 +24,19 @@ export type FetchStatus =
   | "captcha"
   | "unauthorized"
   | "forbidden"
-  | "robots_disallowed";
+  | "robots_disallowed"
+  | "internal_policy_block";
 
 /** Statuses that are real refusals: the page / source stops and is marked Blocked. Everything else is temporary. */
 export const REFUSALS: readonly FetchStatus[] = ["blocked", "captcha", "unauthorized", "forbidden", "robots_disallowed"];
 export const isRefusal = (s: FetchStatus) => REFUSALS.includes(s);
+
+/**
+ * internal_policy_block is NOT a refusal by a website: this project's own configuration (the do-not-fetch list in
+ * src/data-sources/feeds/blockedHosts.ts) refused the address before any request was made. It is reported on its own and is
+ * never worded as if the website had refused.
+ */
+export const POLICY_PREFIX = "Source disabled by project configuration";
 
 export const MAX_RETRY_WAIT_SEC = 20;
 /** Used when a 429 / 503 carries no usable Retry-After header. */
@@ -156,17 +164,18 @@ export async function fetchWithRetry(url: string, init: RequestInit = {}, o: Ret
 /** The line for a robots.txt refusal. */
 export const robotsSkipLine = (url: string, rule?: string | null) => `robots.txt → URL disallowed${rule ? ` (${rule})` : ""} → request skipped: ${url}`;
 
-/** A plain-language explanation of a status, for run messages. */
+/** What the admin UI shows for each status. The wording says only what was actually established. */
 export function describeStatus(s: FetchStatus, http: number | null): string {
   switch (s) {
-    case "rate_limited": return `rate_limited: the site answered HTTP ${http ?? 429} twice (after waiting once as it asked). This is temporary, not a block; it is tried again on the next run.`;
-    case "service_unavailable": return `service_unavailable: the site answered HTTP ${http ?? 503} twice (after waiting once). This is temporary, not a block; it is tried again on the next run.`;
-    case "temporary_error": return `temporary_error: ${http ? `HTTP ${http}` : "no answer from the site"}. It is tried again on the next run.`;
-    case "unauthorized": return "unauthorized: the site answered HTTP 401 (login required).";
-    case "forbidden": return "forbidden: the site answered HTTP 403 (access denied to automated requests).";
-    case "captcha": return "captcha: the site shows a CAPTCHA / challenge page.";
-    case "blocked": return "blocked: the site shows an explicit anti-bot access-denied page.";
-    case "robots_disallowed": return "robots_disallowed: the site's robots.txt does not allow this address.";
+    case "rate_limited": return `Rate limited — the website answered HTTP ${http ?? 429} twice (we waited as its Retry-After asked, at most 20 s, and retried once). This is temporary, not a block; it is tried again on the next run.`;
+    case "service_unavailable": return `Temporary service unavailable — the website answered HTTP ${http ?? 503} twice (we waited and retried once). This is temporary, not a block; it is tried again on the next run.`;
+    case "temporary_error": return http ? `Temporary error — the website answered HTTP ${http}. It is tried again on the next run.` : "Network error — no answer from the website (timeout, DNS or connection problem). It is tried again on the next run.";
+    case "unauthorized": return "Website returned HTTP 401 (login required for this address).";
+    case "forbidden": return "Website returned HTTP 403 (access denied to automated requests).";
+    case "captcha": return "Automated access requires verification (the website shows a CAPTCHA / challenge page).";
+    case "blocked": return "Website shows an explicit access-denied page for automated requests.";
+    case "robots_disallowed": return "Blocked by robots.txt — the website's robots.txt does not allow this address.";
+    case "internal_policy_block": return POLICY_PREFIX;
     default: return "success";
   }
 }

@@ -4,6 +4,8 @@ import { getAiConfig } from "@/lib/ai/aiConfig";
 import SubmitButton from "@/components/admin/SubmitButton";
 import EngineTabs from "@/components/admin/EngineTabs";
 import { toggleBuiltIn, toggleFeedSource, deleteFeedSource, importAllNow, importEverythingNow, pauseImportAll, pauseImportingEverything, importAllBuiltIn, pauseBuiltInImportAll } from "./actions";
+import { POLICY_PREFIX } from "@/lib/fetch/httpStatus";
+import { relabelLegacyMessage } from "@/data-sources/feeds/blockedHosts";
 import { builtInImportAll } from "@/data-sources/bankauctions/adapter";
 import { isAiFeed } from "@/data-sources/feeds/run";
 import { webStateOf } from "@/data-sources/feeds/siteScan";
@@ -47,7 +49,7 @@ const btn = "text-xs border border-brand-border rounded-lg px-3 py-1.5 hover:bg-
 
 export default async function DataEnginePage() {
   const since24h = new Date(Date.now() - 864e5);
-  const [builtIn, lastJob, feeds, published, pending, lastTick, lastRuns, tokens24, ai, aiSchedule] = await Promise.all([
+  const [builtIn, lastJob, feedsRaw, published, pending, lastTick, lastRuns, tokens24, ai, aiSchedule] = await Promise.all([
     prisma.source.findUnique({ where: { name: BUILT_IN_NAME } }),
     prisma.sourceRunLog.findFirst({ where: { kind: "builtin" }, orderBy: { startedAt: "desc" } }),
     prisma.feedSource.findMany({ orderBy: { createdAt: "asc" } }),
@@ -60,6 +62,9 @@ export default async function DataEnginePage() {
     aiScheduleStatus(),
   ]);
 
+  // rows saved before the wording fix blamed the website for our own do-not-fetch list: show them truthfully
+  const feeds = feedsRaw.map((f) => ({ ...f, lastMessage: relabelLegacyMessage(f.url, f.lastMessage) }));
+  const policyOff = (m?: string | null) => !!m?.startsWith(POLICY_PREFIX);
   const builtInPaused = builtIn?.status === "DISABLED";
   const builtInAll = await builtInImportAll().catch(() => false);
   const liveFeeds = feeds.filter((f) => f.active);
@@ -83,8 +88,10 @@ export default async function DataEnginePage() {
       problems.push({
         title: `${f.name}: ${silent ? "site does not answer our crawler" : "last run failed"}`,
         detail: f.lastMessage ?? "",
-        fix: f.lastMessage?.startsWith("Blocked")
-          ? "The site does not allow automated access. Press Remove on the source below."
+        fix: policyOff(f.lastMessage)
+          ? "This is NOT a refusal by the website. This project's own do-not-fetch list (src/data-sources/feeds/blockedHosts.ts) disables this address. Press Remove, or ask the project owner to change the list."
+          : f.lastMessage?.startsWith("Blocked")
+          ? "The website itself refused automated access (robots.txt, HTTP 401/403 or a verification page). Press Remove on the source below."
           : silent
             ? "Nothing is broken on your side: this bank's server ignores automated requests, and we never work around that. It is retried twice a day. For its data, paste the bank's public notice in Bulk Import, or ask the bank for a data feed."
             : "Press Run on the source below to try again.",
@@ -134,7 +141,7 @@ export default async function DataEnginePage() {
           <div className="rounded-lg border border-brand-border p-3">
             <div className="text-brand-muted mb-1">Last 24 hours</div>
             <div className="font-semibold text-sm">{tokens24._sum.created ?? 0} new listings</div>
-            <div className="mt-1 text-brand-muted">{lastRuns.filter((r) => r.status === "error" || r.status === "blocked").length} failed runs</div>
+            <div className="mt-1 text-brand-muted">{lastRuns.filter((r) => r.status === "error" || r.status === "blocked" || r.status === "policy_block").length} failed runs</div>
           </div>
         </div>
       </section>
@@ -240,12 +247,14 @@ export default async function DataEnginePage() {
               <div className="flex items-center gap-2">
                 {f.active ? (
                   <Badge tone="green">Live</Badge>
+                ) : policyOff(f.lastMessage) ? (
+                  <Badge tone="gray">Disabled by configuration</Badge>
                 ) : f.lastMessage?.startsWith("Blocked") ? (
                   <Badge tone="red">Blocked</Badge>
                 ) : (
                   <Badge tone="gray">Paused</Badge>
                 )}
-                {f.active && isAiFeed(f.url) && !f.lastMessage?.startsWith("Blocked") && (
+                {f.active && isAiFeed(f.url) && !f.lastMessage?.startsWith("Blocked") && !policyOff(f.lastMessage) && (
                   <form action={importAllNow}>
                     <input type="hidden" name="id" value={f.id} />
                     <SubmitButton className="text-xs bg-gold text-white font-semibold rounded-lg px-3 py-1.5 hover:bg-gold-dark">{webStateOf(f.sheetState).importAll ? "Importing all…" : "⚡ Import all now"}</SubmitButton>
@@ -257,7 +266,7 @@ export default async function DataEnginePage() {
                     <SubmitButton className="text-xs border border-brand-border font-semibold rounded-lg px-3 py-1.5 hover:bg-brand-bg">⏸ Pause importing</SubmitButton>
                   </form>
                 )}
-                {!f.active && f.lastMessage?.startsWith("Blocked") ? (
+                {!f.active && (f.lastMessage?.startsWith("Blocked") || policyOff(f.lastMessage)) ? (
                   // The site refuses automated access: running it again can never work, so the only useful action is removing it.
                   <form action={deleteFeedSource}>
                     <input type="hidden" name="id" value={f.id} />

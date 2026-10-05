@@ -4,7 +4,7 @@ export interface RunLogInput {
   source: string;
   kind: "builtin" | "feed" | "csv" | "cron";
   trigger: "schedule" | "manual" | "cron" | "import";
-  status: "ok" | "error" | "skipped" | "blocked";
+  status: "ok" | "error" | "skipped" | "blocked" | "policy_block"; // policy_block = our own do-not-fetch list refused the address (not the website)
   created?: number;
   updated?: number;
   duplicates?: number;

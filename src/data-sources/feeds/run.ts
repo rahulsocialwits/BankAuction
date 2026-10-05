@@ -1,13 +1,13 @@
 import { prisma } from "@/lib/db/prisma";
 import { importCsvText, importRecords, type ImportResult } from "@/lib/import/csvImport";
 import { robotsCheck, scanWebPage, UA } from "./webScan";
-import { describeStatus, fetchWithRetry, isRefusal } from "@/lib/fetch/httpStatus";
+import { POLICY_PREFIX, describeStatus, fetchWithRetry, isRefusal } from "@/lib/fetch/httpStatus";
 import { logRun } from "@/lib/pipeline/runLog";
 import { enrichLocations } from "@/lib/pipeline/geo";
 import { importTabular, type TabState } from "@/lib/import/tabular";
 import { fetchTabCsv, listSheetTabs, sheetIdFromUrl } from "./sheets";
 import { acquireAiLock, aiWindow, releaseAiLock } from "@/lib/pipeline/aiSchedule";
-import { BLOCKED_HOSTS, isBlockedHost } from "./blockedHosts";
+import { checkSourceUrl, type SourceUrlCheck } from "./blockedHosts";
 import { DEEP_MAX_LISTINGS, makeDeepener } from "./deepScan";
 import { scanSiteForNew, webStateOf, withWebState } from "./siteScan";
 
@@ -21,21 +21,14 @@ const CATCH_UP_GAP_MS = 20 * 60_000;
 // run reports a technical "Blocked" for that reason alone (see BlockedError below).
 // (the list lives in blockedHosts.ts so the sheet importer can apply the same rule to rows)
 
-const BLOCKED_REASON = "This website refuses automated access (its terms or anti-bot protection)";
-
-/** Access is refused by the site (robots.txt, terms, anti-bot). We never retry or work around it; the feed is auto-paused. */
+/** The WEBSITE refused (robots.txt, HTTP 401 / 403, CAPTCHA, anti-bot screen). We never retry or work around it; the feed is auto-paused. */
 class BlockedError extends Error {}
+/** OUR OWN configuration (the do-not-fetch list) refused the address. No request was made; the website did not refuse anything. */
+class PolicyError extends Error {}
 const MIN_INTERVAL_MS = 55 * 60 * 1000; // scheduled runs are hourly
 
-export function validateFeedUrl(raw: string): { ok: true; url: string } | { ok: false; reason: string } {
-  let u: URL;
-  try { u = new URL(raw.trim()); } catch { return { ok: false, reason: "Invalid URL" }; }
-  if (u.protocol !== "https:") return { ok: false, reason: "Only https links are allowed" };
-  if (isBlockedHost(u.hostname)) {
-    // A policy decision of this project (not a technical error): these hosts are never fetched. Say so, and say what IS allowed.
-    return { ok: false, reason: `${u.hostname} is on this project's do-not-fetch list (${BLOCKED_HOSTS.join(", ")}): its terms do not allow copying, so it can never be added as a source. Allowed instead: the bank's own public notices, a PDF / CSV / Google Sheet you supply, pasted text, or an authorised partner / API feed.` };
-  }
-  return { ok: true, url: u.toString() };
+export function validateFeedUrl(raw: string): SourceUrlCheck {
+  return checkSourceUrl(raw);
 }
 
 /** Turns a normal Google Sheets link into its CSV export URL. */
@@ -122,7 +115,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
   let sheetStateOut: string | undefined;
   try {
     const check = validateFeedUrl(feed.url);
-    if (!check.ok) throw new Error(check.reason);
+    if (!check.ok) throw check.status === "internal_policy_block" ? new PolicyError(check.reason) : new Error(check.reason);
     const isSheet = check.url.startsWith("https://docs.google.com/spreadsheets/");
     const target = toCsvUrl(check.url);
 
@@ -150,7 +143,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
     if (!looksCsv) {
       const verdict = await robotsCheck(target);
       if (verdict === "disallowed") {
-        throw new BlockedError("Blocked: robots_disallowed: this site's robots.txt says automated access to this page is not allowed. Paused automatically.");
+        throw new BlockedError(`Blocked by robots.txt: this website's robots.txt does not allow automated access to this page. Paused automatically.`);
       }
       if (verdict === "unreachable") {
         // Not a refusal: the site simply did not answer properly. Stay Live and try again on the next run.
@@ -238,7 +231,9 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
     return { name: feed.name, message };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    const blocked = e instanceof BlockedError || message === BLOCKED_REASON;
+    const policy = e instanceof PolicyError;
+    const blocked = e instanceof BlockedError;
+    // messages shown in the admin: "Blocked: …" / "Blocked by robots.txt" = the website refused; "Source disabled by project configuration" = our own list
     const finalMessage = blocked && !message.startsWith("Blocked") ? `Blocked: ${message}. Paused automatically.` : message;
     await prisma.feedSource.update({
       where: { id },
@@ -246,10 +241,10 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
         lastRunAt: new Date(),
         lastStatus: "error",
         lastMessage: finalMessage,
-        ...(blocked && { active: false }),
+        ...((blocked || policy) && { active: false }),
       },
     });
-    await logRun({ source: feed.name, kind: "feed", trigger, status: blocked ? "blocked" : "error", aiTokens: tokens, message: finalMessage, startedAt });
+    await logRun({ source: feed.name, kind: "feed", trigger, status: policy ? "policy_block" : blocked ? "blocked" : "error", aiTokens: tokens, message: finalMessage, startedAt });
     return { name: feed.name, error: message };
   }
 }
