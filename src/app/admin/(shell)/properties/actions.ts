@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { PropertyCategory, PropertyStatus } from "@prisma/client";
 import { requireMaster } from "@/lib/auth/adminAuth";
-import { NO_BORROWER_WHERE, propertyWhere } from "@/lib/admin/propertyFilter";
+import { propertyWhere } from "@/lib/admin/propertyFilter";
 
 function refresh(slug?: string) {
   revalidatePath("/admin/properties");
@@ -52,14 +52,6 @@ export async function bulkRemoveProperties(formData: FormData) {
   // Safety: a bulk delete needs at least one narrowing filter, never "everything".
   if (!g("q") && !g("source") && !g("bank") && !g("issue")) return;
   const res = await prisma.property.updateMany({ where: { AND: [where, { status: { not: "REMOVED" } }] }, data: { status: "REMOVED" } });
-  refresh();
-  redirect(`/admin/properties?status=REMOVED&bulk=${res.count}`);
-}
-
-/** The site shows only listings that name their borrower: every published listing without one is hidden (Removed; restorable one by one). */
-export async function hideNoBorrower() {
-  await requireMaster();
-  const res = await prisma.property.updateMany({ where: NO_BORROWER_WHERE, data: { status: "REMOVED" } });
   refresh();
   redirect(`/admin/properties?status=REMOVED&bulk=${res.count}`);
 }
