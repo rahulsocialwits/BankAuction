@@ -19,12 +19,11 @@ export const getCityCounts = unstable_cache(
   async (): Promise<CityCount[]> => {
     const rows = await prisma.property.findMany({
       where: { status: "PUBLISHED" },
-      select: { geoCity: true, addressText: true, geoCheckedAt: true },
-      take: 20000,
+      select: { geoCity: true, addressText: true, geoCheckedAt: true, city: { select: { name: true } } },
     });
     const counts = new Map<string, number>();
     for (const r of rows) {
-      const raw = r.geoCity ?? (r.geoCheckedAt ? null : r.addressText);
+      const raw = r.geoCity ?? r.city?.name ?? null;
       if (!raw || raw.length > 40) continue;
       const city = canonCity(raw);
       counts.set(city, (counts.get(city) ?? 0) + 1);
