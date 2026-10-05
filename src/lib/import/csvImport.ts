@@ -502,11 +502,7 @@ export async function importRecords(
         const why = [!col("reserve_price") ? "reserve_price_missing" : "", !(col("auction_start") || col("auction_end")) ? "auction_date_missing" : "", !col("location") && !col("legal_schedule") ? "address_missing" : ""].filter(Boolean);
         if (why.length) { reject(title, ...why, ...(deepFail ? [deepFail] : [])); continue; }
       }
-      // The site shows only listings that name their borrower. A new listing whose source does not state one is NOT thrown away:
-      // it is stored as a hidden DRAFT marked "needs_enrichment" (borrower_status = not_available_from_source) and is published
-      // Missing borrower never blocks publication. Keep the source facts as-is; do not invent a borrower.
-      const holdForBorrower = false;
-
+      // Missing borrower never blocks publication. Keep the source facts as-is; do not invent a borrower.\n
       // Last look straight at the database (another source or a parallel run may have just added this property, under any
       // bank spelling): the same reserve price AND a matching title (or the same auction day) is the same property.
       if (reservePrice > 0) {
@@ -571,7 +567,6 @@ export async function importRecords(
       await attachDocuments(property.id, docsOf(rec));
       if (!col("borrower")) {
         await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "borrower_status", value: "not_available_from_source" } });
-        if (holdForBorrower) await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "enrichment_status", value: "needs_enrichment" } });
       }
       orphan = null;
       list.push({ tokens: titleTokens, reserve: reservePrice > 0 ? reservePrice : null, start: validStart, auctionId: auction.id, propertyId: property.id, ext: col("external_id") || null });
