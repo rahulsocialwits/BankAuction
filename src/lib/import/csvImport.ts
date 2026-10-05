@@ -22,6 +22,7 @@ export interface ImportResult {
   skipped: number; // already on the site (duplicates)
   failed: number;
   updated?: number; // of those, listings whose missing details were filled in or corrected
+  reauctions?: number; // listings that were auctioned before: a NEW auction round was added to the existing property (no duplicate)
   stale?: number; // auctions that ended long ago and are not on the site: not added (existing ones are still corrected)
   error?: "header";
 }
@@ -232,7 +233,8 @@ export async function enrichExisting(hit: Known, rec: ListingRecord, statusSourc
   if (mine) {
     const start = parseListingDate(rec.auction_start);
     const same = (u: Date | null | undefined, v: Date | null | undefined) => (u ? u.getTime() : null) === (v ? v.getTime() : null);
-    if (start && !same(a.auctionStart, start)) data.auctionStart = start;
+    // a date more than 36 h away is another auction round (handled by addReauctionRound), not a correction of this one
+    if (start && !same(a.auctionStart, start) && (!a.auctionStart || Math.abs(start.getTime() - a.auctionStart.getTime()) < ROUND_GAP_MS)) data.auctionStart = start;
     if (x.auctionEnd && !same(a.auctionEnd, x.auctionEnd)) data.auctionEnd = x.auctionEnd;
     const status = deriveAuctionStatusFromDates(start ?? a.auctionStart, x.auctionEnd ?? a.auctionEnd);
     if (status !== a.status) data.status = status;
@@ -270,6 +272,62 @@ export async function enrichExisting(hit: Known, rec: ListingRecord, statusSourc
   return changed;
 }
 
+const ROUND_GAP_MS = 36 * 3600_000;
+
+/**
+ * RE-AUCTION: the very same property (same bank, same title, same / similar price) listed again for a LATER date because it
+ * did not sell. It stays ONE property; the new date becomes a new auction round (the newest round is the current one, the
+ * earlier rounds are shown as "Previous auctions"). Returns true when a round was added.
+ * Not a new round: the same listing id, a date within 36 hours of a known round (the same auction), a date that is not later
+ * than the latest known round, or an existing round without a date.
+ */
+async function addReauctionRound(hit: Known, rec: ListingRecord, titleTokens: Set<string>, bankId: string | null, statusSource: string, sourceUrl: string | undefined): Promise<boolean> {
+  const col = (k: string) => String(rec[k] ?? "").trim();
+  const start = parseListingDate(col("auction_start"));
+  if (!start || col("ended_long_ago") === "1") return false;
+  const reserve = money(col("reserve_price"));
+  if (!reserve) return false;
+  // "100% the same property": a near-identical title, or the same price with a clearly overlapping title
+  const same = similar(titleTokens, hit.tokens) || (reserve === hit.reserve && overlap(titleTokens, hit.tokens) >= 0.6);
+  if (!same) return false;
+  const rounds = await prisma.auction.findMany({ where: { propertyId: hit.propertyId }, select: { id: true, auctionStart: true, auctionEnd: true, externalAuctionId: true, reservePrice: true, emd: true } });
+  if (!rounds.length) return false;
+  if (rec.external_id && rounds.some((r) => r.externalAuctionId === rec.external_id)) return false;
+  if (rounds.some((r) => r.auctionStart && Math.abs(r.auctionStart.getTime() - start.getTime()) < ROUND_GAP_MS)) return false;
+  const dated = rounds.filter((r) => r.auctionStart) as (typeof rounds[number] & { auctionStart: Date })[];
+  if (dated.length !== rounds.length) return false; // an earlier round without a date is filled by the normal update instead
+  const latest = dated.reduce((a, b) => (a.auctionStart > b.auctionStart ? a : b));
+  if (start.getTime() <= latest.auctionStart.getTime() + ROUND_GAP_MS) return false; // only a LATER date is a re-auction
+
+  const x = auctionExtras(rec);
+  let branchId: string | undefined;
+  if (bankId && col("branch")) branchId = (await prisma.bankBranch.upsert({ where: { bankId_name: { bankId, name: col("branch") } }, update: {}, create: { bankId, name: col("branch") } })).id;
+  await prisma.auction.create({
+    data: {
+      propertyId: hit.propertyId,
+      bankId: bankId ?? undefined,
+      branchId,
+      borrower: col("borrower") || null,
+      reservePrice: reserve,
+      emd: money(col("emd")) ?? undefined,
+      auctionStart: start,
+      auctionMethod: col("auction_method") || null,
+      possessionStatus: col("possession_status") || null,
+      ...x,
+      status: deriveAuctionStatusFromDates(start, x.auctionEnd),
+      statusSource,
+      sourceUrl: col("source_url") || sourceUrl || null,
+    },
+  });
+  // the earlier round is over: its status follows its own dates (completed / expired), the new round is the live one
+  const prev = rounds.find((r) => r.id === latest.id)!;
+  await prisma.auction.update({ where: { id: prev.id }, data: { status: deriveAuctionStatusFromDates(prev.auctionStart, prev.auctionEnd) } }).catch(() => undefined);
+  const d = (v: Date | null) => (v ? v.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" }) : "—");
+  await prisma.propertyChange.create({ data: { propertyId: hit.propertyId, field: "re_auction", oldValue: `${d(latest.auctionStart)} · ₹${latest.reservePrice ? Number(latest.reservePrice).toLocaleString("en-IN") : "—"}`, newValue: `New auction round ${d(start)} · ₹${reserve.toLocaleString("en-IN")}${col("emd") ? ` · EMD ₹${(money(col("emd")) ?? 0).toLocaleString("en-IN")}` : ""}` } }).catch(() => undefined);
+  await attachDocuments(hit.propertyId, docsOf(rec)).catch(() => false);
+  return true;
+}
+
 /** A notice (not a property) that an earlier shallow import published as one empty listing. */
 const NOTICE_TITLE = /\b(auction|sale|e-?auction|public) notice\b|notice (for|of) (the )?(sale|e-?auction)/i;
 
@@ -298,6 +356,7 @@ export async function importRecords(
   let failed = 0;
   let updated = 0;
   let stale = 0;
+  let reauctions = 0;
   // Existing listings per bank (loaded once per run), extended as new ones are created,
   // so duplicates inside the same batch and across sources are both caught.
   const knownByBank = new Map<string, Known[]>();
@@ -375,6 +434,13 @@ export async function importRecords(
             (reservePrice > 0 && k.reserve === reservePrice && overlap(titleTokens, k.tokens) >= 0.4),
         );
       if (hit) {
+        // Same property listed again for a later date (it did not sell): add a new auction round instead of skipping or overwriting the old one.
+        if (await addReauctionRound(hit, rec, titleTokens, bank?.id ?? null, statusSource, sourceUrl)) {
+          reauctions++;
+          updated++;
+          skipped++;
+          continue;
+        }
         if (opts.enrich && (await enrichExisting(hit, rec, statusSource, hit === sameId))) updated++;
         else if (opts.deepen && col("deep_done") !== "1" && (await isThin(hit))) {
           // Already on the site but still without EMD / end date: read its own page once and fill the gaps.
@@ -487,5 +553,5 @@ export async function importRecords(
       }
     }
   }
-  return { created, skipped, failed, updated, stale };
+  return { created, skipped, failed, updated, stale, reauctions };
 }

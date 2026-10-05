@@ -108,6 +108,14 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
   const similar = [...sameCity, ...topUp];
 
   const auction = property.auctions[0];
+  // Earlier auction rounds of this very property (it did not sell, the bank listed it again). Public facts only: no borrower, no officer.
+  const earlier = auction
+    ? await prisma.auction.findMany({ where: { propertyId: property.id, id: { not: auction.id } }, orderBy: { auctionStart: "desc" }, select: { id: true, auctionStart: true, auctionEnd: true, reservePrice: true, emd: true, status: true, externalAuctionId: true } })
+    : [];
+  const priceChange =
+    earlier[0]?.reservePrice && auction?.reservePrice && Number(earlier[0].reservePrice) !== Number(auction.reservePrice)
+      ? Math.round(((Number(auction.reservePrice) - Number(earlier[0].reservePrice)) / Number(earlier[0].reservePrice)) * 1000) / 10
+      : null;
   const legalSchedule = property.attributes.find((a) => a.key === "legal_schedule")?.value;
   const rawType = property.attributes.find((a) => a.key === "source_property_type")?.value;
   // Everything else an admin or source attached (area size, floor, …), as "Label: value".
@@ -131,6 +139,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
           <span className={`inline-block text-xs font-semibold px-3 py-1 rounded-full mb-3 ${STATUS_STYLES[auction?.status ?? ""] ?? "bg-gray-100 text-gray-600"}`}>
             {auction?.status ? auction.status.charAt(0) + auction.status.slice(1).toLowerCase().replace("_", " ") : "Status unknown"}
           </span>
+          {earlier.length > 0 && <span className="ml-2 inline-block text-xs font-semibold px-3 py-1 rounded-full mb-3 bg-amber-50 text-amber-800">Re-auction · attempt {earlier.length + 1}</span>}
           <h1 className="text-2xl font-semibold mb-1">{property.title}</h1>
           <p className="text-brand-muted text-sm mb-6">
             {property.addressText ?? "Location not specified"}
@@ -172,6 +181,47 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
               )}
             </dl>
           </section>
+
+          {earlier.length > 0 && (
+            <section className="bg-white border border-brand-border rounded-2xl p-5 mb-6">
+              <h2 className="font-semibold mb-1">Previous auctions of this property</h2>
+              <p className="text-xs text-brand-muted mb-3">
+                This property was put up for auction before and was listed again.
+                {priceChange !== null && (priceChange < 0 ? ` The reserve price is ${Math.abs(priceChange)}% lower than in the previous auction.` : ` The reserve price is ${priceChange}% higher than in the previous auction.`)}
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="text-brand-muted">
+                    <tr className="text-left">
+                      <th className="py-1.5 pr-3 font-medium">Attempt</th>
+                      <th className="py-1.5 pr-3 font-medium">Auction date</th>
+                      <th className="py-1.5 pr-3 font-medium">Reserve price</th>
+                      <th className="py-1.5 pr-3 font-medium">EMD</th>
+                      <th className="py-1.5 font-medium">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...earlier].reverse().map((r, i) => (
+                      <tr key={r.id} className="border-t border-brand-border">
+                        <td className="py-2 pr-3">{i + 1}</td>
+                        <td className="py-2 pr-3 whitespace-nowrap">{r.auctionStart ? formatDate(r.auctionStart) : "—"}</td>
+                        <td className="py-2 pr-3 whitespace-nowrap">{r.reservePrice != null ? formatMoney(r.reservePrice) : "—"}</td>
+                        <td className="py-2 pr-3 whitespace-nowrap">{r.emd != null ? formatMoney(r.emd) : "—"}</td>
+                        <td className="py-2 text-brand-muted">{r.status === "COMPLETED" || r.status === "EXPIRED" ? "Not sold — listed again" : r.status.charAt(0) + r.status.slice(1).toLowerCase().replace("_", " ")}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t border-brand-border bg-brand-bg/60 font-medium">
+                      <td className="py-2 pr-3">{earlier.length + 1} (current)</td>
+                      <td className="py-2 pr-3 whitespace-nowrap">{auction?.auctionStart ? formatDate(auction.auctionStart) : "—"}</td>
+                      <td className="py-2 pr-3 whitespace-nowrap">{auction?.reservePrice != null ? formatMoney(auction.reservePrice) : "—"}</td>
+                      <td className="py-2 pr-3 whitespace-nowrap">{auction?.emd != null ? formatMoney(auction.emd) : "—"}</td>
+                      <td className="py-2">{auction?.status ? auction.status.charAt(0) + auction.status.slice(1).toLowerCase().replace("_", " ") : "—"}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
 
           <section className="mb-6">
             <h2 className="font-semibold mb-2">Property Overview</h2>
