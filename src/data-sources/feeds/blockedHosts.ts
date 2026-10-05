@@ -3,7 +3,7 @@ import { POLICY_PREFIX } from "@/lib/fetch/httpStatus";
 // THE do-not-fetch list. A decision of THIS PROJECT (not something a website said): sites whose terms or robots.txt disallow
 // copying. Never accepted as link sources, never requested, and listings that come from them (for example rows of a shared
 // sheet whose source_url points there) are not imported either. Changing this list is a policy decision of the project owner.
-export const BLOCKED_HOSTS = ["baanknet.com", "auctionbazaar.com", "bankauction.co"];
+export const BLOCKED_HOSTS = ["auctionbazaar.com", "bankauction.co"];
 
 /** The list entry a hostname matches (exact host or any sub-domain), or null. */
 export const denylistMatch = (hostname: string): string | null => BLOCKED_HOSTS.find((h) => hostname === h || hostname.endsWith("." + h)) ?? null;
