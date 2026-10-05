@@ -72,6 +72,11 @@ export default async function Home() {
   ];
 
   const countByCity = new Map(cityCounts.map((c) => [c.city, c.count]));
+  // Keep admin-selected cities first, but fill empty slots with the highest-volume real cities.
+  const homeCities = [...config.cities, ...cityCounts.map((c) => c.city)]
+    .filter((name, i, all) => all.findIndex((x) => canonCity(x) === canonCity(name)) === i)
+    .filter((name) => (countByCity.get(canonCity(name)) ?? 0) > 0)
+    .slice(0, 8);
   const countByType = new Map(typeGroups.map((g) => [g.category, g._count._all]));
 
   // One row per property (soonest auction): a property can have several auction events, which would read as duplicates.
@@ -139,7 +144,7 @@ export default async function Home() {
           <Link href="/cities" className="text-sm font-medium text-brand hover:underline">See All →</Link>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-6 md:gap-x-6">
-          {config.cities.slice(0, 8).map((name) => {
+          {homeCities.map((name) => {
             const city = canonCity(name);
             const d = imageUrl(versions, cityKey(name, "d"));
             const m = imageUrl(versions, cityKey(name, "m"));
