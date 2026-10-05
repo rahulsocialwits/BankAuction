@@ -228,7 +228,7 @@ export function extractBaanknetEmbeddedAuctions(html: string, pageUrl: string): 
   if (host !== "baanknet.com") return [];
 
   const sources: Raw[] = [];
-  const flight = /self\.__next_f\.push\(\[1,(\"(?:\\\\.|[^\"\\\\])*\"\)\]\)/g;
+  const flight = /self\.__next_f\.push\(\[1,(\"(?:\\.|[^\"\\])*\")\]\)/g;
   for (const m of html.matchAll(flight)) {
     try {
       const payload = JSON.parse(m[1]) as string;
