@@ -132,11 +132,9 @@ async function attachMedia(propertyId: string, media: Doc[]): Promise<boolean> {
   let added = false;
   for (const m of media.slice(0, 12)) {
     if (!m?.url) continue;
-    const row = await prisma.media.upsert({
-      where: { sourceUrl: m.url },
-      update: {},
-      create: { sourceUrl: m.url, type: "PHOTO" },
-    });
+    const row = (await prisma.media.findFirst({ where: { sourceUrl: m.url } })) ?? (await prisma.media.create({
+      data: { sourceUrl: m.url, type: "PHOTO" },
+    }));
     const had = await prisma.propertyMedia.findUnique({ where: { propertyId_mediaId: { propertyId, mediaId: row.id } } });
     if (!had) {
       await prisma.propertyMedia.create({ data: { propertyId, mediaId: row.id, sortOrder: media.indexOf(m) } });
