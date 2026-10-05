@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import { prisma } from "@/lib/db/prisma";
-import { importRecords, type ImportResult } from "@/lib/import/csvImport";
+import { importRecords, type ImportResult, type ListingRecord } from "@/lib/import/csvImport";
 import { htmlToText } from "./webScan";
 import { extractBaanknetEmbeddedAuctions, makeDeepener, realDeps, type DeepDeps } from "./deepScan";
 
@@ -107,6 +107,7 @@ async function discoverCore(
   const queued = new Set<string>([startUrl]);
   const perShape = new Map<string, number>();
   const directDetails = new Set<string>();
+  const baanknetEmbedded = new Map<string, ListingRecord>();
   const byShape = new Map<string, Set<string>>();
   const via = new Map<string, string>(); // listing address -> the index page that links to it (a single-page app is opened from there)
   const notes: string[] = [];
@@ -139,6 +140,7 @@ async function discoverCore(
       for (const rec of extractBaanknetEmbeddedAuctions(page.html, url)) {
         if (rec.source_url) {
           directDetails.add(rec.source_url);
+          baanknetEmbedded.set(rec.source_url, rec);
           if (!via.has(rec.source_url)) via.set(rec.source_url, url);
         }
       }
@@ -260,7 +262,9 @@ export async function scanSiteForNew(opts: {
   const maxNew = opts.maxNew ?? 10;
 
   say(`Scanning ${opts.startUrl} …`);
-  const disc = await discoverListingUrls(opts.startUrl, deps, { maxPages: opts.maxIndexPages ?? 30, maxDetails: /baanknet\\.com$/i.test(new URL(opts.startUrl).hostname) ? 10000 : 500, deadline: Math.min(deadline, Date.now() + 90_000), trusted: opts.trustedShapes, baanknetStartPage: opts.baanknetStartPage });
+  const isBaanknet = /baanknet\\.com$/i.test(new URL(opts.startUrl).hostname);
+  const discoveryWindow = isBaanknet ? 175_000 : 90_000;
+  const disc = await discoverListingUrls(opts.startUrl, deps, { maxPages: opts.maxIndexPages ?? 30, maxDetails: isBaanknet ? 10000 : 500, deadline: Math.min(deadline, Date.now() + discoveryWindow), trusted: opts.trustedShapes, baanknetStartPage: opts.baanknetStartPage });
   say(`  ${disc.pagesRead} index page(s) read, ${disc.details.length} listing page(s) found${disc.shapes.length ? ` (${disc.shapes.map((s) => `${s.shape}: ${s.count}${s.verified ? "" : " ✗"}`).join(", ")})` : ""}`);
   // A browser that cannot start (or a page it could not render) is stated in the run message, not hidden behind "0 listing pages".
   if (deps.renderStats?.failed) disc.notes.push(`the JavaScript render fallback failed ${deps.renderStats.failed} time(s) — ${deps.renderStats.lastError ?? "unknown reason"}`);
@@ -277,7 +281,6 @@ export async function scanSiteForNew(opts: {
   for (const u of known) seen.add(u);
   say(`  ${fresh.length} new listing page(s) (${unseen.length - fresh.length} already on the site)`);
 
-  const isBaanknet = /baanknet\\.com$/i.test(new URL(opts.startUrl).hostname);
   const out: SiteScanResult = { discovered: disc.details.length, unseen: fresh.length, read: 0, import: { created: 0, skipped: 0, failed: 0, updated: 0 }, tokens: 0, pdfs: 0, pending: fresh.length > maxNew || !!disc.baanknetNextPage, seen: [], notes: disc.notes, shapes: disc.shapes, verifiedShapes: disc.shapes.filter((x) => x.verified).map((x) => x.shape), rejections: [], rendered: 0, baanknetNextPage: disc.baanknetNextPage, baanknetTotalPages: disc.baanknetTotalPages };
   if (opts.dryRun) {
     for (const u of fresh.slice(0, 15)) say(`    would read: ${u}`);
@@ -285,8 +288,43 @@ export async function scanSiteForNew(opts: {
     return out;
   }
 
-  const deepener = makeDeepener({ pageUrl: opts.startUrl, maxListings: maxNew, deadline, deps });
   const source = `feed:${opts.feedName}`;
+  // BAANKNET public listing pages contain complete auction records in the Next.js Flight payload.
+  // Import them directly instead of opening each React detail route; this makes Import All fast enough to finish in one run.
+  if (isBaanknet && baanknetEmbedded.size > 0) {
+    const todo = fresh.map((u) => baanknetEmbedded.get(u)).filter((r): r is ListingRecord => !!r);
+    let cursor = 0;
+    while (cursor < todo.length && Date.now() < deadline) {
+      const batch = todo.slice(cursor, cursor + 500);
+      const r = await importRecords(batch, source, "PUBLISHED", opts.startUrl, { strict: true });
+      out.import = {
+        created: out.import.created + r.created,
+        skipped: out.import.skipped + r.skipped,
+        failed: out.import.failed + r.failed,
+        updated: (out.import.updated ?? 0) + (r.updated ?? 0),
+        held: (out.import.held ?? 0) + (r.held ?? 0),
+        reauctions: (out.import.reauctions ?? 0) + (r.reauctions ?? 0),
+        stale: (out.import.stale ?? 0) + (r.stale ?? 0),
+        rejections: [...(out.import.rejections ?? []), ...(r.rejections ?? [])].slice(0, 300),
+      };
+      for (let i = 0; i < batch.length; i++) {
+        const u = fresh[cursor + i];
+        if (u) seen.add(u);
+      }
+      out.read += batch.length;
+      cursor += batch.length;
+      say(`  BAANKNET direct import: ${Math.min(cursor, todo.length)} / ${todo.length} records processed`);
+    }
+    out.pending = out.pending || cursor < todo.length || fresh.length > maxNew || !!disc.baanknetNextPage;
+    out.seen = [...seen].slice(-20000);
+    await deps.close?.();
+    out.tokens = 0;
+    out.pdfs = 0;
+    out.rendered = deps.renderStats?.rendered ?? 0;
+    return out;
+  }
+
+  const deepener = makeDeepener({ pageUrl: opts.startUrl, maxListings: maxNew, deadline, deps });
   // Pages are fetched and read by the AI side by side; the database writes go one at a time (so two reads of the same
   // property can never both create it).
   const todo = fresh.slice(0, maxNew);
