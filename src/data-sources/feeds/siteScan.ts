@@ -72,6 +72,7 @@ export interface SiteDiscovery {
   notes: string[];
   baanknetNextPage?: number;
   baanknetTotalPages?: number;
+  baanknetEmbedded?: Record<string, ListingRecord>;
 }
 
 export async function discoverListingUrls(
@@ -215,7 +216,7 @@ async function discoverCore(
   if (!details.length) notes.push("no group of addresses looked like property pages (the site may load its listings with JavaScript)");
   const allDetails = [...new Set([...details, ...directDetails])];
   const sorted = allDetails.sort((a, b) => idOf(b) - idOf(a)).slice(0, maxDetails);
-  return { details: sorted, via: Object.fromEntries(sorted.map((u) => [u, via.get(u) ?? origin])), pagesRead: pages, shapes, notes, baanknetNextPage: baanknetLastPage > 0 && baanknetTotalPages > baanknetLastPage ? baanknetLastPage + 1 : undefined, baanknetTotalPages: baanknetTotalPages || undefined };
+  return { details: sorted, via: Object.fromEntries(sorted.map((u) => [u, via.get(u) ?? origin])), pagesRead: pages, shapes, notes, baanknetNextPage: baanknetLastPage > 0 && baanknetTotalPages > baanknetLastPage ? baanknetLastPage + 1 : undefined, baanknetTotalPages: baanknetTotalPages || undefined, baanknetEmbedded: Object.fromEntries(baanknetEmbedded.entries()) };
 }
 
 export interface SiteScanResult {
@@ -259,6 +260,7 @@ export async function scanSiteForNew(opts: {
   const deps = opts.deps ?? realDeps({ onEvent: opts.onProgress });
   const deadline = opts.deadline ?? Date.now() + 150_000;
   const seen = new Set(opts.seen);
+  const baanknetEmbedded = new Map(Object.entries(disc.baanknetEmbedded ?? {}));
   const maxNew = opts.maxNew ?? 10;
 
   say(`Scanning ${opts.startUrl} …`);
@@ -375,6 +377,8 @@ export interface WebState {
   lastAt: string | null;
   verified?: string[]; // address groups already verified as property pages (not checked again)
   importAll?: boolean; // "Import all now": every tick keeps reading new listings (fast mode) until none are left
+  baanknetPage?: number;
+  baanknetTotalPages?: number;
 }
 
 export function webStateOf(raw: string | null | undefined): WebState {
