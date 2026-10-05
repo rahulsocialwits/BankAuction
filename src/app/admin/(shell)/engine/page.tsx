@@ -80,7 +80,7 @@ export default async function DataEnginePage() {
   if (!ai.hasKey) problems.push({ title: "AI key missing", detail: "Website scanning is off.", fix: "Set AI_API_KEY in Vercel and redeploy." });
   else if (!ai.keyValid) problems.push({ title: "AI key invalid", detail: `The saved key has non-standard characters (${ai.keyHint}).`, fix: "Re-paste the real key in Vercel and redeploy." });
   if (!ai.enabled) problems.push({ title: "AI is switched off", detail: "Link sources that need AI will fail.", fix: "Turn it on in AI Admin." });
-  if (tickAgeMin === null) problems.push({ title: "Scheduler has never run", detail: "No automatic run has been recorded.", fix: "Set up a 30-minute scheduler (see the card below)." });
+  if (tickAgeMin === null) problems.push({ title: "Scheduler has never run", detail: "No automatic run has been recorded.", fix: "Set up the 15-minute scheduler (see the card below)." });
   else if (tickAgeMin > 90) problems.push({ title: "Scheduler is late", detail: `Last automatic run was ${ago(lastTick!.startedAt)}.`, fix: "Check GitHub Actions or your cron-job.org job." });
   for (const f of feeds) {
     if (f.lastStatus === "error") {
@@ -126,7 +126,7 @@ export default async function DataEnginePage() {
         </div>
         <div className="grid sm:grid-cols-3 gap-3 text-xs">
           <div className="rounded-lg border border-brand-border p-3">
-            <div className="text-brand-muted mb-1">Scheduler (every 30 min)</div>
+            <div className="text-brand-muted mb-1">Scheduler (every 15 min)</div>
             <Badge tone={schedulerTone}>{tickAgeMin === null ? "Never ran" : tickAgeMin > 90 ? "Late" : "Running"}</Badge>
             <div className="mt-2 text-brand-muted">
               Last tick: {ago(lastTick?.startedAt)}
@@ -164,7 +164,7 @@ export default async function DataEnginePage() {
           </div>
           <div className="rounded-lg border border-brand-border p-3">
             <dt className="text-brand-muted mb-1">Timezone · Frequency</dt>
-            <dd className="font-medium">{aiSchedule.timezone} · every 6 hours</dd>
+            <dd className="font-medium">{aiSchedule.timezone} · every 15 minutes</dd>
           </div>
           <div className="rounded-lg border border-brand-border p-3">
             <dt className="text-brand-muted mb-1">Last AI slot</dt>
@@ -206,7 +206,7 @@ export default async function DataEnginePage() {
         </div>
       </div>
       <p className="text-xs text-brand-muted mb-3">
-        Press <b>Run</b> once: the source starts now and then keeps running by itself, about every hour, until you press <b>Pause</b>.
+        Press <b>Run</b> once: the source starts now and then keeps running by itself, automatically on the scheduler, until you press <b>Pause</b>.
         There is no need to press anything again.
       </p>
       <div className="grid gap-3 mb-8">
@@ -214,7 +214,7 @@ export default async function DataEnginePage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <div className="font-semibold">BankAuctions.in <span className="text-xs font-normal text-brand-muted">· built-in crawler</span></div>
-              <div className="text-xs text-brand-muted">https://bankauctions.in — sitemap, every 30 min</div>
+              <div className="text-xs text-brand-muted">https://bankauctions.in — sitemap, every 15 min</div>
             </div>
             <div className="flex items-center gap-2">
               {builtInPaused ? <Badge tone="gray">Paused</Badge> : <Badge tone="green">Live</Badge>}
@@ -298,11 +298,11 @@ export default async function DataEnginePage() {
         <h2 className="font-semibold text-sm text-black mb-2">How the scheduler is set up</h2>
         <p className="mb-2">
           One URL runs every source: <code className="bg-brand-bg px-1 rounded">/api/cron/ingest?secret=&lt;CRON_SECRET&gt;</code>. Point any
-          scheduler at it every 30 minutes (cron-job.org is the most dependable free option). GitHub Actions and the daily
+          scheduler at it every 15 minutes (cron-job.org is the most dependable free option). GitHub Actions and the daily
           Vercel cron are backups. Every call shows up above as &quot;Last tick&quot;.
         </p>
         <p>
-          Web-page link sources are read by the AI only at 00:00, 06:00, 12:00 and 18:00 IST, and a page that has not changed (or that another source
+          Web-page link sources are eligible every 15 minutes, and a page that has not changed (or that another source
           already processed) costs no AI tokens. BankAuctions.in and Sheet/CSV links are not slowed down.
         </p>
       </section>
