@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getAiConfig } from "@/lib/ai/aiConfig";
 import SubmitButton from "@/components/admin/SubmitButton";
 import EngineTabs from "@/components/admin/EngineTabs";
-import { toggleBuiltIn, toggleFeedSource, deleteFeedSource, importAllNow, importEverythingNow } from "./actions";
+import { toggleBuiltIn, toggleFeedSource, deleteFeedSource, importAllNow, importEverythingNow, pauseImportAll, pauseImportingEverything } from "./actions";
 import { isAiFeed } from "@/data-sources/feeds/run";
 import { webStateOf } from "@/data-sources/feeds/siteScan";
 import { aiScheduleStatus, istLabel } from "@/lib/pipeline/aiSchedule";
@@ -187,9 +187,14 @@ export default async function DataEnginePage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
         <h2 className="font-semibold">Sources</h2>
-        <form action={importEverythingNow}>
-          <SubmitButton className="text-xs bg-gold text-white font-semibold rounded-lg px-4 py-2 hover:bg-gold-dark">⚡ Import ALL properties from every website now</SubmitButton>
-        </form>
+        <div className="flex flex-wrap gap-2">
+          <form action={importEverythingNow}>
+            <SubmitButton className="text-xs bg-gold text-white font-semibold rounded-lg px-4 py-2 hover:bg-gold-dark">⚡ Import ALL properties from every website now</SubmitButton>
+          </form>
+          <form action={pauseImportingEverything}>
+            <SubmitButton className="text-xs border border-brand-border bg-white font-semibold rounded-lg px-4 py-2 hover:bg-brand-bg">⏸ Pause importing all</SubmitButton>
+          </form>
+        </div>
       </div>
       <p className="text-xs text-brand-muted mb-3">
         Press <b>Run</b> once: the source starts now and then keeps running by itself, about every hour, until you press <b>Pause</b>.
@@ -238,6 +243,12 @@ export default async function DataEnginePage() {
                   <form action={importAllNow}>
                     <input type="hidden" name="id" value={f.id} />
                     <SubmitButton className="text-xs bg-gold text-white font-semibold rounded-lg px-3 py-1.5 hover:bg-gold-dark">{webStateOf(f.sheetState).importAll ? "Importing all…" : "⚡ Import all now"}</SubmitButton>
+                  </form>
+                )}
+                {f.active && isAiFeed(f.url) && webStateOf(f.sheetState).importAll && (
+                  <form action={pauseImportAll}>
+                    <input type="hidden" name="id" value={f.id} />
+                    <SubmitButton className="text-xs border border-brand-border font-semibold rounded-lg px-3 py-1.5 hover:bg-brand-bg">⏸ Pause importing</SubmitButton>
                   </form>
                 )}
                 {!f.active && f.lastMessage?.startsWith("Blocked") ? (

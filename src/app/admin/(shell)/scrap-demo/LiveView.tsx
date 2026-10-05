@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { isAiFeed, UNREACHABLE } from "@/data-sources/feeds/run";
 import { webStateOf } from "@/data-sources/feeds/siteScan";
-import { importAllNow, importEverythingNow } from "../engine/actions";
+import { importAllNow, importEverythingNow, pauseImportAll, pauseImportingEverything } from "../engine/actions";
 
 const inr = (n: unknown) => (n === null || n === undefined ? "—" : "₹" + Number(n).toLocaleString("en-IN"));
 const day = (d: Date | null) => (d ? d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -39,9 +39,14 @@ export default async function LiveView() {
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="text-lg font-semibold text-brand">Live website sources &amp; imported properties</h2>
         {importing && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">IMPORTING… this view refreshes every 20 s</span>}
-        <form action={importEverythingNow} className="ml-auto">
-          <button type="submit" className="rounded-lg bg-gold px-4 py-2 text-xs font-semibold text-white hover:bg-gold-dark">⚡ Import ALL properties of every website</button>
-        </form>
+        <div className="ml-auto flex flex-wrap gap-2">
+          <form action={importEverythingNow}>
+            <button type="submit" className="rounded-lg bg-gold px-4 py-2 text-xs font-semibold text-white hover:bg-gold-dark">⚡ Import ALL properties of every website</button>
+          </form>
+          <form action={pauseImportingEverything}>
+            <button type="submit" className="rounded-lg border border-brand-border bg-white px-4 py-2 text-xs font-semibold hover:bg-brand-bg">⏸ Pause importing all</button>
+          </form>
+        </div>
       </div>
 
       {feeds.length === 0 ? (
@@ -71,9 +76,9 @@ export default async function LiveView() {
                     <td className="px-3 py-2">{w.seen.length}</td>
                     <td className="max-w-[420px] break-words px-3 py-2 text-brand-muted">{f.lastMessage ?? "—"}</td>
                     <td className="px-3 py-2">
-                      <form action={importAllNow}>
+                      <form action={w.importAll ? pauseImportAll : importAllNow}>
                         <input type="hidden" name="id" value={f.id} />
-                        <button type="submit" className="whitespace-nowrap rounded-md border border-brand-border px-2.5 py-1 font-semibold hover:bg-brand-bg">Import all</button>
+                        <button type="submit" className="whitespace-nowrap rounded-md border border-brand-border px-2.5 py-1 font-semibold hover:bg-brand-bg">{w.importAll ? "⏸ Pause importing" : "Import all"}</button>
                       </form>
                     </td>
                   </tr>

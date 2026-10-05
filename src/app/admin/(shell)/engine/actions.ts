@@ -82,3 +82,21 @@ export async function importEverythingNow() {
   });
   refresh();
 }
+/** Stops "Import all" for one website: the source stays Live (hourly new-listing checks) but no longer reads in big batches. */
+export async function pauseImportAll(formData: FormData) {
+  await requireMaster();
+  const id = String(formData.get("id"));
+  const feed = await prisma.feedSource.findUnique({ where: { id } });
+  if (feed) {
+    await prisma.feedSource.update({ where: { id }, data: { sheetState: withWebState(feed.sheetState, { ...webStateOf(feed.sheetState), importAll: false }), lastMessage: `${(feed.lastMessage ?? "").replace("Importing all properties of this website…", "").trim()} Import all paused.`.trim().slice(0, 1800) } });
+  }
+  refresh();
+}
+
+/** The same for every website source. A read that is already running finishes its current batch, then stops. */
+export async function pauseImportingEverything() {
+  await requireMaster();
+  const feeds = (await prisma.feedSource.findMany()).filter((f) => isAiFeed(f.url) && webStateOf(f.sheetState).importAll);
+  for (const f of feeds) await prisma.feedSource.update({ where: { id: f.id }, data: { sheetState: withWebState(f.sheetState, { ...webStateOf(f.sheetState), importAll: false }) } });
+  refresh();
+}
