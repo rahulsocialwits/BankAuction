@@ -1,15 +1,9 @@
 import { prisma } from "@/lib/db/prisma";
 
 /*
- * Central AI scan schedule (Asia/Kolkata).
- *
- * The scheduler itself is timezone-less: ticks arrive from GitHub Actions (UTC cron), the daily Vercel cron (UTC),
- * visitor traffic and any outside pinger. So the schedule lives here, in code, in IST (UTC+05:30, India has no DST):
- * AI-heavy work may start only in the first AI_WINDOW_MIN minutes after 00:00, 06:00, 12:00 and 18:00 IST.
- * Every other tick still runs the plain (non-AI) work: BankAuctions.in, exact-duplicate cleanup, rule-based review.
- *
- * Equivalent UTC cron times (used in .github/workflows/tick.yml so a run starts right at the slot):
- *   00:00 IST = 18:30 UTC (previous day), 06:00 IST = 00:30 UTC, 12:00 IST = 06:30 UTC, 18:00 IST = 12:30 UTC.
+ * Central scheduler timing (Asia/Kolkata).
+ * AI/web-source work is eligible on every 15-minute scheduler slot.
+ * The old 6-hour AI-slot restriction has been removed.
  */
 
 export const AI_TIMEZONE = "Asia/Kolkata";
