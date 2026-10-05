@@ -14,6 +14,7 @@ export const ISSUES: [string, string][] = [
   ["no_reserve", "No reserve price"],
   ["no_emd", "No EMD"],
   ["no_date", "No auction date"],
+  ["no_borrower", "No borrower name"],
   ["no_officer", "No authorised officer"],
   ["no_address", "No address"],
   ["no_docs", "No documents"],
@@ -28,6 +29,7 @@ export function propertyWhere(f: PropertyFilters): Prisma.PropertyWhereInput {
   if (f.issue === "no_emd") a.emd = null;
   if (f.issue === "no_date") a.auctionStart = null;
   if (f.issue === "no_officer") a.authorizedOfficer = null;
+  if (f.issue === "no_borrower") a.OR = [{ borrower: null }, { borrower: "" }];
   const and: Prisma.PropertyWhereInput[] = [];
   if (Object.keys(a).length) and.push({ auctions: { some: a } });
   if (f.issue === "no_address") and.push({ OR: [{ addressText: null }, { addressText: "" }] });
@@ -39,3 +41,9 @@ export function propertyWhere(f: PropertyFilters): Prisma.PropertyWhereInput {
     ...(and.length ? { AND: and } : {}),
   };
 }
+
+/** Published listings that state no borrower name at all (on none of their auctions). The site does not show these. */
+export const NO_BORROWER_WHERE: Prisma.PropertyWhereInput = {
+  status: "PUBLISHED",
+  auctions: { none: { AND: [{ borrower: { not: null } }, { borrower: { not: "" } }] } },
+};

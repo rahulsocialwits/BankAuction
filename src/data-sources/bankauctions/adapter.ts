@@ -265,6 +265,12 @@ async function ingestOnePage(
     return;
   }
 
+  // The site shows only listings that name their borrower: a new listing without one is remembered (so it is not fetched again) but not added.
+  if (!existingRecord && !normalized.borrower?.trim()) {
+    await upsertSourceRecord(sourceId, url, contentHash, normalized, "IGNORED", null, null);
+    return;
+  }
+
   const validation = validateAuctionRecord(normalized);
   if (!validation.isValid) {
     await upsertSourceRecord(sourceId, url, contentHash, normalized, "FAILED", null, null);

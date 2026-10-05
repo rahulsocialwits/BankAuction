@@ -476,6 +476,8 @@ export async function importRecords(
       // A listing without a reserve price would show "Not Available" to visitors: it is not published until its price is known.
       if (opts.strict && !(col("reserve_price") && (col("auction_start") || col("auction_end")))) { failed++; continue; }
       if (opts.strict && !col("location") && !col("legal_schedule")) { failed++; continue; }
+      // The site shows only listings that name their borrower: a new listing without one is not added.
+      if (!col("borrower")) { failed++; continue; }
 
       // Last look straight at the database (another source or a parallel run may have just added this property, under any
       // bank spelling): the same reserve price AND a matching title (or the same auction day) is the same property.
