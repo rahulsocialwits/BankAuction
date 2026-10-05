@@ -260,13 +260,13 @@ export async function scanSiteForNew(opts: {
   const deps = opts.deps ?? realDeps({ onEvent: opts.onProgress });
   const deadline = opts.deadline ?? Date.now() + 150_000;
   const seen = new Set(opts.seen);
-  const baanknetEmbedded = new Map(Object.entries(disc.baanknetEmbedded ?? {}));
   const maxNew = opts.maxNew ?? 10;
 
   say(`Scanning ${opts.startUrl} …`);
   const isBaanknet = /baanknet\\.com$/i.test(new URL(opts.startUrl).hostname);
   const discoveryWindow = isBaanknet ? 175_000 : 90_000;
   const disc = await discoverListingUrls(opts.startUrl, deps, { maxPages: opts.maxIndexPages ?? 30, maxDetails: isBaanknet ? 10000 : 500, deadline: Math.min(deadline, Date.now() + discoveryWindow), trusted: opts.trustedShapes, baanknetStartPage: opts.baanknetStartPage });
+  const baanknetEmbedded = new Map(Object.entries(disc.baanknetEmbedded ?? {}));
   say(`  ${disc.pagesRead} index page(s) read, ${disc.details.length} listing page(s) found${disc.shapes.length ? ` (${disc.shapes.map((s) => `${s.shape}: ${s.count}${s.verified ? "" : " ✗"}`).join(", ")})` : ""}`);
   // A browser that cannot start (or a page it could not render) is stated in the run message, not hidden behind "0 listing pages".
   if (deps.renderStats?.failed) disc.notes.push(`the JavaScript render fallback failed ${deps.renderStats.failed} time(s) — ${deps.renderStats.lastError ?? "unknown reason"}`);
