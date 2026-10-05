@@ -113,7 +113,9 @@ async function discoverCore(
     const url = queue.shift()!;
     visited.add(url);
     const shape = shapeOf(url);
-    if (url !== origin) {
+    const isBaanknet = siteOf(new URL(url).hostname) === "baanknet.com";
+    const isBaanknetPagination = isBaanknet && /[?&]page=\d+/i.test(url);
+    if (url !== origin && !isBaanknetPagination) {
       const n = perShape.get(shape) ?? 0;
       if (n >= MAX_PER_INDEX_SHAPE) continue;
       perShape.set(shape, n + 1);
@@ -135,8 +137,10 @@ async function discoverCore(
           if (!via.has(rec.source_url)) via.set(rec.source_url, url);
         }
       }
-      const current = Number((page.html.match(/"currentPage"\s*:\s*(\d+)/) ?? [])[1] ?? "1");
-      const total = Number((page.html.match(/"totalPages"\s*:\s*(\d+)/) ?? [])[1] ?? "1");
+      // Next.js Flight payloads may escape the quotes around these keys. Accept both forms.
+      const pageNumber = (name: string) => Number((page.html.match(new RegExp('\\\\?"' + name + '\\\\?"\\\\s*:\\\\s*(\\\\d+)')) ?? [])[1] ?? "1");
+      const current = pageNumber("currentPage");
+      const total = pageNumber("totalPages");
       if (current >= 1 && total > current) {
         const next = current + 1;
         const nu = new URL(url);
