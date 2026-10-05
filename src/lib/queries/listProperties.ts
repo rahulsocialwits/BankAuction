@@ -83,7 +83,7 @@ export async function listPublishedProperties(filters: PropertyFilters = {}, tak
     orderBy: { createdAt: "desc" },
     take,
     skip,
-    include: { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 } },
+    include: { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 }, media: { include: { media: true }, orderBy: { sortOrder: "asc" }, take: 1 } },
   });
 }
 
@@ -98,5 +98,6 @@ export function toPropertyCardData(p: Awaited<ReturnType<typeof listPublishedPro
     reservePrice: auction?.reservePrice ?? null,
     auctionStart: auction?.auctionStart ?? null,
     status: auction?.status ?? null,
+    imageUrl: p.media[0]?.media.sourceUrl ?? null,
   };
 }
