@@ -68,7 +68,6 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
         priceMin: priceMin ? Number(priceMin) : undefined,
         priceMax: priceMax ? Number(priceMax) : undefined,
       },
-      filters,
       PAGE_SIZE,
       (page - 1) * PAGE_SIZE,
     ),
