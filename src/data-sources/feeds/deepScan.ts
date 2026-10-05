@@ -217,6 +217,144 @@ If the text is only a general notice with no property details, return [].`;
 type Raw = Record<string, unknown>;
 const str = (v: unknown, max = 600): string => (typeof v === "string" || typeof v === "number" ? String(v).replace(/\s+/g, " ").trim().slice(0, max) : "");
 
+/**
+ * BAANKNET publishes the complete auction-property dataset inside Next.js Flight payloads on its public
+ * listing/index pages. The normal property-detail URL is only a client-side shell, so prefer this first-party
+ * embedded dataset when it is present. This reads the same public HTML response; no login/CAPTCHA bypass is used.
+ */
+export function extractBaanknetEmbeddedAuctions(html: string, pageUrl: string): ListingRecord[] {
+  let host = "";
+  try { host = siteOf(new URL(pageUrl).hostname); } catch { return []; }
+  if (host !== "baanknet.com") return [];
+
+  const sources: Raw[] = [];
+  const flight = /self\.__next_f\.push\(\[1,(\"(?:\\\\.|[^\"\\\\])*\"\)\]\)/g;
+  for (const m of html.matchAll(flight)) {
+    try {
+      const payload = JSON.parse(m[1]) as string;
+      const colon = payload.indexOf(":");
+      if (colon < 0) continue;
+      const value = JSON.parse(payload.slice(colon + 1)) as unknown;
+      const walk = (v: unknown) => {
+        if (Array.isArray(v)) { for (const item of v) walk(item); return; }
+        if (!v || typeof v !== "object") return;
+        const o = v as Record<string, unknown>;
+        const data = (o.auctionData as Record<string, unknown> | undefined)?.data;
+        if (Array.isArray(data)) {
+          for (const item of data) {
+            if (!item || typeof item !== "object") continue;
+            const row = item as Record<string, unknown>;
+            const source = row._source;
+            if (String(row._index ?? "") === "psba_auction_property" && source && typeof source === "object") sources.push(source as Raw);
+          }
+        }
+        for (const child of Object.values(o)) walk(child);
+      };
+      walk(value);
+    } catch { /* unrelated Next.js Flight payload */ }
+  }
+
+  const utcIst = (v: unknown): string => {
+    const s = str(v, 40);
+    if (!s) return "";
+    const d = new Date(s);
+    if (!Number.isFinite(d.getTime())) return s.replace(/Z$/, "");
+    return new Date(d.getTime() + 330 * 60_000).toISOString().slice(0, 19);
+  };
+  const money = (v: unknown) => {
+    const n = moneyNumber(str(v, 50));
+    return n || "";
+  };
+  const category = (type: string, sub: string) => {
+    const s = type + " " + sub;
+    if (/agricultur|farm/i.test(s)) return "AGRICULTURAL";
+    if (/industri|factory|warehouse/i.test(s)) return "INDUSTRIAL";
+    if (/commercial|shop|office|showroom/i.test(s)) return "COMMERCIAL";
+    if (/plot|land/i.test(s)) return "LAND_PLOT";
+    if (/residential|flat|house|villa|apartment|bungalow/i.test(s)) return "RESIDENTIAL";
+    return "";
+  };
+
+  const seen = new Set<string>();
+  const out: ListingRecord[] = [];
+  for (const r of sources) {
+    const auctionId = str(r.auctionId, 40);
+    const propertyId = str(r.propertyDetailId, 40);
+    const identity = auctionId || propertyId;
+    if (!identity || seen.has(identity)) continue;
+    seen.add(identity);
+
+    const type = str(r.propertyType, 80);
+    const sub = str(r.propertySubType, 100);
+    const city = str(r.cityName, 100);
+    const district = str(r.districtName, 100);
+    const state = str(r.stateName, 100);
+    const pincode = str(r.pincode, 20).replace(/\D/g, "").slice(0, 6);
+    const place = [city, district && district !== city ? district : "", state, pincode].filter(Boolean).join(", ");
+    const address = str(r.address, 900);
+    const title = str(r.propertyHeading, 240) || (sub || type || "Property") + " for sale" + (city ? " in " + city : "");
+    const sourceUrl = auctionId ? "https://baanknet.com/auction-detail/" + auctionId : "https://baanknet.com/property-detail/" + propertyId;
+
+    const docs: { type: string; title: string; url: string }[] = [];
+    const auctionDocs = Array.isArray(r.auctionDocuments) ? r.auctionDocuments : [];
+    for (const d of auctionDocs) {
+      if (!d || typeof d !== "object") continue;
+      const x = d as Record<string, unknown>;
+      const filepath = str(x.filepath, 500).replace(/^\/+/, "");
+      if (!filepath) continue;
+      docs.push({
+        type: /term|condition/i.test(str(x.description, 120)) ? "TERMS_AND_CONDITIONS" : "SALE_NOTICE",
+        title: str(x.description, 120) || str(x.filename, 120) || "Auction document",
+        url: "https://cdn.baanknet.com/" + filepath,
+      });
+    }
+
+    const inspectionStart = utcIst(r.inspectionStart);
+    const inspectionEnd = utcIst(r.inspectionEnd);
+    const inspection = [inspectionStart, inspectionEnd].filter(Boolean).join(" to ");
+    const desc = [
+      type || sub ? type + (sub ? " - " + sub : "") + "." : "",
+      r.propertyPossessionType ? "Possession: " + str(r.propertyPossessionType, 80) + "." : "",
+      r.typeOfAction ? "Action: " + str(r.typeOfAction, 100) + "." : "",
+      propertyId ? "Bank property ID: " + propertyId + "." : "",
+      r.propertyUniqueId ? "Property unique ID: " + str(r.propertyUniqueId, 100) + "." : "",
+      address,
+    ].filter(Boolean).join(" ");
+
+    out.push({
+      title,
+      bank: str(r.propertyBankName, 140),
+      branch: str(r.propertyBranchName, 140) || str(r.auctionBranch, 140),
+      category: category(type, sub),
+      location: place || address.slice(0, 200),
+      description: desc.slice(0, 1500),
+      borrower: str(r.borrowerName, 200),
+      reserve_price: money(r.reservePrice),
+      emd: money(r.emd),
+      minimum_increment: money(r.incrementPrice),
+      auction_start: utcIst(r.auctionFrom),
+      auction_end: utcIst(r.auctionTo),
+      application_deadline: utcIst(r.emdEnd),
+      inspection_text: inspection ? inspection + (r.inspectionName ? " (" + str(r.inspectionName, 120) + ")" : "") : "",
+      auction_method: "E-Auction",
+      possession_status: str(r.propertyPossessionType, 80),
+      officer_name: str(r.checkerName, 120),
+      officer_phone: str(r.roMobile, 80) || str(r.inspectionMobileNo, 80),
+      officer_email: str(r.roEmail, 160),
+      notice_number: auctionId,
+      external_id: "src:baanknet.com:" + identity,
+      legal_schedule: address,
+      source_property_type: sub || type,
+      source_url: sourceUrl,
+      documents: JSON.stringify(docs),
+      borrower_status: r.borrowerName ? "available" : "not_available_from_source",
+      deep_done: "1",
+    });
+  }
+  return out;
+}
+
+
 /** Maps what the AI returned onto the importer's listing keys. */
 export function toListings(data: unknown, docs: { type: string; title: string; url: string }[], source: { sourceUrl: string }): ListingRecord[] {
   const arr = Array.isArray(data) ? data : data && typeof data === "object" ? [data] : [];
@@ -353,6 +491,22 @@ export function makeDeepener(opts: { html?: string; pageUrl: string; siblingTitl
   const max = opts.maxListings ?? DEEP_MAX_LISTINGS;
   const deadline = opts.deadline ?? Date.now() + 150_000;
   const stats = { attempted: 0, tokens: 0, pdfs: 0, pdfSkipped: 0, notes: [] as string[] };
+  const baanknetCache = new Map<string, ListingRecord[]>();
+
+  async function baanknetFromList(via: string | undefined, detailUrl: string): Promise<ListingRecord | null> {
+    if (!via) return null;
+    try {
+      if (siteOf(new URL(via).hostname) !== "baanknet.com") return null;
+      let records = baanknetCache.get(via);
+      if (!records) {
+        const page = await deps.fetchDoc(via, { noRender: true });
+        records = page?.kind === "html" && page.html ? extractBaanknetEmbeddedAuctions(page.html, via) : [];
+        baanknetCache.set(via, records);
+      }
+      const id = new URL(detailUrl).pathname.match(/\/(?:auction|property)-detail\/(\d+)/i)?.[1] ?? ""; 
+      return records.find((r) => r.external_id === "src:baanknet.com:" + id || r.source_url === detailUrl) ?? null;
+    } catch { return null; }
+  }
 
   /** The common work: the listing's page (if any), its notice PDFs, then one AI call for every detail. */
   async function readDetail(rec: ListingRecord, detail: string | null, docLinks: PageLink[], mode: string, via?: string): Promise<DeepResult> {
@@ -426,12 +580,19 @@ export function makeDeepener(opts: { html?: string; pageUrl: string; siblingTitl
   const run = (async (rec: ListingRecord, mode: "new" | "backfill"): Promise<DeepResult> => {
     if (stats.attempted >= max || Date.now() > deadline) return { attempted: false, records: [] };
     stats.attempted++;
+    if (siteOf(new URL(opts.pageUrl).hostname) === "baanknet.com" && opts.html) {
+      const embedded = extractBaanknetEmbeddedAuctions(opts.html, opts.pageUrl);
+      const hit = embedded.find((r) => r.title === rec.title || (rec.external_id && r.external_id === rec.external_id));
+      if (hit) return { attempted: true, records: [hit], note: mode + ": BAANKNET embedded auction data read from listing HTML" };
+    }
     const link = detailLinkFor(opts.html ?? "", String(rec.title ?? "").trim(), opts.pageUrl, opts.siblingTitles ?? []);
     return readDetail(rec, link.detail, link.docs, mode, opts.pageUrl); // opened from its list page, like a visitor
   }) as Deepener;
   run.fromUrl = async (url: string, via?: string): Promise<DeepResult> => {
     if (stats.attempted >= max || Date.now() > deadline) return { attempted: false, records: [] };
     stats.attempted++;
+    const embedded = await baanknetFromList(via, url);
+    if (embedded) return { attempted: true, records: [embedded], note: "page: BAANKNET embedded auction data read from listing HTML" };
     return readDetail({}, url, [], "page", via);
   };
   run.deps = deps;
