@@ -159,15 +159,17 @@ export class BrowserRenderer {
 
   /** Waits until the page has produced its content (network quiet, text length stable), but not forever. */
   private async settle(page: any, minChars = 200) {
-    await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
+    // Short on purpose: on a small server every second counts (a scan has a hard 300 s limit). The text length must stop changing
+    // for two checks in a row; a page that is still growing after 4 s is read as it is.
+    await page.waitForLoadState("networkidle", { timeout: 2_500 }).catch(() => undefined);
     let last = -1;
     let stable = 0;
-    const until = Date.now() + 7_000;
+    const until = Date.now() + 4_000;
     while (Date.now() < until) {
       const n: number = await page.evaluate(() => (document.body ? document.body.innerText.length : 0)).catch(() => 0);
       if (n > minChars && n === last) { stable++; if (stable >= 2) break; } else stable = 0;
       last = n;
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(350);
     }
   }
 
