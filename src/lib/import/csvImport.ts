@@ -492,6 +492,7 @@ export async function importRecords(
           continue;
         }
         if ((opts.enrich || hit === sameId) && (await enrichExisting(hit, rec, statusSource, hit === sameId))) updated++;
+        if (mediaOf(rec).length && (await attachMedia(hit.propertyId, mediaOf(rec)))) updated++;
         else if (opts.deepen && col("deep_done") !== "1" && (await isThin(hit))) {
           // Already on the site but still without EMD / end date: read its own page once and fill the gaps.
           const out = await opts.deepen(rec, "backfill");
