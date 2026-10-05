@@ -166,19 +166,27 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
                   value={[auction.inspectionDate ? formatDate(auction.inspectionDate) : null, auction.inspectionTime, auction.inspectionLocation].filter(Boolean).join(" · ")}
                 />
               )}
-              {auction?.borrower && (
               <div>
                 <dt className="text-xs text-brand-muted mb-0.5">Borrower</dt>
-                <dd className="text-sm font-medium">
+                <dd className="text-sm font-medium flex flex-wrap items-center gap-2">
                   {auction?.borrower ? (
                     <Link href="/pricing" className="inline-flex items-center gap-2 group">
                       <span className="blur-[5px] select-none group-hover:blur-[6px]">{auction.borrower}</span>
                       <span className="text-[11px] text-gold font-semibold whitespace-nowrap">Unlock →</span>
                     </Link>
-                  ) : null}
+                  ) : (
+                    <>
+                      <span className="blur-[5px] select-none text-brand-muted">Borrower details unavailable</span>
+                      <Link
+                        href="#property-enquiry"
+                        className="rounded-md border border-brand px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand-bg whitespace-nowrap"
+                      >
+                        Request details →
+                      </Link>
+                    </>
+                  )}
                 </dd>
               </div>
-              )}
             </dl>
           </section>
 
@@ -265,7 +273,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
           )}
         </div>
 
-        <aside className="lg:col-span-1 lg:sticky lg:top-32 lg:self-start">
+        <aside id="property-enquiry" className="lg:col-span-1 lg:sticky lg:top-32 lg:self-start">
           <div className="bg-white border border-brand-border rounded-2xl p-5">
             <h2 className="font-semibold mb-1">Interested in this property?</h2>
             <p className="text-xs text-brand-muted mb-4">Send an enquiry and our team will get back to you.</p>
