@@ -21,8 +21,9 @@ test("REGRESSION: a denylisted host is reported as OUR configuration, never as t
 });
 
 test("denylist matches the exact host and sub-domains only", () => {
-  assert.equal(denylistMatch("www.baanknet.com"), "baanknet.com");
-  assert.equal(denylistMatch("baanknet.com"), "baanknet.com");
+  assert.equal(denylistMatch("www.auctionbazaar.com"), "auctionbazaar.com");
+  assert.equal(denylistMatch("auctionbazaar.com"), "auctionbazaar.com");
+  assert.equal(denylistMatch("baanknet.com"), null); // removed from the list by the project owner (commit 6c3a504): normal robots / HTTP checks apply
   assert.equal(denylistMatch("bankauction.co"), "bankauction.co");
   assert.equal(denylistMatch("bankauctions.in"), null); // a different site: must NOT match "bankauction.co"
   assert.equal(denylistMatch("notbankauction.co"), null);
@@ -41,10 +42,10 @@ test("a normal https source passes; bad input gets its own plain reason", () => 
 
 test("rows saved with the old wrong wording are shown truthfully when their host is on our list", () => {
   const old = "Blocked: This website refuses automated access (its terms or anti-bot protection). Paused automatically.";
-  assert.ok(relabelLegacyMessage("https://www.baanknet.com/x", old)!.startsWith(POLICY_PREFIX));
+  assert.ok(relabelLegacyMessage("https://www.auctionbazaar.com/x", old)!.startsWith(POLICY_PREFIX));
   // a host that is NOT on our list keeps its message (the website really refused)
   assert.equal(relabelLegacyMessage("https://example.com/x", old), old);
-  assert.equal(relabelLegacyMessage("https://baanknet.com", null), null);
+  assert.equal(relabelLegacyMessage("https://auctionbazaar.com", null), null);
 });
 
 test("the UI texts name the real reason", () => {

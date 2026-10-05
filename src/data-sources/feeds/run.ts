@@ -44,6 +44,13 @@ function describe(out: Pick<ImportResult, "created" | "skipped" | "failed"> & { 
   return `${out.created} new, ${dup}, ${out.failed} rejected`;
 }
 
+/** "8 rejected" is never enough: the exact reasons of the first few, e.g. "Individual House in Guntur: reserve_price_missing, auction_date_missing". */
+export function rejectionNote(list: { url?: string; title?: string; reasons: string[] }[] | undefined, max = 6): string {
+  if (!list?.length) return "";
+  const shown = list.slice(0, max).map((r) => `${(r.title || r.url || "listing").slice(0, 50)}: ${r.reasons.join(", ")}`);
+  return ` Rejected — ${shown.join(" | ")}${list.length > max ? ` | +${list.length - max} more` : ""}.`;
+}
+
 const safeJson = (s: string | null | undefined): { tabs?: Record<string, unknown> } | null => {
   try {
     return s ? JSON.parse(s) : null;
@@ -207,12 +214,18 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
       } else {
         // New listings (and thin existing ones) are read in depth: their own page and notice PDFs, in one more AI call each.
         const deepener = makeDeepener({ html: text, pageUrl: check.url, siblingTitles: scan.records.map((r) => String(r.title ?? "")), deadline: Date.now() + (trigger === "manual" ? 200_000 : 150_000) });
-        const out = await importRecords(scan.records, `feed:${feed.name}`, "PUBLISHED", check.url, { deepen: deepener, strict: true });
+        let out: ImportResult;
+        try {
+          out = await importRecords(scan.records, `feed:${feed.name}`, "PUBLISHED", check.url, { deepen: deepener, strict: true });
+        } finally {
+          await deepener.deps.close?.(); // the browser (if the render fallback started one) is released
+        }
         stats = out;
         tokens += deepener.stats.tokens;
         const d = deepener.stats;
         const deepNote = d.attempted ? ` Deep scan: ${d.attempted} listing(s) read in full, ${d.pdfs} notice PDF(s) read, ${d.tokens} tokens${d.notes.length ? ` (${[...new Set(d.notes)].join("; ")})` : ""}.` : "";
-        message = `Scanned page (${scan.model}, ${scan.tokens} tokens), found ${scan.records.length} listing(s): ${describe(out)}.${deepNote}${d.attempted >= DEEP_MAX_LISTINGS ? ` More listings are waiting for their full read. ${MORE_PENDING}` : ""}`;
+        const rendered = deepener.deps.renderStats?.rendered ?? 0;
+        message = `Scanned page (${scan.model}, ${scan.tokens} tokens), found ${scan.records.length} listing(s): ${describe(out)}${out.held ? `, ${out.held} held (no borrower name: needs_enrichment)` : ""}.${rejectionNote(out.rejections)}${rendered ? ` ${rendered} page(s) read after running their JavaScript in a browser.` : ""}${deepNote}${d.attempted >= DEEP_MAX_LISTINGS ? ` More listings are waiting for their full read. ${MORE_PENDING}` : ""}`;
       }
     }
 
@@ -281,7 +294,7 @@ export async function runWebDiscovery(feedId: string, trigger: "schedule" | "man
   const budgetMs = opts.budgetMs ?? (all ? 270_000 : trigger === "manual" ? 200_000 : 70_000);
   try {
     const res = await scanSiteForNew({ startUrl: check.url, feedName: feed.name, seen: state.seen, maxNew: all ? 150 : trigger === "manual" ? 25 : 10, concurrency: all ? 6 : trigger === "manual" ? 4 : 3, deadline: Date.now() + budgetMs });
-    const note = `Site scan: ${res.discovered} listing page(s) found, ${res.unseen} new, ${res.read} read in full (${res.import.created} new, ${res.import.skipped} already on the site, ${res.import.failed} rejected, ${res.tokens} tokens${res.pdfs ? `, ${res.pdfs} notice PDF(s)` : ""}).${res.pending ? ` ${SITE_SCAN_PENDING}` : ""}${res.notes.length ? ` Note: ${[...new Set(res.notes)].join("; ")}.` : ""}`;
+    const note = `Site scan: ${res.discovered} listing page(s) found, ${res.unseen} new, ${res.read} read in full (${res.import.created} new, ${res.import.skipped} already on the site, ${res.import.failed} rejected${res.import.held ? `, ${res.import.held} held for borrower name` : ""}, ${res.tokens} tokens${res.pdfs ? `, ${res.pdfs} notice PDF(s)` : ""}${res.rendered ? `, ${res.rendered} page(s) rendered in a browser` : ""}).${rejectionNote(res.rejections)}${res.pending ? ` ${SITE_SCAN_PENDING}` : ""}${res.notes.length ? ` Note: ${[...new Set(res.notes)].join("; ")}.` : ""}`;
     const fresh = await prisma.feedSource.findUnique({ where: { id: feedId }, select: { sheetState: true, lastMessage: true } });
     const keep = (fresh?.lastMessage ?? "").split(" | Site scan:")[0].replace(SITE_SCAN_PENDING, "").replace("Importing all properties of this website…", "").replace(/^[\s|]+/, "").trim();
     await prisma.feedSource.update({

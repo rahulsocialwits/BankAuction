@@ -7,6 +7,8 @@ import { UA, htmlToText } from "./webScan";
 import { RobotsGate } from "./robotsGate";
 import { isBlockedUrl } from "./blockedHosts";
 import { fetchWithRetry } from "@/lib/fetch/httpStatus";
+import { RenderingFetcher, isJsShell } from "./render";
+import { isUsable, parseRenderedProperty, toListingRecord } from "./renderedParser";
 
 /*
  * Deep scan of the listings a link source finds. The list page only shows a title and a price; the detail page and the
@@ -39,13 +41,37 @@ export interface DeepResult {
   attempted: boolean; // false when the cap or time was reached: nothing was tried, try again next run
   records: ListingRecord[]; // the full listing(s); empty when nothing better was found
   note?: string;
+  /** Why nothing was read (exact code): detail_page_empty, render_timeout, render_error, http_401, http_403, captcha, robots_disallowed, network_error, parser_failed … */
+  reason?: string;
+  /** The page was a JavaScript shell and was read after rendering it in a browser. */
+  rendered?: boolean;
+}
+
+export interface DocFetch {
+  kind: "html" | "pdf";
+  html?: string;
+  /** Rendered pages: the text as the browser lays it out (labels and values on their own lines). */
+  text?: string;
+  bytes?: Uint8Array;
+  /** true: the HTML came from the browser renderer (the plain HTML was an empty JavaScript shell). */
+  rendered?: boolean;
 }
 
 export interface DeepDeps {
-  /** Fetches a public page or document. null = refused / unavailable. */
-  fetchDoc: (url: string) => Promise<{ kind: "html" | "pdf"; html?: string; bytes?: Uint8Array } | null>;
+  /**
+   * Fetches a public page or document. null = refused / unavailable (the exact reason is in `failure`).
+   * `via`: the list page that links to this address. A single-page app that shows nothing when its detail address is typed in is
+   * opened the way a visitor does it: from that list page, by clicking the card.
+   */
+  fetchDoc: (url: string, opts?: { via?: string }) => Promise<DocFetch | null>;
   pdfToText: (bytes: Uint8Array) => Promise<string>;
   ask: (system: string, user: string) => Promise<{ data: unknown; tokens: number }>;
+  /** Exact reason code of the last failed fetchDoc per address. */
+  failure?: Map<string, string>;
+  /** Counters of the JavaScript render fallback. */
+  renderStats?: { rendered: number; failed: number };
+  /** Releases the browser, if one was started. */
+  close?: () => Promise<void>;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -235,13 +261,28 @@ export function toListings(data: unknown, docs: { type: string; title: string; u
 // The deepener used by the importer
 // ---------------------------------------------------------------------------------------------------------------------
 
+/** JavaScript rendering is on by default; set RENDER_JS_PAGES=0 to switch it off. */
+const RENDER_ENABLED = process.env.RENDER_JS_PAGES !== "0";
+
 export function realDeps(): DeepDeps {
   const gate = new RobotsGate(); // robots.txt is read once per site
   let nextSlot = 0; // requests start at least PAUSE_MS apart, even when several pages are being read side by side
+  const failure = new Map<string, string>();
+  const renderStats = { rendered: 0, failed: 0 };
+  let renderer: RenderingFetcher | null = null;
   return {
-    async fetchDoc(url) {
-      if (isBlockedUrl(url) || !/^https:/i.test(url)) return null;
-      if ((await gate.check(url)) !== "allowed") return null;
+    failure,
+    renderStats,
+    async close() {
+      await renderer?.close();
+      renderer = null;
+    },
+    async fetchDoc(url, fopts) {
+      failure.delete(url);
+      const fail = (code: string) => { failure.set(url, code); return null; };
+      if (isBlockedUrl(url)) return fail("internal_policy_block");
+      if (!/^https:/i.test(url)) return fail("not_https");
+      if ((await gate.check(url)) !== "allowed") return fail("robots_disallowed");
       const gap = Math.max(PAUSE_MS, (await gate.delayFor(url)) * 1000); // the site's own Crawl-delay, when it states one
       const at = Math.max(Date.now(), nextSlot);
       nextSlot = at + gap;
@@ -249,15 +290,29 @@ export function realDeps(): DeepDeps {
       // 429 / 503: one polite retry (Retry-After, at most 20 s). 401 / 403 / CAPTCHA: refused, never retried or bypassed.
       const out = await fetchWithRetry(url, { headers: { "User-Agent": UA, Accept: "text/html,application/pdf" }, signal: AbortSignal.timeout(25_000), redirect: "follow" }, { onLog: (l) => console.log(`[crawler] ${l} (${url})`), inspectBody: false });
       const res = out.res;
-      if (!res || out.status !== "success") return null;
-      if (!res.ok || !sameSite(res.url, url)) return null; // not a page, or sent to another site
+      if (!res || out.status !== "success") {
+        return fail(!res ? "network_error" : out.status === "unauthorized" ? "http_401" : out.status === "forbidden" ? "http_403" : out.status === "captcha" ? "captcha" : out.status === "rate_limited" ? "http_429" : out.status === "service_unavailable" ? "http_503" : `http_${res.status}`);
+      }
+      if (!res.ok) return fail(`http_${res.status}`);
+      if (!sameSite(res.url, url)) return fail("redirected_to_other_site");
       const type = res.headers.get("content-type") ?? "";
       if (/pdf/i.test(type) || DOC_EXT.test(url)) {
         const buf = new Uint8Array(await res.arrayBuffer());
-        return buf.length > 0 && buf.length <= MAX_PDF_BYTES ? { kind: "pdf", bytes: buf } : null;
+        return buf.length > 0 && buf.length <= MAX_PDF_BYTES ? { kind: "pdf", bytes: buf } : fail("pdf_empty_or_too_large");
       }
-      if (!/html|text/i.test(type)) return null;
-      return { kind: "html", html: (await res.text()).slice(0, MAX_HTML_BYTES) };
+      if (!/html|text/i.test(type)) return fail("not_html");
+      const html = (await res.text()).slice(0, MAX_HTML_BYTES);
+
+      // An empty JavaScript application shell (almost no visible text, scripts / an app root): the properties are filled in by the
+      // page's own JavaScript. Run that JavaScript in a browser, for this same address, and read what the page then shows.
+      if (RENDER_ENABLED && isJsShell(html).shell) {
+        renderer ??= new RenderingFetcher(gate);
+        const r = fopts?.via ? await renderer.renderLinked(fopts.via, url) : await renderer.render(url);
+        if (!r.ok) { renderStats.failed++; console.log(`[crawler] render failed (${r.failure}): ${r.reason} (${url})`); return fail(r.failure); }
+        renderStats.rendered++;
+        return { kind: "html", html: r.page.html.slice(0, MAX_HTML_BYTES), text: r.page.text, rendered: true };
+      }
+      return { kind: "html", html };
     },
     async pdfToText(bytes) {
       // Optional library: `npm install unpdf`. Without it PDFs are skipped (reported in the run note), never guessed.
@@ -277,7 +332,9 @@ export function realDeps(): DeepDeps {
 export interface Deepener {
   (rec: ListingRecord, mode: "new" | "backfill"): Promise<DeepResult>;
   /** Reads one listing page straight from its address (used by the whole-site scan): the page, its notices, one AI call. */
-  fromUrl: (url: string) => Promise<DeepResult>;
+  fromUrl: (url: string, via?: string) => Promise<DeepResult>;
+  /** The fetch dependencies in use (exact failure reasons, render counters, browser release). */
+  deps: DeepDeps;
   stats: { attempted: number; tokens: number; pdfs: number; pdfSkipped: number; notes: string[] };
 }
 
@@ -289,15 +346,25 @@ export function makeDeepener(opts: { html?: string; pageUrl: string; siblingTitl
   const stats = { attempted: 0, tokens: 0, pdfs: 0, pdfSkipped: 0, notes: [] as string[] };
 
   /** The common work: the listing's page (if any), its notice PDFs, then one AI call for every detail. */
-  async function readDetail(rec: ListingRecord, detail: string | null, docLinks: PageLink[], mode: string): Promise<DeepResult> {
+  async function readDetail(rec: ListingRecord, detail: string | null, docLinks: PageLink[], mode: string, via?: string): Promise<DeepResult> {
     const blocks: string[] = [];
     const docs: { type: string; title: string; url: string }[] = [];
     let detailUrl = detail;
     const pdfLinks: PageLink[] = [...docLinks];
+    let renderedFlag = false;
     if (detailUrl) {
-      const page = await deps.fetchDoc(detailUrl);
+      const page = await deps.fetchDoc(detailUrl, via ? { via } : undefined);
       if (page?.kind === "html" && page.html) {
-        blocks.push(`=== DETAIL PAGE (${detailUrl}) ===\n${htmlToText(page.html).slice(0, DETAIL_CHARS)}`);
+        if (page.rendered) {
+          renderedFlag = true;
+          // A page produced by the browser is read by code first (labels and values), with no AI call: it is exact and free.
+          const parsed = parseRenderedProperty(page.html, detailUrl, page.text);
+          if (isUsable(parsed)) {
+            stats.notes.push("rendered page read by code (no AI)");
+            return { attempted: true, records: [toListingRecord(parsed)], rendered: true, note: `${mode}: rendered page read by code (${parsed.missing.length ? `missing: ${parsed.missing.join(", ")}` : "all fields found"})` };
+          }
+        }
+        blocks.push(`=== DETAIL PAGE (${detailUrl}) ===\n${(page.text ?? htmlToText(page.html)).slice(0, DETAIL_CHARS)}`);
         for (const n of noticeLinks(page.html, detailUrl)) if (!pdfLinks.some((p) => p.href === n.href)) pdfLinks.push(n);
       } else if (page?.kind === "pdf" && page.bytes) {
         pdfLinks.unshift({ text: "notice", href: detailUrl });
@@ -321,7 +388,10 @@ export function makeDeepener(opts: { html?: string; pageUrl: string; siblingTitl
         stats.notes.push(/unpdf|Cannot find|Failed to resolve/i.test(String(e)) ? "PDF reader not installed (npm install unpdf)" : "a PDF could not be read");
       }
     }
-    if (blocks.length === 0) return { attempted: true, records: [], note: "no detail page or readable notice found" };
+    if (blocks.length === 0) {
+      const code = (detailUrl && deps.failure?.get(detailUrl)) || "detail_page_empty";
+      return { attempted: true, records: [], note: `no detail page or readable notice found (${code})`, reason: code };
+    }
 
     const seen = rec.title ? `LISTING SEEN ON THE LIST PAGE:\n${JSON.stringify({ title: rec.title, bank: rec.bank, location: rec.location, reserve_price: rec.reserve_price, auction_start: rec.auction_start })}\n\n` : "";
     try {
@@ -338,9 +408,9 @@ export function makeDeepener(opts: { html?: string; pageUrl: string; siblingTitl
           if (!r.category && rec.category) r.category = String(rec.category);
         }
       }
-      return { attempted: true, records, note: `${mode}: ${records.length} listing(s) from ${blocks.length} text block(s)` };
+      return { attempted: true, records, rendered: renderedFlag, ...(records.length === 0 ? { reason: "parser_failed" } : {}), note: `${mode}: ${records.length} listing(s) from ${blocks.length} text block(s)` };
     } catch (e) {
-      return { attempted: true, records: [], note: e instanceof Error ? e.message : String(e) };
+      return { attempted: true, records: [], reason: "parser_failed", note: e instanceof Error ? e.message : String(e) };
     }
   }
 
@@ -348,13 +418,14 @@ export function makeDeepener(opts: { html?: string; pageUrl: string; siblingTitl
     if (stats.attempted >= max || Date.now() > deadline) return { attempted: false, records: [] };
     stats.attempted++;
     const link = detailLinkFor(opts.html ?? "", String(rec.title ?? "").trim(), opts.pageUrl, opts.siblingTitles ?? []);
-    return readDetail(rec, link.detail, link.docs, mode);
+    return readDetail(rec, link.detail, link.docs, mode, opts.pageUrl); // opened from its list page, like a visitor
   }) as Deepener;
-  run.fromUrl = async (url: string): Promise<DeepResult> => {
+  run.fromUrl = async (url: string, via?: string): Promise<DeepResult> => {
     if (stats.attempted >= max || Date.now() > deadline) return { attempted: false, records: [] };
     stats.attempted++;
-    return readDetail({}, url, [], "page");
+    return readDetail({}, url, [], "page", via);
   };
+  run.deps = deps;
   run.stats = stats;
   return run;
 }

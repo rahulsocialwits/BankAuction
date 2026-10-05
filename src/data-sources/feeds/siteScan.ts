@@ -66,6 +66,7 @@ const idOf = (url: string): number => {
 
 export interface SiteDiscovery {
   details: string[]; // listing pages, newest first
+  via: Record<string, string>; // listing page -> the index page that links to it
   pagesRead: number;
   shapes: { shape: string; count: number; verified: boolean; sample: string }[];
   notes: string[];
@@ -103,6 +104,7 @@ async function discoverCore(
   const queued = new Set<string>([origin]);
   const perShape = new Map<string, number>();
   const byShape = new Map<string, Set<string>>();
+  const via = new Map<string, string>(); // listing address -> the index page that links to it (a single-page app is opened from there)
   const notes: string[] = [];
   let pages = 0;
 
@@ -126,6 +128,7 @@ async function discoverCore(
       if (scope && new URL(href).pathname.split("/").filter(Boolean)[0] !== scope) return; // outside the section we were asked to scan
       const s = shapeOf(href);
       (byShape.get(s) ?? byShape.set(s, new Set()).get(s)!).add(href);
+      if (!via.has(href)) via.set(href, url);
       if (isDetailShape(s) || visited.has(href) || queued.has(href)) return;
       if (BLOCK_SEG.test(s.split("|")[0]) || s === "/") return;
       const depth = new URL(href).pathname.split("/").filter(Boolean).length;
@@ -146,9 +149,9 @@ async function discoverCore(
     const urls = [...set];
     let verified = false;
     for (const sample of urls.slice(0, 2)) {
-      const page = await deps.fetchDoc(sample);
+      const page = await deps.fetchDoc(sample, { via: via.get(sample) });
       if (page?.kind === "html" && page.html) {
-        const text = htmlToText(page.html);
+        const text = page.text ?? htmlToText(page.html);
         if (PROPERTY_WORDS.test(text) && AUCTION_WORDS.test(text) && MONEY.test(text)) { verified = true; break; }
       }
     }
@@ -157,7 +160,7 @@ async function discoverCore(
   }
   if (!shapes.some((x) => x.verified)) notes.push("no group of addresses looked like property pages (the site may load its listings with JavaScript)");
   const sorted = [...new Set(details)].sort((a, b) => idOf(b) - idOf(a)).slice(0, maxDetails);
-  return { details: sorted, pagesRead: pages, shapes, notes };
+  return { details: sorted, via: Object.fromEntries(sorted.map((u) => [u, via.get(u) ?? origin])), pagesRead: pages, shapes, notes };
 }
 
 export interface SiteScanResult {
@@ -171,6 +174,9 @@ export interface SiteScanResult {
   seen: string[]; // addresses to remember
   notes: string[];
   shapes: SiteDiscovery["shapes"];
+  /** Every listing that was NOT imported, with the exact reason(s) (never just a count). */
+  rejections: { url: string; title?: string; reasons: string[] }[];
+  rendered: number; // pages read after running their JavaScript in a browser
 }
 
 /** Finds the listing pages of a site, reads the NEW ones in full and imports them. `dryRun` stops after discovery. */
@@ -209,7 +215,7 @@ export async function scanSiteForNew(opts: {
   for (const u of known) seen.add(u);
   say(`  ${fresh.length} new listing page(s) (${unseen.length - fresh.length} already on the site)`);
 
-  const out: SiteScanResult = { discovered: disc.details.length, unseen: fresh.length, read: 0, import: { created: 0, skipped: 0, failed: 0, updated: 0 }, tokens: 0, pdfs: 0, pending: fresh.length > maxNew, seen: [], notes: disc.notes, shapes: disc.shapes };
+  const out: SiteScanResult = { discovered: disc.details.length, unseen: fresh.length, read: 0, import: { created: 0, skipped: 0, failed: 0, updated: 0 }, tokens: 0, pdfs: 0, pending: fresh.length > maxNew, seen: [], notes: disc.notes, shapes: disc.shapes, rejections: [], rendered: 0 };
   if (opts.dryRun) {
     for (const u of fresh.slice(0, 15)) say(`    would read: ${u}`);
     out.seen = [...seen];
@@ -226,15 +232,21 @@ export async function scanSiteForNew(opts: {
   const worker = async () => {
     while (next < todo.length) {
       const url = todo[next++];
-      const res = await deepener.fromUrl(url);
+      const res = await deepener.fromUrl(url, disc.via[url]);
       if (!res.attempted) { out.pending = true; return; }
-      const fetchedOk = res.records.length > 0 || !/no detail page/i.test(res.note ?? "");
-      if (fetchedOk) seen.add(url); // read (even if it was not a property or a duplicate): not asked again
+      // read (even if it was not a property or a duplicate): not asked again. A TEMPORARY failure (timeout, 429 / 503, browser trouble) is retried on the next scan.
+      const transient = /^(render_timeout|render_error|network_error|http_429|http_503|link_not_found)$/.test(res.reason ?? "");
+      if (!transient && (res.records.length > 0 || !/no detail page/i.test(res.note ?? ""))) seen.add(url);
       out.read++;
-      if (!res.records.length) { say(`  skip   ${url}  (${res.note ?? "nothing found"})`); continue; }
+      if (!res.records.length) {
+        out.rejections.push({ url, reasons: [res.reason ?? "detail_page_empty"] });
+        say(`  skip   ${url}  (${res.reason ?? "detail_page_empty"}: ${res.note ?? "nothing found"})`);
+        continue;
+      }
       writes = writes.then(async () => {
         const r = await importRecords(res.records, source, "PUBLISHED", opts.startUrl, { strict: true });
-        out.import = { created: out.import.created + r.created, skipped: out.import.skipped + r.skipped, failed: out.import.failed + r.failed, updated: (out.import.updated ?? 0) + (r.updated ?? 0) };
+        out.import = { created: out.import.created + r.created, skipped: out.import.skipped + r.skipped, failed: out.import.failed + r.failed, updated: (out.import.updated ?? 0) + (r.updated ?? 0), held: (out.import.held ?? 0) + (r.held ?? 0) };
+        for (const j of r.rejections ?? []) out.rejections.push({ url, title: j.title, reasons: j.reasons });
         say(`  ${r.created ? "NEW  " : r.skipped ? "known" : "skip "} ${res.records[0].title?.slice(0, 70)}  [reserve ${res.records[0].reserve_price || "—"}, EMD ${res.records[0].emd || "—"}, docs ${JSON.parse(res.records[0].documents ?? "[]").length}]`);
       }).catch(() => undefined);
     }
@@ -242,6 +254,8 @@ export async function scanSiteForNew(opts: {
   await Promise.all(Array.from({ length: Math.max(1, Math.min(opts.concurrency ?? 1, 8)) }, worker));
   await writes;
   out.pending = out.pending || next < todo.length || fresh.length > maxNew;
+  out.rendered = deps.renderStats?.rendered ?? 0;
+  await deps.close?.(); // the browser (if one was started) is released
   out.tokens = deepener.stats.tokens;
   out.pdfs = deepener.stats.pdfs;
   if (deepener.stats.notes.length) out.notes.push(...new Set(deepener.stats.notes));

@@ -18,7 +18,7 @@ export interface RenderGate {
 }
 
 export type RenderResult =
-  | { ok: true; html: string; finalUrl: string; status: number | null; ms: number; blocked: string[]; apiRefused: string[] }
+  | { ok: true; html: string; text: string; finalUrl: string; status: number | null; ms: number; blocked: string[]; apiRefused: string[] }
   | { ok: false; kind: "UNAVAILABLE" | "REFUSED" | "FAILED"; reason: string };
 
 const CHALLENGE = /(just a moment|attention required|cf-chl|cf-browser-verification|captcha|are you a human|verify you are human|access denied|request blocked|enable javascript and cookies)/i;
@@ -100,25 +100,8 @@ export class BrowserRenderer {
     const t0 = Date.now();
     const blocked: string[] = [];
     const apiRefused: string[] = [];
-    const page = await this.ctx.newPage();
+    const page = await this.guardedPage(gate, blocked, apiRefused);
     try {
-      await page.route("**/*", async (route: any) => {
-        const req = route.request();
-        const type = req.resourceType();
-        const u: string = req.url();
-        if (type === "image" || type === "media" || type === "font") return route.abort();
-        if (type === "xhr" || type === "fetch" || type === "websocket" || type === "eventsource") {
-          if (!gate.sameFamily(u)) { blocked.push(`other domain: ${new URL(u).host}`); return route.abort(); }
-          if ((await gate.robotsFor(u)) !== "allowed") { blocked.push(`robots.txt: ${new URL(u).pathname}`); return route.abort(); }
-        }
-        if (type === "document" && !gate.sameFamily(u)) { blocked.push(`other domain: ${new URL(u).host}`); return route.abort(); }
-        return route.continue();
-      });
-      page.on("response", (r: any) => {
-        const type = r.request().resourceType();
-        if ((type === "xhr" || type === "fetch") && [401, 403, 429].includes(r.status())) apiRefused.push(`HTTP ${r.status()} ${new URL(r.url()).pathname}`);
-      });
-
       const resp = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25_000 });
       const status: number | null = resp ? resp.status() : null;
       const h = resp ? resp.headers() : {};
@@ -127,17 +110,7 @@ export class BrowserRenderer {
       }
       if (status === 429) return { ok: false, kind: "REFUSED", reason: "HTTP 429: the site is rate-limiting automated requests" };
 
-      // Wait until the page has produced its content (network quiet, text length stable), but not forever.
-      await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
-      let last = -1;
-      let stable = 0;
-      const until = Date.now() + 7_000;
-      while (Date.now() < until) {
-        const n: number = await page.evaluate(() => (document.body ? document.body.innerText.length : 0)).catch(() => 0);
-        if (n > 200 && n === last) { stable++; if (stable >= 2) break; } else stable = 0;
-        last = n;
-        await page.waitForTimeout(500);
-      }
+      await this.settle(page);
 
       const html: string = await page.content();
       const finalUrl: string = page.url();
@@ -146,7 +119,7 @@ export class BrowserRenderer {
       const hasPassword = (await page.$("input[type=password]").catch(() => null)) !== null;
       if ((hasPassword && bodyText.length < 3000) || /\/(login|signin|sign-in)\b/i.test(new URL(finalUrl).pathname)) return { ok: false, kind: "REFUSED", reason: "protected access: the page is a login wall" };
 
-      return { ok: true, html, finalUrl, status, ms: Date.now() - t0, blocked: [...new Set(blocked)].slice(0, 8), apiRefused: [...new Set(apiRefused)].slice(0, 8) };
+      return { ok: true, html, text: bodyText, finalUrl, status, ms: Date.now() - t0, blocked: [...new Set(blocked)].slice(0, 8), apiRefused: [...new Set(apiRefused)].slice(0, 8) };
     } catch (e) {
       const timeout = e instanceof Error && /timeout/i.test(e.message);
       return { ok: false, kind: "FAILED", reason: timeout ? "timeout while rendering the page in the browser" : `browser error: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}` };
@@ -155,7 +128,116 @@ export class BrowserRenderer {
     }
   }
 
+
+  /** A page whose requests are checked: images / fonts are skipped, data requests stay on the site and obey robots.txt. */
+  private async guardedPage(gate: RenderGate, blocked: string[], apiRefused: string[]) {
+    const page = await this.ctx.newPage();
+    await page.route("**/*", async (route: any) => {
+      const req = route.request();
+      const type = req.resourceType();
+      const u: string = req.url();
+      if (type === "image" || type === "media" || type === "font") return route.abort();
+      if (type === "xhr" || type === "fetch" || type === "websocket" || type === "eventsource") {
+        if (!gate.sameFamily(u)) { blocked.push(`other domain: ${new URL(u).host}`); return route.abort(); }
+        if ((await gate.robotsFor(u)) !== "allowed") { blocked.push(`robots.txt: ${new URL(u).pathname}`); return route.abort(); }
+      }
+      if (type === "document" && !gate.sameFamily(u)) { blocked.push(`other domain: ${new URL(u).host}`); return route.abort(); }
+      return route.continue();
+    });
+    page.on("response", (r: any) => {
+      const type = r.request().resourceType();
+      if ((type === "xhr" || type === "fetch") && [401, 403, 429].includes(r.status())) apiRefused.push(`HTTP ${r.status()} ${new URL(r.url()).pathname}`);
+    });
+    return page;
+  }
+
+  /** Waits until the page has produced its content (network quiet, text length stable), but not forever. */
+  private async settle(page: any, minChars = 200) {
+    await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
+    let last = -1;
+    let stable = 0;
+    const until = Date.now() + 7_000;
+    while (Date.now() < until) {
+      const n: number = await page.evaluate(() => (document.body ? document.body.innerText.length : 0)).catch(() => 0);
+      if (n > minChars && n === last) { stable++; if (stable >= 2) break; } else stable = 0;
+      last = n;
+      await page.waitForTimeout(500);
+    }
+  }
+
+  // The list page that stays open between linked renders (a single-page app keeps its cards, so each detail page is one click away).
+  private listPage: any = null;
+  private listPageUrl = "";
+
+  /**
+   * A single-page app may show an empty screen when its detail address is typed in directly, and build the real address
+   * (with a token) when a visitor CLICKS the card on the list page. This does exactly that: open the list page, click the
+   * link to `targetUrl`, wait for the app to show the property, return its DOM. It is the visitor's own navigation of a public page,
+   * with the same robots / refusal checks as render(); a login wall, 401 / 403 or CAPTCHA ends it as REFUSED.
+   */
+  renderLinked(listUrl: string, targetUrl: string, gate: RenderGate): Promise<RenderResult> {
+    const run = () => this.renderLinkedNow(listUrl, targetUrl, gate);
+    const next = this.chain.then(run, run);
+    this.chain = next.catch(() => undefined);
+    return next;
+  }
+
+  private async renderLinkedNow(listUrl: string, targetUrl: string, gate: RenderGate): Promise<RenderResult> {
+    const err = await this.launch();
+    if (err) return { ok: false, kind: "UNAVAILABLE", reason: `Browser renderer unavailable: ${err}.` };
+    try { gate.consume(); } catch (e) { return { ok: false, kind: "FAILED", reason: e instanceof Error ? e.message : String(e) }; }
+    const t0 = Date.now();
+    const blocked: string[] = [];
+    const apiRefused: string[] = [];
+    const target = new URL(targetUrl);
+    try {
+      if (!this.listPage || this.listPageUrl !== listUrl) {
+        await this.listPage?.close().catch(() => undefined);
+        this.listPage = await this.guardedPage(gate, blocked, apiRefused);
+        this.listPageUrl = listUrl;
+        const resp = await this.listPage.goto(listUrl, { waitUntil: "domcontentloaded", timeout: 25_000 });
+        const st: number | null = resp ? resp.status() : null;
+        if (st === 401 || st === 403) { this.listPage = null; return { ok: false, kind: "REFUSED", reason: `protected access: the browser got HTTP ${st} on the list page` }; }
+        if (st === 429) { this.listPage = null; return { ok: false, kind: "REFUSED", reason: "HTTP 429: the site is rate-limiting automated requests" }; }
+      }
+      const page = this.listPage;
+      const sel = `a[href="${target.pathname}${target.search}"]`;
+      const link = page.locator(sel).first();
+      // the cards are filled in by the app after the page loads: wait for THIS card (not for a fixed time)
+      await page.waitForSelector(sel, { timeout: 12_000, state: "attached" }).catch(() => undefined);
+      if (!(await link.count())) {
+        // the list may have gone back to a different state: reload it once
+        await page.goto(listUrl, { waitUntil: "domcontentloaded", timeout: 25_000 }).catch(() => undefined);
+        await page.waitForSelector(sel, { timeout: 12_000, state: "attached" }).catch(() => undefined);
+        if (!(await link.count())) return { ok: false, kind: "FAILED", reason: `link_not_found: the list page ${new URL(listUrl).pathname || "/"} has no link to ${target.pathname}` };
+      }
+      await link.scrollIntoViewIfNeeded().catch(() => undefined);
+      await link.click({ timeout: 8_000 });
+      await page.waitForURL((u: URL) => u.pathname.startsWith(target.pathname) && u.pathname.length > target.pathname.length, { timeout: 12_000 }).catch(() => undefined);
+      // a property page is long: wait until the app has filled it (not a fixed delay), then a short quiet check
+      await page.waitForFunction(() => (document.body ? document.body.innerText.length : 0) > 900, undefined, { timeout: 10_000 }).catch(() => undefined);
+      await page.waitForLoadState("networkidle", { timeout: 3_000 }).catch(() => undefined);
+
+      const finalUrl: string = page.url();
+      const html: string = await page.content();
+      const bodyText: string = await page.evaluate(() => (document.body ? document.body.innerText : "")).catch(() => "");
+      if (bodyText.length < 4000 && CHALLENGE.test(bodyText.slice(0, 3000))) { this.listPage = null; return { ok: false, kind: "REFUSED", reason: "protected access: the rendered page is an anti-bot challenge or access-denied screen" }; }
+      const hasPassword = (await page.$("input[type=password]").catch(() => null)) !== null;
+      if ((hasPassword && bodyText.length < 3000) || /\/(login|signin|sign-in)\b/i.test(new URL(finalUrl).pathname)) { this.listPage = null; return { ok: false, kind: "REFUSED", reason: "protected access: the page is a login wall" }; }
+
+      // back to the list for the next card (the app keeps its state)
+      await page.goBack({ waitUntil: "domcontentloaded", timeout: 10_000 }).catch(() => { this.listPage = null; });
+      return { ok: true, html, text: bodyText, finalUrl, status: 200, ms: Date.now() - t0, blocked: [...new Set(blocked)].slice(0, 8), apiRefused: [...new Set(apiRefused)].slice(0, 8) };
+    } catch (e) {
+      this.listPage = null;
+      const timeout = e instanceof Error && /timeout/i.test(e.message);
+      return { ok: false, kind: "FAILED", reason: timeout ? "timeout while rendering the page in the browser" : `browser error: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}` };
+    }
+  }
+
   async close() {
+    try { await this.listPage?.close(); } catch { /* ignore */ }
+    this.listPage = null;
     try { await this.ctx?.close(); } catch { /* ignore */ }
     try { await this.browser?.close(); } catch { /* ignore */ }
     this.ctx = null;

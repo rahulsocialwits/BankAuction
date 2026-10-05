@@ -22,6 +22,8 @@ export interface ImportResult {
   skipped: number; // already on the site (duplicates)
   failed: number;
   updated?: number; // of those, listings whose missing details were filled in or corrected
+  held?: number; // new listings stored hidden as DRAFT / needs_enrichment because the source states no borrower name
+  rejections?: { title: string; reasons: string[] }[]; // every rejected listing with its exact reason(s)
   reauctions?: number; // listings that were auctioned before: a NEW auction round was added to the existing property (no duplicate)
   stale?: number; // auctions that ended long ago and are not on the site: not added (existing ones are still corrected)
   error?: "header";
@@ -180,7 +182,7 @@ async function isThin(hit: Known): Promise<boolean> {
 export async function enrichExisting(hit: Known, rec: ListingRecord, statusSource: string, strong: boolean): Promise<boolean> {
   const [a, p] = await Promise.all([
     prisma.auction.findUnique({ where: { id: hit.auctionId } }),
-    prisma.property.findUnique({ where: { id: hit.propertyId }, select: { addressText: true, latitude: true, longitude: true, description: true, attributes: { select: { key: true } } } }),
+    prisma.property.findUnique({ where: { id: hit.propertyId }, select: { status: true, addressText: true, latitude: true, longitude: true, description: true, attributes: { select: { key: true } } } }),
   ]);
   if (!a || !p) return false;
   // A different listing id is a different auction round of a similar-looking property: never mix its details in.
@@ -269,6 +271,13 @@ export async function enrichExisting(hit: Known, rec: ListingRecord, statusSourc
     changed = true;
   }
   if (await attachDocuments(hit.propertyId, docsOf(rec))) changed = true;
+  // A listing that was held back for a missing borrower name is published as soon as a later read finds the borrower.
+  if (rec.borrower && p.status === "DRAFT" && have.has("enrichment_status")) {
+    await prisma.property.update({ where: { id: hit.propertyId }, data: { status: "PUBLISHED" } });
+    await prisma.propertyAttribute.deleteMany({ where: { propertyId: hit.propertyId, key: { in: ["enrichment_status", "borrower_status"] } } });
+    await prisma.propertyChange.create({ data: { propertyId: hit.propertyId, field: "needs_enrichment", oldValue: "DRAFT", newValue: "Published: the borrower name was found" } }).catch(() => undefined);
+    changed = true;
+  }
   return changed;
 }
 
@@ -335,6 +344,7 @@ const NOTICE_TITLE = /\b(auction|sale|e-?auction|public) notice\b|notice (for|of
 export interface DeepOutcome {
   attempted: boolean; // false: the cap/time was reached, nothing was tried
   records: ListingRecord[]; // the full listing(s); more than one when a notice lists several properties
+  reason?: string; // exact code when its page could not be read (render_timeout, http_403, captcha, detail_page_empty, parser_failed …)
 }
 export type DeepHook = (rec: ListingRecord, mode: "new" | "backfill") => Promise<DeepOutcome>;
 
@@ -357,6 +367,13 @@ export async function importRecords(
   let updated = 0;
   let stale = 0;
   let reauctions = 0;
+  let held = 0; // stored but not shown: the source does not state a borrower name (status DRAFT, needs_enrichment)
+  const rejections: { title: string; reasons: string[] }[] = [];
+  /** A listing that is not imported always says exactly why. */
+  const reject = (title: string, ...reasons: string[]) => {
+    failed++;
+    if (rejections.length < 300) rejections.push({ title: title.slice(0, 100), reasons });
+  };
   // Existing listings per bank (loaded once per run), extended as new ones are created,
   // so duplicates inside the same batch and across sources are both caught.
   const knownByBank = new Map<string, Known[]>();
@@ -402,15 +419,19 @@ export async function importRecords(
   for (let qi = 0; qi < queue.length; qi++) {
     const rec = normalizeListing(queue[qi]);
     const col = (name: string) => String(rec[name] ?? "").trim();
+    let deepFail = ""; // why this listing's own page could not be read (shown in the rejection)
     let orphan: string | null = null; // a property whose auction could not be saved must not stay behind as an empty listing
     try {
       const title = col("title");
       // Quality gate: a listing needs a title plus a bank or a location, otherwise it is noise.
-      if (!title || title.length < 8 || (!col("bank") && !col("location"))) { failed++; continue; }
+      if (!title || title.length < 8 || (!col("bank") && !col("location"))) {
+        reject(title, ...[!title || title.length < 8 ? "title_missing" : "", !col("bank") && !col("location") ? "address_missing" : ""].filter(Boolean));
+        continue;
+      }
       // This site does not list vehicles, whatever the source or the AI says.
-      if (isVehicleListing(title, col("category"))) { failed++; continue; }
+      if (isVehicleListing(title, col("category"))) { reject(title, "invalid_property_type"); continue; }
       // Nor movables (machinery, jewellery, going-concern sales): real estate only.
-      if (/\b(plant (and|&) machinery|machineries|machinery|jewel+ery|bullion|going concern)\b/i.test(`${title} ${col("source_property_type")}`)) { failed++; continue; }
+      if (/\b(plant (and|&) machinery|machineries|machinery|jewel+ery|bullion|going concern)\b/i.test(`${title} ${col("source_property_type")}`)) { reject(title, "invalid_property_type"); continue; }
 
       const bankName = col("bank");
       const bank = bankName ? await resolveBank(bankName) : null;
@@ -421,7 +442,9 @@ export async function importRecords(
 
       const list = await known(bank?.id ?? null);
       // The source's own listing id is the surest match (the built-in crawler stores the same id).
-      const sameId = opts.enrich && col("external_id") ? list.find((k) => k.ext === col("external_id")) : undefined;
+      // A source-qualified id ("src:<site>:<id>", set by the site readers) identifies the SAME listing on every visit: it is updated, never duplicated.
+      const sourceQualified = col("external_id").startsWith("src:");
+      const sameId = (opts.enrich || sourceQualified) && col("external_id") ? list.find((k) => k.ext === col("external_id")) : undefined;
       const hit =
         sameId ??
         list.find(
@@ -441,7 +464,7 @@ export async function importRecords(
           skipped++;
           continue;
         }
-        if (opts.enrich && (await enrichExisting(hit, rec, statusSource, hit === sameId))) updated++;
+        if ((opts.enrich || hit === sameId) && (await enrichExisting(hit, rec, statusSource, hit === sameId))) updated++;
         else if (opts.deepen && col("deep_done") !== "1" && (await isThin(hit))) {
           // Already on the site but still without EMD / end date: read its own page once and fill the gaps.
           const out = await opts.deepen(rec, "backfill");
@@ -472,12 +495,17 @@ export async function importRecords(
           queue.splice(qi + 1, 0, ...out.records.slice(0, 25));
           continue;
         }
+        if (out.attempted && out.reason) deepFail = out.reason;
       }
       // A listing without a reserve price would show "Not Available" to visitors: it is not published until its price is known.
-      if (opts.strict && !(col("reserve_price") && (col("auction_start") || col("auction_end")))) { failed++; continue; }
-      if (opts.strict && !col("location") && !col("legal_schedule")) { failed++; continue; }
-      // The site shows only listings that name their borrower: a new listing without one is not added.
-      if (!col("borrower")) { failed++; continue; }
+      if (opts.strict) {
+        const why = [!col("reserve_price") ? "reserve_price_missing" : "", !(col("auction_start") || col("auction_end")) ? "auction_date_missing" : "", !col("location") && !col("legal_schedule") ? "address_missing" : ""].filter(Boolean);
+        if (why.length) { reject(title, ...why, ...(deepFail ? [deepFail] : [])); continue; }
+      }
+      // The site shows only listings that name their borrower. A new listing whose source does not state one is NOT thrown away:
+      // it is stored as a hidden DRAFT marked "needs_enrichment" (borrower_status = not_available_from_source) and is published
+      // automatically if a later read finds the borrower. Nothing is invented. BORROWER_REQUIRED_FOR_PUBLISH=0 switches this off.
+      const holdForBorrower = !col("borrower") && process.env.BORROWER_REQUIRED_FOR_PUBLISH !== "0";
 
       // Last look straight at the database (another source or a parallel run may have just added this property, under any
       // bank spelling): the same reserve price AND a matching title (or the same auction day) is the same property.
@@ -514,7 +542,7 @@ export async function importRecords(
           addressText: col("location") || null,
           latitude: col("latitude") ? Number(col("latitude")) : undefined,
           longitude: col("longitude") ? Number(col("longitude")) : undefined,
-          status: propertyStatus,
+          status: holdForBorrower ? "DRAFT" : propertyStatus,
         },
       });
       orphan = property.id;
@@ -541,11 +569,16 @@ export async function importRecords(
       if (col("legal_schedule")) await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "legal_schedule", value: col("legal_schedule") } });
       if (col("source_property_type")) await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "source_property_type", value: col("source_property_type") } });
       await attachDocuments(property.id, docsOf(rec));
+      if (!col("borrower")) {
+        await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "borrower_status", value: "not_available_from_source" } });
+        if (holdForBorrower) await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "enrichment_status", value: "needs_enrichment" } });
+      }
       orphan = null;
       list.push({ tokens: titleTokens, reserve: reservePrice > 0 ? reservePrice : null, start: validStart, auctionId: auction.id, propertyId: property.id, ext: col("external_id") || null });
-      created++;
-    } catch {
-      failed++;
+      if (holdForBorrower) held++;
+      else created++;
+    } catch (e) {
+      reject(String(rec.title ?? ""), `import_error: ${e instanceof Error ? e.message.split("\n")[0].slice(0, 120) : "unknown"}`);
       if (orphan) {
         const id = orphan;
         await prisma.propertyAttribute.deleteMany({ where: { propertyId: id } }).catch(() => undefined);
@@ -555,5 +588,5 @@ export async function importRecords(
       }
     }
   }
-  return { created, skipped, failed, updated, stale, reauctions };
+  return { created, skipped, failed, updated, stale, reauctions, held, rejections };
 }
