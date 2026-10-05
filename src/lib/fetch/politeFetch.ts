@@ -1,5 +1,6 @@
 import robotsParser from "robots-parser";
 import { SourceDefinition } from "@/data-sources/registry";
+import { fetchWithRetry } from "./httpStatus";
 
 const USER_AGENT = "BankAuctionBot/0.1 (+https://auction.bizsocio.com/about; source discovery for a property auction index)";
 
@@ -55,5 +56,8 @@ export async function politeFetch(source: SourceDefinition, path: string): Promi
 
   await waitForRateLimit(new URL(source.baseUrl).host);
 
-  return fetch(url, { headers: { "User-Agent": USER_AGENT } });
+  // 429 / 503: one retry after the site's Retry-After (at most 20 s). The last response is returned either way, so the caller reports its real status.
+  const out = await fetchWithRetry(url, { headers: { "User-Agent": USER_AGENT } }, { inspectBody: false, onLog: (l) => console.log(`[crawler] ${source.name}: ${l}`) });
+  if (!out.res) throw new Error(`temporary_error: no answer from ${new URL(url).hostname}`);
+  return out.res;
 }

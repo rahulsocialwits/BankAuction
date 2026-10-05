@@ -97,7 +97,7 @@ export async function deepScan(chosen: Kept, loader: PageLoader, startUrl: strin
     d.mime = h.mime ?? d.mime;
     d.sizeBytes = h.sizeBytes;
     d.date = h.date;
-    if (h.check === "REFUSED") refused.push({ url: d.url, reason: "document refused automated access (robots or HTTP 401/403/429)" });
+    if (h.check === "REFUSED") refused.push({ url: d.url, reason: "document refused automated access (robots or HTTP 401/403)" });
   }
   documents = documents.map((d) => ({ ...d, type: d.type || docType(d.title, d.url) }));
 

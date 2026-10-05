@@ -2,13 +2,10 @@ import { createHash } from "node:crypto";
 import { chatJSONDetailed } from "@/lib/ai/relayModelsClient";
 import { getAiConfig } from "@/lib/ai/aiConfig";
 import type { ListingRecord } from "@/lib/import/csvImport";
+import { fetchWithRetry, robotsSkipLine } from "@/lib/fetch/httpStatus";
+import { robotsAllows } from "@/lib/fetch/robotsRules";
 
 export const UA = "BankAuctionBot/1.0 (+https://auction.bizsocio.com)";
-
-/** A robots.txt pattern with `*` wildcards and a `$` end anchor, matched against path + query. */
-function robotsMatch(pattern: string, path: string): boolean {
-  return new RegExp("^" + pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\\\$$/, "$")).test(path);
-}
 
 export type RobotsVerdict = "allowed" | "disallowed" | "unreachable";
 
@@ -19,49 +16,18 @@ export type RobotsVerdict = "allowed" | "disallowed" | "unreachable";
  *    permission, so the caller must treat it as a temporary problem, never as a block.
  *  - 4xx (no robots file) or a page that is not a robots file at all = no rules = allowed.
  */
-export async function robotsCheck(pageUrl: string): Promise<RobotsVerdict> {
+export async function robotsCheck(pageUrl: string, onLog: (line: string) => void = (l) => console.log(`[crawler] ${l}`)): Promise<RobotsVerdict> {
   const u = new URL(pageUrl);
-  let res: Response;
-  try {
-    res = await fetch(`${u.origin}/robots.txt`, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(15_000) });
-  } catch {
-    return "unreachable";
-  }
-  if (res.status === 401 || res.status === 403) return "disallowed";
-  if (res.status >= 400 && res.status < 500) return "allowed";
+  // robots.txt itself: a 429 / 503 gets the one polite retry (never "blocked"); 401 / 403 is a refusal.
+  const out = await fetchWithRetry(`${u.origin}/robots.txt`, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(15_000) }, { inspectBody: false, onLog });
+  if (out.status === "unauthorized" || out.status === "forbidden") return "disallowed";
+  const res = out.res;
+  if (!res) return "unreachable";
+  if (res.status >= 400 && res.status < 500 && res.status !== 429) return "allowed";
   if (!res.ok) return "unreachable";
-
-  const groups: { agents: string[]; disallow: string[]; allow: string[] }[] = [];
-  let cur: (typeof groups)[number] | null = null;
-  let lastWasAgent = false;
-  for (const raw of (await res.text()).split(/\r?\n/)) {
-    const line = raw.replace(/#.*/, "").trim();
-    const m = line.match(/^([A-Za-z-]+)\s*:\s*(.*)$/);
-    if (!m) continue;
-    const key = m[1].toLowerCase();
-    const val = m[2].trim();
-    if (key === "user-agent") {
-      if (!cur || !lastWasAgent) { cur = { agents: [], disallow: [], allow: [] }; groups.push(cur); }
-      cur.agents.push(val.toLowerCase());
-      lastWasAgent = true;
-      continue;
-    }
-    lastWasAgent = false;
-    if (!cur) continue;
-    if (key === "disallow" && val) cur.disallow.push(val);
-    if (key === "allow" && val) cur.allow.push(val);
-  }
-
-  const ours = groups.filter((g) => g.agents.some((a) => a !== "*" && "bankauctionbot".includes(a)));
-  const applicable = ours.length ? ours : groups.filter((g) => g.agents.includes("*"));
-  const path = u.pathname + u.search;
-  let bestLen = -1;
-  let allowed = true;
-  for (const g of applicable) {
-    for (const p of g.disallow) if (robotsMatch(p, path) && p.length > bestLen) { bestLen = p.length; allowed = false; }
-    for (const p of g.allow) if (robotsMatch(p, path) && p.length >= bestLen) { bestLen = p.length; allowed = true; }
-  }
-  return allowed ? "allowed" : "disallowed";
+  const decision = robotsAllows(await res.text(), pageUrl);
+  if (!decision.allowed) onLog(robotsSkipLine(pageUrl, decision.rule));
+  return decision.allowed ? "allowed" : "disallowed";
 }
 
 /**

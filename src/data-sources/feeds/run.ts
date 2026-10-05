@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { importCsvText, importRecords, type ImportResult } from "@/lib/import/csvImport";
 import { robotsCheck, scanWebPage, UA } from "./webScan";
+import { describeStatus, fetchWithRetry, isRefusal } from "@/lib/fetch/httpStatus";
 import { logRun } from "@/lib/pipeline/runLog";
 import { enrichLocations } from "@/lib/pipeline/geo";
 import { importTabular, type TabState } from "@/lib/import/tabular";
@@ -148,7 +149,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
     if (!looksCsv) {
       const verdict = await robotsCheck(target);
       if (verdict === "disallowed") {
-        throw new BlockedError("Blocked: this site's robots.txt says automated access to this page is not allowed. Paused automatically.");
+        throw new BlockedError("Blocked: robots_disallowed: this site's robots.txt says automated access to this page is not allowed. Paused automatically.");
       }
       if (verdict === "unreachable") {
         // Not a refusal: the site simply did not answer properly. Stay Live and try again on the next run.
@@ -156,17 +157,16 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
       }
     }
 
-    let res: Response;
-    try {
-      res = await fetch(target, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(30_000), redirect: "follow" });
-    } catch (e) {
-      const cause = (e as { cause?: { code?: string; message?: string } }).cause;
-      throw new Error(`Could not reach the site (${cause?.code ?? cause?.message ?? "network error"})`);
+    // One polite retry for 429 / 503 (Retry-After, at most 20 s). Only a real refusal (401 / 403 / CAPTCHA / anti-bot screen) blocks the source.
+    const got = await fetchWithRetry(target, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(30_000), redirect: "follow" }, { onLog: (l) => console.log(`[crawler] ${feed.name}: ${l}`) });
+    if (isRefusal(got.status)) throw new BlockedError(`Blocked: ${describeStatus(got.status, got.http)} Paused automatically.`);
+    if (got.status !== "success" || !got.res) {
+      // temporary: the source stays Live and is tried again on the next run
+      const cause = !got.res ? "Could not reach the site" : describeStatus(got.status, got.http);
+      throw new Error(cause.startsWith("temporary_error") || got.res ? cause : `temporary_error: ${cause}`);
     }
-    if (res.status === 401 || res.status === 403) {
-      throw new BlockedError(`Blocked: the site answered HTTP ${res.status} to our server (usually anti-bot protection such as Cloudflare). Paused automatically.`);
-    }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const res = got.res;
+    if (!res.ok) throw new Error(`temporary_error: HTTP ${res.status}`);
     const text = await res.text();
     const isHtml = text.trimStart().startsWith("<") || (res.headers.get("content-type") ?? "").includes("html");
 
@@ -287,7 +287,7 @@ export async function runWebDiscovery(feedId: string, trigger: "schedule" | "man
     const res = await scanSiteForNew({ startUrl: check.url, feedName: feed.name, seen: state.seen, maxNew: all ? 150 : trigger === "manual" ? 25 : 10, concurrency: all ? 6 : trigger === "manual" ? 4 : 3, deadline: Date.now() + budgetMs });
     const note = `Site scan: ${res.discovered} listing page(s) found, ${res.unseen} new, ${res.read} read in full (${res.import.created} new, ${res.import.skipped} already on the site, ${res.import.failed} rejected, ${res.tokens} tokens${res.pdfs ? `, ${res.pdfs} notice PDF(s)` : ""}).${res.pending ? ` ${SITE_SCAN_PENDING}` : ""}${res.notes.length ? ` Note: ${[...new Set(res.notes)].join("; ")}.` : ""}`;
     const fresh = await prisma.feedSource.findUnique({ where: { id: feedId }, select: { sheetState: true, lastMessage: true } });
-    const keep = (fresh?.lastMessage ?? "").split(" | Site scan:")[0].replace(SITE_SCAN_PENDING, "").trim();
+    const keep = (fresh?.lastMessage ?? "").split(" | Site scan:")[0].replace(SITE_SCAN_PENDING, "").replace("Importing all properties of this website…", "").replace(/^[\s|]+/, "").trim();
     await prisma.feedSource.update({
       where: { id: feedId },
       data: { sheetState: withWebState(fresh?.sheetState, { seen: res.seen, lastAt: new Date().toISOString(), importAll: all ? res.pending : false }), lastMessage: `${keep} | ${note}`.slice(0, 1800) },

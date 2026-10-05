@@ -1,6 +1,8 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { UA } from "@/data-sources/feeds/webScan";
+import { classifyBody, describeStatus, fetchWithRetry } from "@/lib/fetch/httpStatus";
+import { parseRobots, robotsDecision, type RobotsGroup } from "@/lib/fetch/robotsRules";
 import type { Candidate, DocRef, ImageRef } from "./types";
 
 /*
@@ -50,44 +52,7 @@ export function htmlToText(html: string): string {
 // robots.txt (read once per site, cached for the run)
 // ---------------------------------------------------------------------------------------------------------------------
 
-type Group = { agents: string[]; disallow: string[]; allow: string[] };
-type RobotsEntry = { kind: "rules"; groups: Group[] } | { kind: "disallowed" } | { kind: "unreachable" };
-
-function parseRobots(body: string): Group[] {
-  const groups: Group[] = [];
-  let cur: Group | null = null;
-  let lastWasAgent = false;
-  for (const raw of body.split(/\r?\n/)) {
-    const line = raw.replace(/#.*/, "").trim();
-    const m = line.match(/^([A-Za-z-]+)\s*:\s*(.*)$/);
-    if (!m) continue;
-    const key = m[1].toLowerCase();
-    const val = m[2].trim();
-    if (key === "user-agent") {
-      if (!cur || !lastWasAgent) { cur = { agents: [], disallow: [], allow: [] }; groups.push(cur); }
-      cur.agents.push(val.toLowerCase());
-      lastWasAgent = true;
-      continue;
-    }
-    lastWasAgent = false;
-    if (!cur) continue;
-    if (key === "disallow" && val) cur.disallow.push(val);
-    if (key === "allow" && val) cur.allow.push(val);
-  }
-  return groups;
-}
-
-function pathAllowed(groups: Group[], path: string): boolean {
-  const ours = groups.filter((g) => g.agents.some((a) => a !== "*" && "bankauctionbot".includes(a)));
-  const applicable = ours.length ? ours : groups.filter((g) => g.agents.includes("*"));
-  let bestLen = -1;
-  let allowed = true;
-  for (const g of applicable) {
-    for (const p of g.disallow) if (path.startsWith(p) && p.length > bestLen) { bestLen = p.length; allowed = false; }
-    for (const p of g.allow) if (path.startsWith(p) && p.length >= bestLen) { bestLen = p.length; allowed = true; }
-  }
-  return allowed;
-}
+type RobotsEntry = { kind: "rules"; groups: RobotsGroup[] } | { kind: "disallowed" } | { kind: "unreachable" };
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Crawler
@@ -155,24 +120,22 @@ export class Crawler {
     let entry = this.robots.get(u.origin);
     if (!entry) {
       if (!this.checkedHosts.has(u.hostname)) { await assertPublicHost(u.hostname); this.checkedHosts.add(u.hostname); }
-      try {
-        const res = await fetch(`${u.origin}/robots.txt`, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(15_000), redirect: "follow" });
-        if (res.status === 401 || res.status === 403) entry = { kind: "disallowed" };
-        else if (res.status >= 400 && res.status < 500) entry = { kind: "rules", groups: [] };
-        else if (!res.ok) entry = { kind: "unreachable" };
-        else {
-          const body = await res.text();
-          entry = { kind: "rules", groups: parseRobots(body) };
-          this.sitemapsByOrigin.set(u.origin, [...body.matchAll(/^\s*sitemap\s*:\s*(\S+)/gim)].map((m) => m[1]).slice(0, 8));
-        }
-      } catch {
-        entry = { kind: "unreachable" };
+      const out = await fetchWithRetry(`${u.origin}/robots.txt`, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(15_000), redirect: "follow" }, { inspectBody: false });
+      const res = out.res;
+      if (out.status === "unauthorized" || out.status === "forbidden") entry = { kind: "disallowed" };
+      else if (!res) entry = { kind: "unreachable" };
+      else if (res.status >= 400 && res.status < 500 && res.status !== 429) entry = { kind: "rules", groups: [] };
+      else if (!res.ok) entry = { kind: "unreachable" };
+      else {
+        const body = await res.text();
+        entry = { kind: "rules", groups: parseRobots(body).groups };
+        this.sitemapsByOrigin.set(u.origin, parseRobots(body).sitemaps.slice(0, 8));
       }
       this.robots.set(u.origin, entry);
     }
     if (entry.kind === "disallowed") return "disallowed";
     if (entry.kind === "unreachable") return "unreachable";
-    return pathAllowed(entry.groups, u.pathname + u.search) ? "allowed" : "disallowed";
+    return robotsDecision(entry.groups, u.pathname + u.search).allowed ? "allowed" : "disallowed";
   }
 
   /** Sitemap addresses the site itself declares in robots.txt (after robotsFor ran for that site). */
@@ -194,20 +157,17 @@ export class Crawler {
 
       this.consume();
       await this.slot();
-      let res: Response;
-      try {
-        res = await fetch(u, { headers: { "User-Agent": UA, Accept: "text/html,text/plain" }, redirect: "manual", signal: AbortSignal.timeout(20_000) });
-      } catch (e) {
-        const timeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
-        throw new Failed(timeout ? `timeout: ${u.hostname} did not answer within 20 seconds` : `network error while contacting ${u.hostname}`);
-      }
+      // manual redirects (we check each hop); 429 / 503 get ONE polite retry, then they are a temporary failure (not a refusal)
+      const out = await fetchWithRetry(u.toString(), { headers: { "User-Agent": UA, Accept: "text/html,text/plain" }, redirect: "manual", signal: AbortSignal.timeout(20_000) }, { inspectBody: false });
+      const res = out.res;
+      if (!res) throw new Failed(`temporary_error: ${u.hostname} did not answer (timeout or network error)`);
       const status = res.status;
       const server = (res.headers.get("server") ?? "").toLowerCase();
       const challenged = res.headers.get("cf-mitigated") === "challenge";
       if (status === 401 || status === 403 || challenged) {
-        throw new Refused(challenged || server.includes("cloudflare") ? `protected access: HTTP ${status} with an anti-bot challenge` : `HTTP ${status}: the site refuses automated requests`);
+        throw new Refused(challenged || server.includes("cloudflare") ? `captcha: protected access: HTTP ${status} with an anti-bot challenge` : `${status === 401 ? "unauthorized" : "forbidden"}: HTTP ${status}, the site refuses automated requests`);
       }
-      if (status === 429) throw new Refused("HTTP 429: the site is rate-limiting automated requests");
+      if (out.status === "rate_limited" || out.status === "service_unavailable") throw new Failed(describeStatus(out.status, status));
       if (status >= 300 && status < 400) {
         const loc = res.headers.get("location") ?? "";
         if (/login|signin|sign-in|auth|account/i.test(loc)) throw new Refused(`protected access: redirects to a login (${loc.slice(0, 100)})`);
@@ -219,7 +179,7 @@ export class Crawler {
       const contentType = res.headers.get("content-type") ?? "";
       if (!/text\/(html|plain)|xhtml/i.test(contentType)) throw new Failed(`content type "${contentType || "unknown"}" is not a web page`);
       const html = (await res.text()).slice(0, MAX_BYTES);
-      if (CHALLENGE.test(htmlToText(html).slice(0, 3000)) && html.length < 8000) throw new Refused(`protected access: HTTP ${status} but the page is a challenge or access-denied screen`);
+      if ((CHALLENGE.test(htmlToText(html).slice(0, 3000)) && html.length < 8000) || classifyBody(html, status)) throw new Refused(`captcha: protected access: HTTP ${status} but the page is a challenge or access-denied screen`);
       return { url, status, contentType, html, ms: Date.now() - t0, redirects: hop };
     }
     throw new Failed("too many redirects");
@@ -248,7 +208,7 @@ export class Crawler {
       this.consume();
       await this.slot();
       const res = await fetch(url, { method: "HEAD", headers: { "User-Agent": UA }, redirect: "manual", signal: AbortSignal.timeout(12_000) });
-      if (res.status === 401 || res.status === 403 || res.status === 429) return { check: "REFUSED", mime: null, sizeBytes: null, date: null };
+      if (res.status === 401 || res.status === 403) return { check: "REFUSED", mime: null, sizeBytes: null, date: null };
       if (!res.ok) return { check: "unreachable", mime: null, sizeBytes: null, date: null };
       const len = Number(res.headers.get("content-length"));
       return { check: "reachable", mime: res.headers.get("content-type")?.split(";")[0] ?? null, sizeBytes: Number.isFinite(len) && len > 0 ? len : null, date: res.headers.get("last-modified") };

@@ -6,6 +6,7 @@ import { moneyNumber } from "@/lib/import/richRaw";
 import { UA, htmlToText } from "./webScan";
 import { RobotsGate } from "./robotsGate";
 import { isBlockedUrl } from "./blockedHosts";
+import { fetchWithRetry } from "@/lib/fetch/httpStatus";
 
 /*
  * Deep scan of the listings a link source finds. The list page only shows a title and a price; the detail page and the
@@ -245,19 +246,11 @@ export function realDeps(): DeepDeps {
       const at = Math.max(Date.now(), nextSlot);
       nextSlot = at + gap;
       if (at > Date.now()) await sleep(at - Date.now());
-      let res: Response;
-      try {
-        res = await fetch(url, { headers: { "User-Agent": UA, Accept: "text/html,application/pdf" }, signal: AbortSignal.timeout(25_000), redirect: "follow" });
-        // 429 / 503 = "too many requests, wait" (not a refusal): wait as long as the site asks (at most 20 s) and try once more.
-        if (res.status === 429 || res.status === 503) {
-          const wait = Math.min(20, Number(res.headers.get("retry-after")) || 8);
-          await sleep(wait * 1000);
-          res = await fetch(url, { headers: { "User-Agent": UA, Accept: "text/html,application/pdf" }, signal: AbortSignal.timeout(25_000), redirect: "follow" });
-        }
-      } catch {
-        return null;
-      }
-      if (!res.ok || !sameSite(res.url, url)) return null; // refused (401/403/…), or sent to another site
+      // 429 / 503: one polite retry (Retry-After, at most 20 s). 401 / 403 / CAPTCHA: refused, never retried or bypassed.
+      const out = await fetchWithRetry(url, { headers: { "User-Agent": UA, Accept: "text/html,application/pdf" }, signal: AbortSignal.timeout(25_000), redirect: "follow" }, { onLog: (l) => console.log(`[crawler] ${l} (${url})`), inspectBody: false });
+      const res = out.res;
+      if (!res || out.status !== "success") return null;
+      if (!res.ok || !sameSite(res.url, url)) return null; // not a page, or sent to another site
       const type = res.headers.get("content-type") ?? "";
       if (/pdf/i.test(type) || DOC_EXT.test(url)) {
         const buf = new Uint8Array(await res.arrayBuffer());
