@@ -119,6 +119,33 @@ const docsOf = (rec: ListingRecord): Doc[] => {
   }
 };
 
+const mediaOf = (rec: ListingRecord): Doc[] => {
+  try {
+    const list = JSON.parse(rec.media ?? "[]") as Doc[];
+    return Array.isArray(list) ? list.filter((m) => m && /^https?:\/\//i.test(m.url)) : [];
+  } catch {
+    return [];
+  }
+};
+
+async function attachMedia(propertyId: string, media: Doc[]): Promise<boolean> {
+  let added = false;
+  for (const m of media.slice(0, 12)) {
+    if (!m?.url) continue;
+    const row = await prisma.media.upsert({
+      where: { sourceUrl: m.url },
+      update: {},
+      create: { sourceUrl: m.url, type: "PHOTO" },
+    });
+    const had = await prisma.propertyMedia.findUnique({ where: { propertyId_mediaId: { propertyId, mediaId: row.id } } });
+    if (!had) {
+      await prisma.propertyMedia.create({ data: { propertyId, mediaId: row.id, sortOrder: media.indexOf(m) } });
+      added = true;
+    }
+  }
+  return added;
+}
+
 async function attachDocuments(propertyId: string, docs: Doc[]): Promise<boolean> {
   let added = false;
   for (const d of docs.slice(0, 12)) {
@@ -565,6 +592,7 @@ export async function importRecords(
       if (col("legal_schedule")) await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "legal_schedule", value: col("legal_schedule") } });
       if (col("source_property_type")) await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "source_property_type", value: col("source_property_type") } });
       await attachDocuments(property.id, docsOf(rec));
+      await attachMedia(property.id, mediaOf(rec));
       if (!col("borrower")) {
         await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "borrower_status", value: "not_available_from_source" } });
       }
