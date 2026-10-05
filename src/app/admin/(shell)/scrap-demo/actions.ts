@@ -4,7 +4,8 @@ import { requireMaster } from "@/lib/auth/adminAuth";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
-import { runFeedFull, validateFeedUrl } from "@/data-sources/feeds/run";
+import { runFeedFull, runWebDiscovery, validateFeedUrl } from "@/data-sources/feeds/run";
+import { webStateOf, withWebState } from "@/data-sources/feeds/siteScan";
 import { runDemo } from "@/lib/scrapDemo/run";
 import { clampSettings } from "@/lib/scrapDemo/settings";
 import type { DemoResult, DemoSourceType } from "@/lib/scrapDemo/types";
@@ -28,10 +29,17 @@ export async function addAsLiveSource(formData: FormData) {
   const host = new URL(check.url).hostname.replace(/^www\./, "");
   const name = String(formData.get("name") ?? "").trim().slice(0, 60) || host;
   const existing = await prisma.feedSource.findFirst({ where: { OR: [{ url: check.url }, { name }] } });
-  if (existing) redirect("/admin/engine");
-  const feed = await prisma.feedSource.create({ data: { name, url: check.url, lastMessage: "Fetching…" } });
+  if (existing) {
+    // Already a source: make sure it is live and read everything it has not imported yet.
+    await prisma.feedSource.update({ where: { id: existing.id }, data: { active: true, sheetState: withWebState(existing.sheetState, { ...webStateOf(existing.sheetState), importAll: true }), lastMessage: "Importing all properties of this website…" } });
+    after(() => runWebDiscovery(existing.id, "manual", { all: true }).catch(() => null));
+    redirect("/admin/scrap-demo?added=" + encodeURIComponent(existing.name));
+  }
+  // "importAll" makes every scheduler tick keep reading the site's listing pages until none are left (no duplicates: known
+  // listings are skipped), so the whole website comes in even though one request can only read a batch.
+  const feed = await prisma.feedSource.create({ data: { name, url: check.url, lastMessage: "Fetching…", sheetState: withWebState(null, { seen: [], lastAt: null, importAll: true }) } });
   after(() => runFeedFull(feed.id));
-  redirect("/admin/engine");
+  redirect("/admin/scrap-demo?added=" + encodeURIComponent(name));
 }
 
 /** Runs one demo workflow in memory and returns what it found. It never writes to the database. */

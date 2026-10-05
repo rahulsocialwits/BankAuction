@@ -2,6 +2,7 @@ import { PropertyCategory, PropertyStatus, type DocumentType } from "@prisma/cli
 import { prisma } from "@/lib/db/prisma";
 import { slugify } from "@/lib/normalization/parsers";
 import { deriveAuctionStatusFromDates } from "@/lib/domain/deriveAuctionStatus";
+import { canonicalBankKey, canonicalBankName, normalizeListing } from "./normalize";
 
 /** Vehicles (cars, bikes, trucks, tractors …) are out of scope for this site. */
 export function isVehicleListing(title: string, category?: string | null): boolean {
@@ -322,22 +323,38 @@ export async function importRecords(
     return list;
   }
   const branchIds = new Map<string, string>();
+  // One bank per real bank: "SBI", "State Bank Of India Ltd." and "State Bank of India" all resolve to the same row.
+  let bankByKey: Map<string, { id: string; name: string }> | null = null;
+  async function resolveBank(rawName: string) {
+    if (!bankByKey) {
+      bankByKey = new Map();
+      for (const b of await prisma.bank.findMany({ select: { id: true, name: true } })) if (!bankByKey.has(canonicalBankKey(b.name))) bankByKey.set(canonicalBankKey(b.name), b);
+    }
+    const key = canonicalBankKey(rawName);
+    const have = bankByKey.get(key);
+    if (have) return have;
+    const name = canonicalBankName(rawName);
+    const b = await prisma.bank.upsert({ where: { name }, update: {}, create: { name, slug: slugify(name) } });
+    bankByKey.set(key, b);
+    return b;
+  }
 
   const queue = records.slice(0, MAX_ROWS);
   for (let qi = 0; qi < queue.length; qi++) {
-    const rec = queue[qi];
+    const rec = normalizeListing(queue[qi]);
     const col = (name: string) => String(rec[name] ?? "").trim();
+    let orphan: string | null = null; // a property whose auction could not be saved must not stay behind as an empty listing
     try {
       const title = col("title");
       // Quality gate: a listing needs a title plus a bank or a location, otherwise it is noise.
       if (!title || title.length < 8 || (!col("bank") && !col("location"))) { failed++; continue; }
       // This site does not list vehicles, whatever the source or the AI says.
       if (isVehicleListing(title, col("category"))) { failed++; continue; }
+      // Nor movables (machinery, jewellery, going-concern sales): real estate only.
+      if (/\b(plant (and|&) machinery|machineries|machinery|jewel+ery|bullion|going concern)\b/i.test(`${title} ${col("source_property_type")}`)) { failed++; continue; }
 
       const bankName = col("bank");
-      const bank = bankName
-        ? await prisma.bank.upsert({ where: { name: bankName }, update: {}, create: { name: bankName, slug: slugify(bankName) } })
-        : null;
+      const bank = bankName ? await resolveBank(bankName) : null;
 
       const reservePrice = Number(col("reserve_price").replace(/[₹,\s]/g, ""));
       const validStart = parseListingDate(col("auction_start"));
@@ -393,6 +410,19 @@ export async function importRecords(
       if (opts.strict && !(col("reserve_price") || col("auction_start"))) { failed++; continue; }
       if (opts.strict && !col("location") && !col("legal_schedule")) { failed++; continue; }
 
+      // Last look straight at the database (another source or a parallel run may have just added this property, under any
+      // bank spelling): the same reserve price AND a matching title (or the same auction day) is the same property.
+      if (reservePrice > 0) {
+        const t = tokens(title);
+        const near = await prisma.auction.findMany({ where: { reservePrice }, select: { id: true, bankId: true, auctionStart: true, externalAuctionId: true, property: { select: { title: true } } }, take: 60 });
+        const dup = near.find((n) => {
+          if (col("external_id") && n.externalAuctionId && n.externalAuctionId !== col("external_id")) return false; // a different round
+          const nt = tokens(n.property.title);
+          return similar(t, nt) || (overlap(t, nt) >= 0.4 && ((n.bankId && n.bankId === bank?.id) || (!!validStart && !!n.auctionStart && sameDay(validStart, n.auctionStart))));
+        });
+        if (dup) { skipped++; continue; }
+      }
+
       const base = slugify(title);
       const slug = (await prisma.property.findUnique({ where: { slug: base } })) ? `${base}-${Date.now()}-${created}` : base;
       const catRaw = col("category").toUpperCase().replace(/[ &]+/g, "_");
@@ -418,9 +448,11 @@ export async function importRecords(
           status: propertyStatus,
         },
       });
+      orphan = property.id;
       const extras = auctionExtras(rec);
       const auction = await prisma.auction.create({
         data: {
+          // (an auction that cannot be saved removes its property again, see the catch below)
           propertyId: property.id,
           bankId: bank?.id,
           branchId,
@@ -440,10 +472,18 @@ export async function importRecords(
       if (col("legal_schedule")) await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "legal_schedule", value: col("legal_schedule") } });
       if (col("source_property_type")) await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "source_property_type", value: col("source_property_type") } });
       await attachDocuments(property.id, docsOf(rec));
+      orphan = null;
       list.push({ tokens: titleTokens, reserve: reservePrice > 0 ? reservePrice : null, start: validStart, auctionId: auction.id, propertyId: property.id, ext: col("external_id") || null });
       created++;
     } catch {
       failed++;
+      if (orphan) {
+        const id = orphan;
+        await prisma.propertyAttribute.deleteMany({ where: { propertyId: id } }).catch(() => undefined);
+        await prisma.propertyDocument.deleteMany({ where: { propertyId: id } }).catch(() => undefined);
+        await prisma.auction.deleteMany({ where: { propertyId: id } }).catch(() => undefined);
+        await prisma.property.delete({ where: { id } }).catch(() => undefined);
+      }
     }
   }
   return { created, skipped, failed, updated, stale };
