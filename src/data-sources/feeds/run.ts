@@ -110,7 +110,7 @@ async function runSheet(sheetState: string | null, feedName: string, url: string
   return { stats: total, tokens, unchanged, message, stateJson: JSON.stringify({ tabs: state }) };
 }
 
-export async function runFeedSource(id: string, trigger: "schedule" | "manual" = "manual") {
+export async function runFeedSource(id: string, trigger: "schedule" | "manual" = "manual", opts: { deepBudgetMs?: number } = {}) {
   const feed = await prisma.feedSource.findUnique({ where: { id } });
   if (!feed) return null;
   const startedAt = new Date();
@@ -213,7 +213,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
         message = feed.contentHash === scan.hash ? "Unchanged: AI skipped (content unchanged)." : "Duplicate: AI skipped (the same content was already processed by another source).";
       } else {
         // New listings (and thin existing ones) are read in depth: their own page and notice PDFs, in one more AI call each.
-        const deepener = makeDeepener({ html: text, pageUrl: check.url, siblingTitles: scan.records.map((r) => String(r.title ?? "")), deadline: Date.now() + (trigger === "manual" ? 200_000 : 150_000) });
+        const deepener = makeDeepener({ html: text, pageUrl: check.url, siblingTitles: scan.records.map((r) => String(r.title ?? "")), deadline: Date.now() + (opts.deepBudgetMs ?? (trigger === "manual" ? 200_000 : 150_000)) });
         let out: ImportResult;
         try {
           out = await importRecords(scan.records, `feed:${feed.name}`, "PUBLISHED", check.url, { deepen: deepener, strict: true });
@@ -326,8 +326,12 @@ export async function runWebDiscovery(feedId: string, trigger: "schedule" | "man
 
 /** What "Add", "Run" and "Pause → Run" start: the normal import of the source, then (for a website) the whole-site scan. */
 export async function runFeedFull(id: string) {
-  const result = await runFeedSource(id, "manual");
-  await runWebDiscovery(id, "manual").catch(() => null);
+  // Both steps run inside ONE serverless function that ends at 300 s (a function that is cut off saves nothing and leaves the
+  // message unchanged), so they share one budget: the list-page read first, the whole-site scan with what is left.
+  const t0 = Date.now();
+  const result = await runFeedSource(id, "manual", { deepBudgetMs: 100_000 });
+  const left = 275_000 - (Date.now() - t0);
+  if (left > 30_000) await runWebDiscovery(id, "manual", { budgetMs: left - 15_000 }).catch(() => null);
   return result;
 }
 
