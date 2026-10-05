@@ -87,7 +87,19 @@ export async function listPublishedProperties(filters: PropertyFilters = {}, tak
   });
 }
 
-export function toPropertyCardData(p: Awaited<ReturnType<typeof listPublishedProperties>>[number]) {
+export function toPropertyCardData(p: {
+  slug: string;
+  title: string;
+  addressText: string | null;
+  category: PropertyCategory | null;
+  auctions: Array<{
+    bank: { name: string } | null;
+    reservePrice: unknown;
+    auctionStart: Date | null;
+    status: AuctionStatus;
+  }>;
+  media?: Array<{ media: { sourceUrl: string } }>;
+}) {
   const auction = p.auctions[0];
   return {
     slug: p.slug,
@@ -98,6 +110,6 @@ export function toPropertyCardData(p: Awaited<ReturnType<typeof listPublishedPro
     reservePrice: auction?.reservePrice ?? null,
     auctionStart: auction?.auctionStart ?? null,
     status: auction?.status ?? null,
-    imageUrl: p.media[0]?.media.sourceUrl ?? null,
+    imageUrl: p.media?.[0]?.media.sourceUrl ?? null,
   };
 }
