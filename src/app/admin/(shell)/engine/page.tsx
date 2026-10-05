@@ -3,7 +3,9 @@ import { prisma } from "@/lib/db/prisma";
 import { getAiConfig } from "@/lib/ai/aiConfig";
 import SubmitButton from "@/components/admin/SubmitButton";
 import EngineTabs from "@/components/admin/EngineTabs";
-import { toggleBuiltIn, toggleFeedSource, deleteFeedSource } from "./actions";
+import { toggleBuiltIn, toggleFeedSource, deleteFeedSource, importAllNow, importEverythingNow } from "./actions";
+import { isAiFeed } from "@/data-sources/feeds/run";
+import { webStateOf } from "@/data-sources/feeds/siteScan";
 import { aiScheduleStatus, istLabel } from "@/lib/pipeline/aiSchedule";
 
 export const dynamic = "force-dynamic";
@@ -74,7 +76,18 @@ export default async function DataEnginePage() {
   if (tickAgeMin === null) problems.push({ title: "Scheduler has never run", detail: "No automatic run has been recorded.", fix: "Set up a 30-minute scheduler (see the card below)." });
   else if (tickAgeMin > 90) problems.push({ title: "Scheduler is late", detail: `Last automatic run was ${ago(lastTick!.startedAt)}.`, fix: "Check GitHub Actions or your cron-job.org job." });
   for (const f of feeds) {
-    if (f.lastStatus === "error") problems.push({ title: `${f.name}: last run failed`, detail: f.lastMessage ?? "", fix: f.lastMessage?.startsWith("Blocked") ? "The site does not allow automated access. Press Remove on the source below." : "Press Run on the source below to try again." });
+    if (f.lastStatus === "error") {
+      const silent = f.lastMessage?.startsWith("Site not responding");
+      problems.push({
+        title: `${f.name}: ${silent ? "site does not answer our crawler" : "last run failed"}`,
+        detail: f.lastMessage ?? "",
+        fix: f.lastMessage?.startsWith("Blocked")
+          ? "The site does not allow automated access. Press Remove on the source below."
+          : silent
+            ? "Nothing is broken on your side: this bank's server ignores automated requests, and we never work around that. It is retried twice a day. For its data, paste the bank's public notice in Bulk Import, or ask the bank for a data feed."
+            : "Press Run on the source below to try again.",
+      });
+    }
   }
   if (pending > 0) problems.push({ title: `${pending} properties still wait for review`, detail: "The AI reviews new listings automatically; these are the ones it was not sure about, so they are not on the site yet.", fix: "Open Properties → Pending review and publish or remove them (only the unsure ones land here)." });
 
@@ -172,7 +185,12 @@ export default async function DataEnginePage() {
         </div>
       )}
 
-      <h2 className="font-semibold mb-1">Sources</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
+        <h2 className="font-semibold">Sources</h2>
+        <form action={importEverythingNow}>
+          <SubmitButton className="text-xs bg-gold text-white font-semibold rounded-lg px-4 py-2 hover:bg-gold-dark">⚡ Import ALL properties from every website now</SubmitButton>
+        </form>
+      </div>
       <p className="text-xs text-brand-muted mb-3">
         Press <b>Run</b> once: the source starts now and then keeps running by itself, about every hour, until you press <b>Pause</b>.
         There is no need to press anything again.
@@ -215,6 +233,12 @@ export default async function DataEnginePage() {
                   <Badge tone="red">Blocked</Badge>
                 ) : (
                   <Badge tone="gray">Paused</Badge>
+                )}
+                {f.active && isAiFeed(f.url) && !f.lastMessage?.startsWith("Blocked") && (
+                  <form action={importAllNow}>
+                    <input type="hidden" name="id" value={f.id} />
+                    <SubmitButton className="text-xs bg-gold text-white font-semibold rounded-lg px-3 py-1.5 hover:bg-gold-dark">{webStateOf(f.sheetState).importAll ? "Importing all…" : "⚡ Import all now"}</SubmitButton>
+                  </form>
                 )}
                 {!f.active && f.lastMessage?.startsWith("Blocked") ? (
                   // The site refuses automated access: running it again can never work, so the only useful action is removing it.

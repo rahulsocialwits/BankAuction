@@ -69,15 +69,31 @@ export function dateTimeIso(dateText: string, timeText = ""): string {
   return istIso(y, mo, day, hh, mm);
 }
 
-/** "Contact The Authorized Officer : Rahul Singh/EMAIL ID:rahul@x.co.in MOB NO. 9978336633 & 903394 1002" -> name, phone, email. */
+/**
+ * "Contact The Authorized Officer : Mr Satish Trapasiya +91 9726962491, Mr Jitendra Patel +91 9974848487" -> names, phones, email.
+ * The text is free-form: several officers, names with initials, landlines, or phone numbers only. Names are kept only when
+ * they really are names (letters, not labels like "Ph:" or "M:"); at most 3 names and 3 phone numbers.
+ */
 export function parseOfficer(text: string | null | undefined): { name: string; phone: string; email: string } {
-  const t = String(text ?? "");
+  const t = String(text ?? "").replace(/Contact\s+the\s+Authori[sz]ed\s+Officers?\s*:?-?/i, " ").replace(/\s+/g, " ");
   const email = t.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0] ?? "";
-  const phone = t.match(/\b\d[\d ]{8,}\d\b/)?.[0]?.trim() ?? "";
-  const name = (t.match(/Authori[sz]ed\s+Officer\s*:?\s*([^/,;|\d@]+)/i)?.[1] ?? "").replace(/\b(email|mob|mobile|ph|phone|contact|no)\b.*$/i, "").trim();
-  return { name: name.slice(0, 80), phone, email };
+  const PHONE = /(?:\+?91[\s-]?)?\d[\d\s-]{6,}\d/g;
+  const phones: string[] = [];
+  for (const m of t.match(PHONE) ?? []) {
+    const digits = m.replace(/\D/g, "");
+    if (digits.length >= 8 && digits.length <= 13 && !phones.some((p) => p.replace(/\D/g, "") === digits)) phones.push(m.trim().replace(/\s{2,}/g, " "));
+  }
+  const LABEL = /^(ph|phone|tel|telephone|mob|mobile|m|no|contact|email|e-?mail|id|officer|authori[sz]ed|the|and|for|inspection|call)$/i;
+  const names: string[] = [];
+  for (const seg of t.replace(email, " ").split(/[;/&]|,|\band\b|\(\d\)/i)) {
+    const name = seg.replace(PHONE, " ").replace(/\b(ph|phone|tel|mob(?:ile)?|m|mob no|email|e-?mail id)\b\.?\s*:?-?/gi, " ").replace(/[\s\-–]+(mo|mob|mobile|ph|no)\.?$/i, "").replace(/[:()\-+.,]+\s*$/g, "").replace(/^[\s:()\-+.,]+/g, "").replace(/\s+/g, " ").trim();
+    const letters = name.replace(/[^A-Za-z]/g, "");
+    if (letters.length < 3 || name.split(" ").every((w) => LABEL.test(w.replace(/[^A-Za-z-]/g, "")))) continue;
+    if (/\d/.test(name) || /@/.test(name)) continue;
+    if (!names.some((n) => n.toLowerCase() === name.toLowerCase())) names.push(name.slice(0, 40));
+  }
+  return { name: names.slice(0, 3).join(", ").slice(0, 120), phone: phones.slice(0, 3).join(", ").slice(0, 80), email };
 }
-
 const DOC_LABEL = /download|view|notice|form|annexure|corrigendum|terms|tender|process/i;
 
 /** Names a document from its file name when the sheet only gives the address. */

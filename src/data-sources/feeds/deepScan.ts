@@ -3,7 +3,8 @@ import { chatJSONDetailed } from "@/lib/ai/relayModelsClient";
 import { getAiConfig } from "@/lib/ai/aiConfig";
 import type { ListingRecord } from "@/lib/import/csvImport";
 import { moneyNumber } from "@/lib/import/richRaw";
-import { robotsCheck, UA, htmlToText } from "./webScan";
+import { UA, htmlToText } from "./webScan";
+import { RobotsGate } from "./robotsGate";
 import { isBlockedUrl } from "./blockedHosts";
 
 /*
@@ -204,13 +205,16 @@ export function toListings(data: unknown, docs: { type: string; title: string; u
 // ---------------------------------------------------------------------------------------------------------------------
 
 export function realDeps(): DeepDeps {
-  const robotsCache = new Map<string, boolean>();
+  const gate = new RobotsGate(); // robots.txt is read once per site
+  let nextSlot = 0; // requests start at least PAUSE_MS apart, even when several pages are being read side by side
   return {
     async fetchDoc(url) {
       if (isBlockedUrl(url) || !/^https:/i.test(url)) return null;
-      if (!robotsCache.has(url)) robotsCache.set(url, (await robotsCheck(url)) === "allowed");
-      if (!robotsCache.get(url)) return null;
-      await sleep(PAUSE_MS);
+      if ((await gate.check(url)) !== "allowed") return null;
+      const gap = Math.max(PAUSE_MS, (await gate.delayFor(url)) * 1000); // the site's own Crawl-delay, when it states one
+      const at = Math.max(Date.now(), nextSlot);
+      nextSlot = at + gap;
+      if (at > Date.now()) await sleep(at - Date.now());
       let res: Response;
       try {
         res = await fetch(url, { headers: { "User-Agent": UA, Accept: "text/html,application/pdf" }, signal: AbortSignal.timeout(25_000), redirect: "follow" });
@@ -243,27 +247,24 @@ export function realDeps(): DeepDeps {
 
 export interface Deepener {
   (rec: ListingRecord, mode: "new" | "backfill"): Promise<DeepResult>;
+  /** Reads one listing page straight from its address (used by the whole-site scan): the page, its notices, one AI call. */
+  fromUrl: (url: string) => Promise<DeepResult>;
   stats: { attempted: number; tokens: number; pdfs: number; pdfSkipped: number; notes: string[] };
 }
 
-/** Builds the per-run deepener. `html`/`pageUrl` are the list page the records came from. */
-export function makeDeepener(opts: { html: string; pageUrl: string; siblingTitles?: string[]; maxListings?: number; deadline?: number; deps?: DeepDeps }): Deepener {
+/** Builds the per-run deepener. `html`/`pageUrl` are the list page the records came from (empty for the whole-site scan). */
+export function makeDeepener(opts: { html?: string; pageUrl: string; siblingTitles?: string[]; maxListings?: number; deadline?: number; deps?: DeepDeps }): Deepener {
   const deps = opts.deps ?? realDeps();
   const max = opts.maxListings ?? DEEP_MAX_LISTINGS;
   const deadline = opts.deadline ?? Date.now() + 150_000;
   const stats = { attempted: 0, tokens: 0, pdfs: 0, pdfSkipped: 0, notes: [] as string[] };
 
-  const run = (async (rec: ListingRecord, mode: "new" | "backfill"): Promise<DeepResult> => {
-    if (stats.attempted >= max || Date.now() > deadline) return { attempted: false, records: [] };
-    stats.attempted++;
-    const title = String(rec.title ?? "").trim();
-    const link = detailLinkFor(opts.html, title, opts.pageUrl, opts.siblingTitles ?? []);
-
-    // Text sources: the detail page, then up to MAX_PDFS notices.
+  /** The common work: the listing's page (if any), its notice PDFs, then one AI call for every detail. */
+  async function readDetail(rec: ListingRecord, detail: string | null, docLinks: PageLink[], mode: string): Promise<DeepResult> {
     const blocks: string[] = [];
     const docs: { type: string; title: string; url: string }[] = [];
-    let detailUrl = link.detail;
-    const pdfLinks: PageLink[] = [...link.docs];
+    let detailUrl = detail;
+    const pdfLinks: PageLink[] = [...docLinks];
     if (detailUrl) {
       const page = await deps.fetchDoc(detailUrl);
       if (page?.kind === "html" && page.html) {
@@ -293,9 +294,9 @@ export function makeDeepener(opts: { html: string; pageUrl: string; siblingTitle
     }
     if (blocks.length === 0) return { attempted: true, records: [], note: "no detail page or readable notice found" };
 
-    const user = `LISTING SEEN ON THE LIST PAGE:\n${JSON.stringify({ title: rec.title, bank: rec.bank, location: rec.location, reserve_price: rec.reserve_price, auction_start: rec.auction_start })}\n\n${blocks.join("\n\n")}`;
+    const seen = rec.title ? `LISTING SEEN ON THE LIST PAGE:\n${JSON.stringify({ title: rec.title, bank: rec.bank, location: rec.location, reserve_price: rec.reserve_price, auction_start: rec.auction_start })}\n\n` : "";
     try {
-      const out = await deps.ask(DEEP_PROMPT, user);
+      const out = await deps.ask(DEEP_PROMPT, `${seen}${blocks.join("\n\n")}`);
       stats.tokens += out.tokens;
       const records = toListings(out.data, docs, { sourceUrl: detailUrl ?? pdfLinks[0]?.href ?? opts.pageUrl });
       // the list page's own values fill anything the detail text did not state
@@ -312,7 +313,19 @@ export function makeDeepener(opts: { html: string; pageUrl: string; siblingTitle
     } catch (e) {
       return { attempted: true, records: [], note: e instanceof Error ? e.message : String(e) };
     }
+  }
+
+  const run = (async (rec: ListingRecord, mode: "new" | "backfill"): Promise<DeepResult> => {
+    if (stats.attempted >= max || Date.now() > deadline) return { attempted: false, records: [] };
+    stats.attempted++;
+    const link = detailLinkFor(opts.html ?? "", String(rec.title ?? "").trim(), opts.pageUrl, opts.siblingTitles ?? []);
+    return readDetail(rec, link.detail, link.docs, mode);
   }) as Deepener;
+  run.fromUrl = async (url: string): Promise<DeepResult> => {
+    if (stats.attempted >= max || Date.now() > deadline) return { attempted: false, records: [] };
+    stats.attempted++;
+    return readDetail({}, url, [], "page");
+  };
   run.stats = stats;
   return run;
 }

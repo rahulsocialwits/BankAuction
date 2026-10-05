@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
-import { runFeedSource, validateFeedUrl } from "@/data-sources/feeds/run";
+import { runFeedFull, validateFeedUrl } from "@/data-sources/feeds/run";
 
 export async function addFeed(formData: FormData) {
   await requireMaster();
@@ -18,7 +18,7 @@ export async function addFeed(formData: FormData) {
 
   const feed = await prisma.feedSource.create({ data: { name, url: check.url, lastMessage: "Fetching…" } });
   // Import can take a while for big sheets; run after the response so the page never hangs.
-  after(() => runFeedSource(feed.id));
+  after(() => runFeedFull(feed.id));
   revalidatePath("/admin/feeds");
   redirect("/admin/feeds");
 }
@@ -31,7 +31,7 @@ export async function toggleFeed(formData: FormData) {
     const active = !feed.active;
     await prisma.feedSource.update({ where: { id }, data: { active, ...(active && { lastMessage: "Fetching…" }) } });
     // "Run" starts it immediately; after that it stays on the automatic hourly schedule until paused.
-    if (active) after(() => runFeedSource(id));
+    if (active) after(() => runFeedFull(id));
   }
   revalidatePath("/admin/feeds");
   revalidatePath("/admin/engine");
@@ -47,6 +47,6 @@ export async function runFeedNow(formData: FormData) {
   await requireMaster();
   const id = String(formData.get("id"));
   await prisma.feedSource.update({ where: { id }, data: { lastMessage: "Fetching…" } });
-  after(() => runFeedSource(id));
+  after(() => runFeedFull(id));
   revalidatePath("/admin/feeds");
 }

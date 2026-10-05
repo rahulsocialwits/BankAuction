@@ -29,7 +29,7 @@ export interface TabState {
   ver?: number; // import logic version: a newer one re-reads the whole tab once (fills and corrects earlier imports)
 }
 
-const IMPORT_VERSION = 2;
+const IMPORT_VERSION = 3;
 
 const FIELDS = ["title", "bank", "category", "location", "description", "borrower", "reserve_price", "emd", "auction_start", "auction_method", "possession_status", "source_url"] as const;
 
@@ -208,8 +208,6 @@ export function judgeRow(layout: KnownLayout, row: string[], rec: ListingRecord 
   if (MOVABLE.test(type) || /^\s*(gold|jewel|vehicle|car|truck|tractor|machinery|plant (and|&) machinery)\b/i.test(rec.title ?? "")) return { accept: false, reason: "movable asset (not real estate)" };
   const urls = [rec.source_url, get("sourceurl"), get("sourcelistingurl")].filter(Boolean) as string[];
   if (urls.some((u) => isBlockedUrl(u))) return { accept: false, reason: "source is on the do-not-fetch list" };
-  const ended = Date.parse(rec.auction_end || rec.auction_start || "");
-  if (Number.isFinite(ended) && Date.now() - ended > STALE_MS) return { accept: false, reason: "auction ended more than 14 days ago" };
   return { accept: true };
 }
 
@@ -270,7 +268,11 @@ export function recordsFromRows(rows: string[][], layout: KnownLayout, from: num
       const j = join.get(String(data[i][layout.index.propertyid] ?? "").trim());
       if (j) { rec.auction_start ||= j.start; rec.emd ||= j.emd; rec.auction_method ||= j.method; }
     }
-    if (v.accept && rec) records.push(rec);
+    if (v.accept && rec) {
+      const ended = Date.parse(rec.auction_end || rec.auction_start || "");
+      if (Number.isFinite(ended) && Date.now() - ended > STALE_MS) rec.ended_long_ago = "1"; // existing listings are still corrected; it is just not added as new
+      records.push(rec);
+    }
     else left[v.reason ?? "skipped"] = (left[v.reason ?? "skipped"] ?? 0) + 1;
   }
   return { records, left };
@@ -322,7 +324,7 @@ export async function importTabular(
       for (const [k, n] of Object.entries(left)) leftAll[k] = (leftAll[k] ?? 0) + n;
       if (records.length) {
         const r = await importRecords(records, statusSource, "PUBLISHED", opts.sourceUrl, { enrich: layout.kind === "raw_source" });
-        acc = { created: acc.created + r.created, skipped: acc.skipped + r.skipped, failed: acc.failed + r.failed, updated: (acc.updated ?? 0) + (r.updated ?? 0) };
+        acc = { created: acc.created + r.created, skipped: acc.skipped + r.skipped, failed: acc.failed + r.failed, updated: (acc.updated ?? 0) + (r.updated ?? 0), stale: (acc.stale ?? 0) + (r.stale ?? 0) };
       }
       cursor = to;
     }
@@ -331,7 +333,7 @@ export async function importTabular(
       ...base,
       ...acc,
       remaining: total - cursor,
-      notes: describeLeft(leftAll),
+      notes: [describeLeft(leftAll), acc.stale ? `${acc.stale} auction(s) ended more than 14 days ago (not added as new)` : ""].filter(Boolean).join(", "),
       state: { hash: complete ? hash : undefined, mapKey: "layout", done: cursor, ver: IMPORT_VERSION },
     };
   }

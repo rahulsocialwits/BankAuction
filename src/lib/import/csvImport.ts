@@ -21,6 +21,7 @@ export interface ImportResult {
   skipped: number; // already on the site (duplicates)
   failed: number;
   updated?: number; // of those, listings whose missing details were filled in or corrected
+  stale?: number; // auctions that ended long ago and are not on the site: not added (existing ones are still corrected)
   error?: "header";
 }
 
@@ -174,7 +175,7 @@ async function isThin(hit: Known): Promise<boolean> {
   return !done;
 }
 
-async function enrichExisting(hit: Known, rec: ListingRecord, statusSource: string): Promise<boolean> {
+async function enrichExisting(hit: Known, rec: ListingRecord, statusSource: string, strong: boolean): Promise<boolean> {
   const [a, p] = await Promise.all([
     prisma.auction.findUnique({ where: { id: hit.auctionId } }),
     prisma.property.findUnique({ where: { id: hit.propertyId }, select: { addressText: true, latitude: true, longitude: true, description: true, attributes: { select: { key: true } } } }),
@@ -182,10 +183,23 @@ async function enrichExisting(hit: Known, rec: ListingRecord, statusSource: stri
   if (!a || !p) return false;
   // A different listing id is a different auction round of a similar-looking property: never mix its details in.
   if (rec.external_id && a.externalAuctionId && rec.external_id !== a.externalAuctionId) return false;
+  if (!strong) {
+    // Matched only by a similar title (two flats of one building read alike): the price or the auction time must back it up.
+    const r = money(rec.reserve_price);
+    const start = parseListingDate(rec.auction_start);
+    const sameReserve = !!r && !!a.reservePrice && Number(a.reservePrice) === r;
+    const contradicts = !!r && !!a.reservePrice && Number(a.reservePrice) >= 1000 && Number(a.reservePrice) !== r;
+    const nearStart = !!start && !!a.auctionStart && Math.abs(start.getTime() - a.auctionStart.getTime()) < 36 * 3600_000;
+    if (contradicts || (!sameReserve && !nearStart)) return false;
+  }
   let changed = false;
   const mine = a.statusSource === statusSource;
   const x = auctionExtras(rec);
   const data: Record<string, unknown> = {};
+  if (rec.branch && !a.branchId && a.bankId) {
+    const branch = await prisma.bankBranch.upsert({ where: { bankId_name: { bankId: a.bankId, name: rec.branch } }, update: {}, create: { bankId: a.bankId, name: rec.branch } });
+    data.branchId = branch.id;
+  }
   const fill = (key: keyof typeof x, cur: unknown) => {
     const v = x[key];
     if (v !== null && v !== undefined && v !== "" && (cur === null || cur === undefined || cur === "")) data[key] = v;
@@ -282,6 +296,7 @@ export async function importRecords(
   let skipped = 0;
   let failed = 0;
   let updated = 0;
+  let stale = 0;
   // Existing listings per bank (loaded once per run), extended as new ones are created,
   // so duplicates inside the same batch and across sources are both caught.
   const knownByBank = new Map<string, Known[]>();
@@ -343,7 +358,7 @@ export async function importRecords(
             (reservePrice > 0 && k.reserve === reservePrice && overlap(titleTokens, k.tokens) >= 0.4),
         );
       if (hit) {
-        if (opts.enrich && (await enrichExisting(hit, rec, statusSource))) updated++;
+        if (opts.enrich && (await enrichExisting(hit, rec, statusSource, hit === sameId))) updated++;
         else if (opts.deepen && col("deep_done") !== "1" && (await isThin(hit))) {
           // Already on the site but still without EMD / end date: read its own page once and fill the gaps.
           const out = await opts.deepen(rec, "backfill");
@@ -356,13 +371,16 @@ export async function importRecords(
               skipped++;
               continue;
             }
-            if (out.records[0] && (await enrichExisting(hit, out.records[0], statusSource))) updated++;
+            if (out.records[0] && (await enrichExisting(hit, out.records[0], statusSource, false))) updated++;
             await prisma.propertyAttribute.create({ data: { propertyId: hit.propertyId, key: "deep_scanned", value: new Date().toISOString() } }).catch(() => undefined);
           }
         }
         skipped++;
         continue;
       }
+
+      // An auction that ended long ago is not added as a new listing (an existing one was corrected above).
+      if (col("ended_long_ago") === "1") { stale++; continue; }
 
       // New listing: read its own page and notices first. The result (one or several listings) goes through the same checks again.
       if (opts.deepen && col("deep_done") !== "1") {
@@ -428,5 +446,5 @@ export async function importRecords(
       failed++;
     }
   }
-  return { created, skipped, failed, updated };
+  return { created, skipped, failed, updated, stale };
 }

@@ -7,7 +7,13 @@ import { importTabular, type TabState } from "@/lib/import/tabular";
 import { fetchTabCsv, listSheetTabs, sheetIdFromUrl } from "./sheets";
 import { acquireAiLock, aiWindow, releaseAiLock } from "@/lib/pipeline/aiSchedule";
 import { isBlockedHost } from "./blockedHosts";
-import { makeDeepener } from "./deepScan";
+import { DEEP_MAX_LISTINGS, makeDeepener } from "./deepScan";
+import { scanSiteForNew, webStateOf, withWebState } from "./siteScan";
+
+/** Saved in a feed's last message while its first import is not finished; the scheduler keeps it going on every tick. */
+export const MORE_PENDING = "Continues automatically.";
+const CATCH_UP_WINDOW_MS = 24 * 3_600_000; // a new AI source gets full attention for its first day, then follows the AI schedule
+const CATCH_UP_GAP_MS = 20 * 60_000;
 
 // Sites whose terms or robots.txt disallow copying; never accept these as links.
 // eauctionsindia.com is NOT here: its robots.txt allows crawling. If its Cloudflare returns 403 to our server, the
@@ -98,7 +104,7 @@ async function runSheet(sheetState: string | null, feedName: string, url: string
   const unchanged = changedTabs === 0 && errors === 0;
   const message = unchanged
     ? `No changes in any of the ${tabs.length} tab(s) (checked automatically).`
-    : `${tabs.length} tab(s) read — ${describe(total)}. ${lines.join(" | ")}${emptyTabs + notProperty.length ? ` | ${emptyTabs + notProperty.length} other tab(s) left alone (${emptyTabs} empty, ${notProperty.length} not property lists)` : ""}${tokens ? ` (${tokens} AI tokens)` : " (no AI tokens)"}`;
+    : `${tabs.length} tab(s) read — ${describe(total)}. ${lines.join(" | ")}${lines.some((l) => /continue on the next run/.test(l)) ? ` ${MORE_PENDING}` : ""}${emptyTabs + notProperty.length ? ` | ${emptyTabs + notProperty.length} other tab(s) left alone (${emptyTabs} empty, ${notProperty.length} not property lists)` : ""}${tokens ? ` (${tokens} AI tokens)` : " (no AI tokens)"}`;
   return { stats: total, tokens, unchanged, message, stateJson: JSON.stringify({ tabs: state }) };
 }
 
@@ -146,7 +152,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
       }
       if (verdict === "unreachable") {
         // Not a refusal: the site simply did not answer properly. Stay Live and try again on the next run.
-        throw new Error("The site did not answer (timeout or server error) while checking its robots.txt. It will be tried again automatically.");
+        throw new Error(`${UNREACHABLE} its robots.txt gave no answer (timeout). Some bank sites silently ignore automated requests; that is their choice and we never work around it. It is retried twice a day. Meanwhile paste the bank's public notice in Bulk Import, or ask the bank for a data feed.`);
       }
     }
 
@@ -194,7 +200,8 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
           trigger === "schedule"
             ? (await prisma.feedSource.findMany({ where: { id: { not: feed.id }, contentHash: { not: null } }, select: { contentHash: true } })).map((o) => o.contentHash as string)
             : [];
-        scan = await scanWebPage(text, trigger === "schedule" ? [...(feed.contentHash ? [feed.contentHash] : []), ...others] : null);
+        const catchUp = !!feed.lastMessage?.includes(MORE_PENDING); // unfinished first import: the unchanged-page shortcut must not stop it
+        scan = await scanWebPage(text, trigger === "schedule" && !catchUp ? [...(feed.contentHash ? [feed.contentHash] : []), ...others] : null);
       } finally {
         await releaseAiLock(lock);
       }
@@ -211,7 +218,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
         tokens += deepener.stats.tokens;
         const d = deepener.stats;
         const deepNote = d.attempted ? ` Deep scan: ${d.attempted} listing(s) read in full, ${d.pdfs} notice PDF(s) read, ${d.tokens} tokens${d.notes.length ? ` (${[...new Set(d.notes)].join("; ")})` : ""}.` : "";
-        message = `Scanned page (${scan.model}, ${scan.tokens} tokens), found ${scan.records.length} listing(s): ${describe(out)}.${deepNote}`;
+        message = `Scanned page (${scan.model}, ${scan.tokens} tokens), found ${scan.records.length} listing(s): ${describe(out)}.${deepNote}${d.attempted >= DEEP_MAX_LISTINGS ? ` More listings are waiting for their full read. ${MORE_PENDING}` : ""}`;
       }
     }
 
@@ -247,7 +254,62 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
 }
 
 /** Web pages are read by the AI. Google Sheets and CSV files are imported by code (the AI only maps unknown columns once). */
-const isAiFeed = (url: string) => !/^https:\/\/docs\.google\.com\/spreadsheets\//.test(url) && !/\.csv(\?|$)/i.test(url);
+export const isAiFeed = (url: string) => !/^https:\/\/docs\.google\.com\/spreadsheets\//.test(url) && !/\.csv(\?|$)/i.test(url);
+
+/** A site whose robots.txt never answers our crawler. It is not something we can fix from here, so it is retried only twice a day. */
+export const UNREACHABLE = "Site not responding to our crawler:";
+const UNREACHABLE_RETRY_MS = 12 * 3_600_000;
+
+const SITE_SCAN_GAP_MS = 50 * 60_000; // a web source is scanned for new listings about once an hour
+const SITE_SCAN_PENDING = "Site scan continues automatically.";
+
+/**
+ * Whole-site scan of a web source: look through its index pages, find every listing page, and read the NEW ones in full
+ * (page + notice PDFs + one AI call each). Finding the pages costs no AI; an hour with nothing new costs no tokens.
+ * Scheduled scans read at most 10 new listings; "Run" / a freshly added source reads up to 25.
+ */
+export async function runWebDiscovery(feedId: string, trigger: "schedule" | "manual", opts: { budgetMs?: number; all?: boolean } = {}): Promise<string | null> {
+  const feed = await prisma.feedSource.findUnique({ where: { id: feedId } });
+  if (!feed || !isAiFeed(feed.url)) return null;
+  const check = validateFeedUrl(feed.url);
+  if (!check.ok) return null;
+  const state = webStateOf(feed.sheetState);
+  const all = !!opts.all || !!state.importAll; // "Import all now": big batches, side by side, on every tick until nothing is left
+  const pending = !!feed.lastMessage?.includes(SITE_SCAN_PENDING);
+  const gap = pending ? CATCH_UP_GAP_MS : SITE_SCAN_GAP_MS;
+  if (trigger === "schedule" && !all && state.lastAt && Date.now() - Date.parse(state.lastAt) < gap) return null;
+  if (feed.lastMessage?.startsWith(UNREACHABLE) && feed.lastRunAt && Date.now() - feed.lastRunAt.getTime() < UNREACHABLE_RETRY_MS && trigger === "schedule") return null;
+  const lock = await acquireAiLock(feed.name);
+  if (!lock) return null;
+  const startedAt = new Date();
+  const budgetMs = opts.budgetMs ?? (all ? 270_000 : trigger === "manual" ? 200_000 : 70_000);
+  try {
+    const res = await scanSiteForNew({ startUrl: check.url, feedName: feed.name, seen: state.seen, maxNew: all ? 150 : trigger === "manual" ? 25 : 10, concurrency: all ? 6 : trigger === "manual" ? 4 : 3, deadline: Date.now() + budgetMs });
+    const note = `Site scan: ${res.discovered} listing page(s) found, ${res.unseen} new, ${res.read} read in full (${res.import.created} new, ${res.import.skipped} already on the site, ${res.import.failed} rejected, ${res.tokens} tokens${res.pdfs ? `, ${res.pdfs} notice PDF(s)` : ""}).${res.pending ? ` ${SITE_SCAN_PENDING}` : ""}${res.notes.length ? ` Note: ${[...new Set(res.notes)].join("; ")}.` : ""}`;
+    const fresh = await prisma.feedSource.findUnique({ where: { id: feedId }, select: { sheetState: true, lastMessage: true } });
+    const keep = (fresh?.lastMessage ?? "").split(" | Site scan:")[0].replace(SITE_SCAN_PENDING, "").trim();
+    await prisma.feedSource.update({
+      where: { id: feedId },
+      data: { sheetState: withWebState(fresh?.sheetState, { seen: res.seen, lastAt: new Date().toISOString(), importAll: all ? res.pending : false }), lastMessage: `${keep} | ${note}`.slice(0, 1800) },
+    });
+    // An hour in which nothing new appeared is not worth a history row.
+    if (res.read > 0 || res.import.created > 0 || res.discovered === 0) await logRun({ source: feed.name, kind: "feed", trigger, status: "ok", created: res.import.created, duplicates: res.import.skipped, rejected: res.import.failed, aiTokens: res.tokens, message: note, startedAt });
+    if (res.import.created > 0 && (trigger === "manual" || aiWindow().open)) await enrichLocations(30).catch(() => null);
+    return note;
+  } catch (e) {
+    await logRun({ source: feed.name, kind: "feed", trigger, status: "error", message: `Site scan failed: ${e instanceof Error ? e.message : String(e)}`, startedAt });
+    return null;
+  } finally {
+    await releaseAiLock(lock);
+  }
+}
+
+/** What "Add", "Run" and "Pause → Run" start: the normal import of the source, then (for a website) the whole-site scan. */
+export async function runFeedFull(id: string) {
+  const result = await runFeedSource(id, "manual");
+  await runWebDiscovery(id, "manual").catch(() => null);
+  return result;
+}
 
 /**
  * Scheduled run.
@@ -256,10 +318,33 @@ const isAiFeed = (url: string) => !/^https:\/\/docs\.google\.com\/spreadsheets\/
  * `deferred` counts AI sources that are waiting for the next AI slot.
  */
 export async function runAllFeeds(opts: { aiSlotStart?: Date | null } = {}) {
-  const feeds = await prisma.feedSource.findMany({ where: { active: true }, select: { id: true, url: true, lastRunAt: true } });
+  const feeds = await prisma.feedSource.findMany({ where: { active: true }, select: { id: true, url: true, lastRunAt: true, lastMessage: true, lastStatus: true, createdAt: true } });
   const results = [];
   let deferred = 0;
+
+  // Whole-site scan of every website source (about once an hour each; the one waiting longest goes first). It is capped
+  // per tick so the scheduler never overruns its time; a source skipped now simply goes first next tick.
+  const scanBudgetEnd = Date.now() + 130_000;
+  const web = feeds.filter((f) => isAiFeed(f.url));
+  const order = await prisma.feedSource.findMany({ where: { id: { in: web.map((w) => w.id) } }, select: { id: true, sheetState: true } });
+  const lastScan = new Map(order.map((o) => [o.id, webStateOf(o.sheetState).lastAt ? Date.parse(webStateOf(o.sheetState).lastAt as string) : 0]));
+  for (const f of [...web].sort((a, b) => (lastScan.get(a.id) ?? 0) - (lastScan.get(b.id) ?? 0))) {
+    const left = scanBudgetEnd - Date.now();
+    if (left < 25_000) break;
+    const importing = webStateOf(order.find((o) => o.id === f.id)?.sheetState).importAll; // "Import all now" feeds get a long turn
+    await runWebDiscovery(f.id, "schedule", { budgetMs: Math.min(left, importing ? 200_000 : 60_000) }).catch(() => null);
+  }
+
   for (const f of feeds) {
+    // A site that never answered our crawler is retried twice a day, not on every tick.
+    if (f.lastMessage?.startsWith(UNREACHABLE) && f.lastRunAt && Date.now() - f.lastRunAt.getTime() < UNREACHABLE_RETRY_MS) continue;
+    // A source whose first import is not finished keeps going on every tick (AI sources only during their first day).
+    const unfinished = !!f.lastMessage?.includes(MORE_PENDING) && f.lastStatus === "ok" && (!f.lastRunAt || Date.now() - f.lastRunAt.getTime() >= CATCH_UP_GAP_MS);
+    const catchUp = unfinished && (!isAiFeed(f.url) || Date.now() - f.createdAt.getTime() < CATCH_UP_WINDOW_MS);
+    if (catchUp) {
+      results.push(await runFeedSource(f.id, "schedule"));
+      continue;
+    }
     if (isAiFeed(f.url)) {
       const slot = opts.aiSlotStart ?? null;
       if (!slot || (f.lastRunAt && f.lastRunAt >= slot)) {
