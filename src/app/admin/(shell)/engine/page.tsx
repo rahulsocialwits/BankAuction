@@ -25,7 +25,7 @@ function ago(d: Date | null | undefined) {
   return d.toLocaleDateString("en-IN");
 }
 
-// Web-page link sources (read by the AI) run only in the AI schedule; Sheet / CSV links keep their hourly throttle.
+// Web-page link sources run on every 15-minute scheduler slot; Sheet / CSV links keep their hourly throttle.
 function nextRun(last: Date | null | undefined, url: string, aiNext: Date) {
   const isAi = !/^https:\/\/docs\.google\.com\/spreadsheets\//.test(url) && !/\.csv(\?|$)/i.test(url);
   if (isAi) return istLabel(aiNext) + " (AI scan)";
