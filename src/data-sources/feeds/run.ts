@@ -303,13 +303,15 @@ export async function runWebDiscovery(feedId: string, trigger: "schedule" | "man
     };
     progress(`site scan started ${new Date().toISOString().slice(11, 16)} UTC …`);
     const isBaanknet = /baanknet\.com$/i.test(new URL(check.url).hostname.replace(/^www\./, ""));
-    const res = await scanSiteForNew({ startUrl: check.url, feedName: feed.name, seen: state.seen, maxNew: all ? (isBaanknet ? 500 : 150) : trigger === "manual" ? 25 : 10, maxIndexPages: all ? (isBaanknet ? 500 : 30) : 30, concurrency: all ? (isBaanknet ? 8 : 6) : trigger === "manual" ? 4 : 3, deadline: Date.now() + budgetMs, onProgress: progress, trustedShapes: state.verified });
+    const baanknetPage = isBaanknet && all ? (state.baanknetPage ?? 1) : undefined;
+    const res = await scanSiteForNew({ startUrl: check.url, feedName: feed.name, seen: state.seen, maxNew: all ? (isBaanknet ? 500 : 150) : trigger === "manual" ? 25 : 10, maxIndexPages: all ? (isBaanknet ? 1000 : 30) : 30, concurrency: all ? (isBaanknet ? 8 : 6) : trigger === "manual" ? 4 : 3, deadline: Date.now() + budgetMs, onProgress: progress, trustedShapes: state.verified, baanknetStartPage: baanknetPage });
     const note = `Site scan: ${res.discovered} listing page(s) found, ${res.unseen} new, ${res.read} read in full (${res.import.created} new, ${res.import.skipped} already on the site, ${res.import.failed} rejected${res.import.held ? `, ${res.import.held} held for borrower name` : ""}, ${res.tokens} tokens${res.pdfs ? `, ${res.pdfs} notice PDF(s)` : ""}${res.rendered ? `, ${res.rendered} page(s) rendered in a browser` : ""}).${rejectionNote(res.rejections)}${res.pending ? ` ${SITE_SCAN_PENDING}` : ""}${res.notes.length ? ` Note: ${[...new Set(res.notes)].join("; ")}.` : ""}`;
     const fresh = await prisma.feedSource.findUnique({ where: { id: feedId }, select: { sheetState: true, lastMessage: true } });
     const keep = (fresh?.lastMessage?.startsWith("Running:") ? "" : fresh?.lastMessage ?? "").split(" | Site scan:")[0].replace(SITE_SCAN_PENDING, "").replace("Importing all properties of this website…", "").replace(/^[\s|]+/, "").trim();
+    const nextBaanknetPage = isBaanknet && all ? res.baanknetNextPage : undefined;
     await prisma.feedSource.update({
       where: { id: feedId },
-      data: { sheetState: withWebState(fresh?.sheetState, { seen: res.seen, lastAt: new Date().toISOString(), importAll: all ? res.pending : false, verified: [...new Set([...(state.verified ?? []), ...res.verifiedShapes])] }), lastMessage: `${keep} | ${note}`.slice(0, 1800) },
+      data: { sheetState: withWebState(fresh?.sheetState, { seen: res.seen, lastAt: new Date().toISOString(), importAll: all ? res.pending : false, baanknetPage: nextBaanknetPage, baanknetTotalPages: res.baanknetTotalPages ?? state.baanknetTotalPages, verified: [...new Set([...(state.verified ?? []), ...res.verifiedShapes])] }), lastMessage: `${keep} | ${note}`.slice(0, 1800) },
     });
     // An hour in which nothing new appeared is not worth a history row.
     if (res.read > 0 || res.import.created > 0 || res.discovered === 0) await logRun({ source: feed.name, kind: "feed", trigger, status: "ok", created: res.import.created, duplicates: res.import.skipped, rejected: res.import.failed, aiTokens: res.tokens, message: note, startedAt });
