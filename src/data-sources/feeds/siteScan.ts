@@ -2,7 +2,7 @@ import * as cheerio from "cheerio";
 import { prisma } from "@/lib/db/prisma";
 import { importRecords, type ImportResult } from "@/lib/import/csvImport";
 import { htmlToText } from "./webScan";
-import { makeDeepener, realDeps, type DeepDeps } from "./deepScan";
+import { extractBaanknetEmbeddedAuctions, makeDeepener, realDeps, type DeepDeps } from "./deepScan";
 
 /*
  * Whole-website scan for listings (no AI for discovery, AI only to read each NEW listing page in full).
@@ -103,6 +103,7 @@ async function discoverCore(
   const visited = new Set<string>();
   const queued = new Set<string>([origin]);
   const perShape = new Map<string, number>();
+  const directDetails = new Set<string>();
   const byShape = new Map<string, Set<string>>();
   const via = new Map<string, string>(); // listing address -> the index page that links to it (a single-page app is opened from there)
   const notes: string[] = [];
@@ -124,6 +125,29 @@ async function discoverCore(
     pages++;
     const $ = cheerio.load(page.html);
     const here = shapeOf(url);
+
+    // BAANKNET publishes the real auction records (including image URLs) in the Next.js Flight payload.
+    // Follow its numbered listing pages directly instead of opening every React detail route.
+    if (siteOf(new URL(url).hostname) === "baanknet.com") {
+      for (const rec of extractBaanknetEmbeddedAuctions(page.html, url)) {
+        if (rec.source_url) {
+          directDetails.add(rec.source_url);
+          if (!via.has(rec.source_url)) via.set(rec.source_url, url);
+        }
+      }
+      const current = Number((page.html.match(/"currentPage"\s*:\s*(\d+)/) ?? [])[1] ?? "1");
+      const total = Number((page.html.match(/"totalPages"\s*:\s*(\d+)/) ?? [])[1] ?? "1");
+      if (current >= 1 && total > current) {
+        const next = current + 1;
+        const nu = new URL(url);
+        nu.searchParams.set("page", String(next));
+        const nextUrl = normalizeUrl(nu.toString(), url);
+        if (nextUrl && !visited.has(nextUrl) && !queued.has(nextUrl) && pages < maxPages) {
+          queued.add(nextUrl);
+          queue.unshift(nextUrl);
+        }
+      }
+    }
     $("a[href]").each((_, a) => {
       const href = normalizeUrl($(a).attr("href") ?? "", url);
       if (!href || FILE.test(href) || !sameSite(href, origin)) return;
@@ -175,7 +199,8 @@ async function discoverCore(
     if (verified || assumed) details.push(...urls);
   }
   if (!details.length) notes.push("no group of addresses looked like property pages (the site may load its listings with JavaScript)");
-  const sorted = [...new Set(details)].sort((a, b) => idOf(b) - idOf(a)).slice(0, maxDetails);
+  const allDetails = [...new Set([...details, ...directDetails])];
+  const sorted = allDetails.sort((a, b) => idOf(b) - idOf(a)).slice(0, maxDetails);
   return { details: sorted, via: Object.fromEntries(sorted.map((u) => [u, via.get(u) ?? origin])), pagesRead: pages, shapes, notes };
 }
 
