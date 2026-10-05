@@ -22,7 +22,7 @@ export interface ImportResult {
   skipped: number; // already on the site (duplicates)
   failed: number;
   updated?: number; // of those, listings whose missing details were filled in or corrected
-  held?: number; // new listings stored hidden as DRAFT / needs_enrichment because the source states no borrower name
+  held?: number; // retained for reporting compatibility; listings are no longer held for missing borrower
   rejections?: { title: string; reasons: string[] }[]; // every rejected listing with its exact reason(s)
   reauctions?: number; // listings that were auctioned before: a NEW auction round was added to the existing property (no duplicate)
   stale?: number; // auctions that ended long ago and are not on the site: not added (existing ones are still corrected)
@@ -504,8 +504,8 @@ export async function importRecords(
       }
       // The site shows only listings that name their borrower. A new listing whose source does not state one is NOT thrown away:
       // it is stored as a hidden DRAFT marked "needs_enrichment" (borrower_status = not_available_from_source) and is published
-      // automatically if a later read finds the borrower. Nothing is invented. BORROWER_REQUIRED_FOR_PUBLISH=0 switches this off.
-      const holdForBorrower = !col("borrower") && process.env.BORROWER_REQUIRED_FOR_PUBLISH !== "0";
+      // Missing borrower never blocks publication. Keep the source facts as-is; do not invent a borrower.
+      const holdForBorrower = false;
 
       // Last look straight at the database (another source or a parallel run may have just added this property, under any
       // bank spelling): the same reserve price AND a matching title (or the same auction day) is the same property.
@@ -542,7 +542,7 @@ export async function importRecords(
           addressText: col("location") || null,
           latitude: col("latitude") ? Number(col("latitude")) : undefined,
           longitude: col("longitude") ? Number(col("longitude")) : undefined,
-          status: holdForBorrower ? "DRAFT" : propertyStatus,
+          status: "PUBLISHED",
         },
       });
       orphan = property.id;
@@ -575,8 +575,7 @@ export async function importRecords(
       }
       orphan = null;
       list.push({ tokens: titleTokens, reserve: reservePrice > 0 ? reservePrice : null, start: validStart, auctionId: auction.id, propertyId: property.id, ext: col("external_id") || null });
-      if (holdForBorrower) held++;
-      else created++;
+      created++;
     } catch (e) {
       reject(String(rec.title ?? ""), `import_error: ${e instanceof Error ? e.message.split("\n")[0].slice(0, 120) : "unknown"}`);
       if (orphan) {
