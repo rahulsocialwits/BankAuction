@@ -5,7 +5,6 @@ import SubmitButton from "@/components/admin/SubmitButton";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import { approveProperty, bulkRemoveProperties, removeProperty, restoreProperty } from "./actions";
 import { fixThinNow } from "../engine/actions";
-import { hideNoBorrower } from "./actions";
 import { countThin } from "@/lib/pipeline/thinFix";
 import { ISSUES, NO_BORROWER_WHERE, propertyWhere } from "@/lib/admin/propertyFilter";
 import { isMasterAdmin } from "@/lib/auth/adminAuth";
@@ -51,7 +50,6 @@ export default async function AdminPropertiesPage({ searchParams }: { searchPara
       ])
     : [[], []];
   const thin = master ? await countThin() : 0;
-  const noBorrower = master ? await prisma.property.count({ where: NO_BORROWER_WHERE }) : 0;
   const narrowed = !!(q || srcF || bankF || issue);
 
   const [properties, total] = await Promise.all([
