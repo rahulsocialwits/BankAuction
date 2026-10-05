@@ -20,5 +20,6 @@ export function auctionToCardData(a: Awaited<ReturnType<typeof listAuctionsBySta
     reservePrice: a.reservePrice,
     auctionStart: a.auctionStart,
     status: a.status,
+    imageUrl: null,
   };
 }
