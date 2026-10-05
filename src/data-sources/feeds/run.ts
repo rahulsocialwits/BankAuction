@@ -5,11 +5,13 @@ import { logRun } from "@/lib/pipeline/runLog";
 import { enrichLocations } from "@/lib/pipeline/geo";
 import { importTabular, type TabState } from "@/lib/import/tabular";
 import { fetchTabCsv, listSheetTabs, sheetIdFromUrl } from "./sheets";
+import { acquireAiLock, aiWindow, releaseAiLock } from "@/lib/pipeline/aiSchedule";
+import { isBlockedHost } from "./blockedHosts";
 
 // Sites whose terms or robots.txt disallow copying; never accept these as links.
 // eauctionsindia.com is NOT here: its robots.txt allows crawling. If its Cloudflare returns 403 to our server, the
 // run reports a technical "Blocked" for that reason alone (see BlockedError below).
-const BLOCKED_HOSTS = ["baanknet.com", "auctionbazaar.com", "bankauction.co"];
+// (the list lives in blockedHosts.ts so the sheet importer can apply the same rule to rows)
 
 const BLOCKED_REASON = "This website refuses automated access (its terms or anti-bot protection)";
 
@@ -21,7 +23,7 @@ export function validateFeedUrl(raw: string): { ok: true; url: string } | { ok: 
   let u: URL;
   try { u = new URL(raw.trim()); } catch { return { ok: false, reason: "Invalid URL" }; }
   if (u.protocol !== "https:") return { ok: false, reason: "Only https links are allowed" };
-  if (BLOCKED_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith("." + h))) {
+  if (isBlockedHost(u.hostname)) {
     return { ok: false, reason: BLOCKED_REASON };
   }
   return { ok: true, url: u.toString() };
@@ -52,25 +54,34 @@ async function runSheet(sheetState: string | null, feedName: string, url: string
   const id = sheetIdFromUrl(url)!;
   const gid = url.match(/[#&?]gid=(\d+)/)?.[1] ?? null;
   const state = (safeJson(sheetState)?.tabs ?? {}) as Record<string, TabState>;
-  const tabs = await listSheetTabs(id, gid);
+  // A tab called "Properties" goes first (clean data); the Auctions tab, if any, supplies each property's auction details.
+  const tabs = (await listSheetTabs(id, gid)).sort((a, b) => Number(/^properties$/i.test(b.name)) - Number(/^properties$/i.test(a.name)));
+  const auctionsTab = tabs.find((t) => /^auctions?$/i.test(t.name));
+  const auctionsCsv = auctionsTab && tabs.length > 1 ? await fetchTabCsv(id, auctionsTab.gid).catch(() => undefined) : undefined;
+  // One run never exceeds its time budget; a big tab continues from its saved cursor on the next run.
+  const deadline = Date.now() + (trigger === "manual" ? 240_000 : 100_000);
 
   const total = { created: 0, skipped: 0, failed: 0 };
   const lines: string[] = [];
+  const notProperty: string[] = [];
   let tokens = 0;
   let changedTabs = 0;
   let errors = 0;
   for (const tab of tabs) {
     try {
       const csv = await fetchTabCsv(id, tab.gid);
-      const r = await importTabular(csv, `feed:${feedName}`, { sourceUrl: url, state: state[tab.gid], force: trigger === "manual" });
+      const r = await importTabular(csv, `feed:${feedName}`, { sourceUrl: url, state: state[tab.gid], force: trigger === "manual", budgetMs: Math.max(0, deadline - Date.now()), auctionsCsv });
       state[tab.gid] = r.state;
       tokens += r.tokens;
       if (r.unchanged) continue;
+      if (r.skippedReason && /not a property list/i.test(r.skippedReason)) { notProperty.push(tab.name); continue; }
       changedTabs++;
       total.created += r.created;
       total.skipped += r.skipped;
       total.failed += r.failed;
-      lines.push(`${tab.name}: ${r.skippedReason ? `skipped (${r.skippedReason})` : describe(r)}`);
+      const more = r.remaining ? `; ${r.remaining.toLocaleString("en-IN")} row(s) continue on the next run` : "";
+      const left = r.notes ? `; left out: ${r.notes}` : "";
+      lines.push(`${tab.name}: ${r.skippedReason ? `skipped (${r.skippedReason})` : describe(r)}${left}${more}`);
     } catch (e) {
       errors++;
       lines.push(`${tab.name}: ${e instanceof Error ? e.message : String(e)}`);
@@ -82,7 +93,7 @@ async function runSheet(sheetState: string | null, feedName: string, url: string
   const unchanged = changedTabs === 0 && errors === 0;
   const message = unchanged
     ? `No changes in any of the ${tabs.length} tab(s) (checked automatically).`
-    : `${tabs.length} tab(s) read — ${describe(total)}. ${lines.join(" | ")}${tokens ? ` (${tokens} AI tokens)` : ""}`;
+    : `${tabs.length} tab(s) read — ${describe(total)}. ${lines.join(" | ")}${notProperty.length ? ` | ${notProperty.length} other tab(s) are not property lists and were left alone` : ""}${tokens ? ` (${tokens} AI tokens)` : " (no AI tokens)"}`;
   return { stats: total, tokens, unchanged, message, stateJson: JSON.stringify({ tabs: state }) };
 }
 
@@ -93,6 +104,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
   let stats: Pick<ImportResult, "created" | "skipped" | "failed"> = { created: 0, skipped: 0, failed: 0 };
   let tokens = 0;
   let unchanged = false;
+  let aiFeed = false; // a web page read through the AI (these are logged even when nothing changed: at most 4 a day)
   let newHash: string | undefined;
   let sheetStateOut: string | undefined;
   try {
@@ -112,7 +124,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
         where: { id },
         data: { lastRunAt: new Date(), lastStatus: "ok", lastMessage: message, sheetState: sheet.stateJson },
       });
-      if (stats.created > 0) {
+      if (stats.created > 0 && (trigger === "manual" || aiWindow().open)) {
         const geo = await enrichLocations(60).catch(() => null);
         tokens += geo?.tokens ?? 0;
       }
@@ -162,13 +174,30 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
       }
       sheetStateOut = JSON.stringify({ tabs: { csv: out.state } });
     } else {
-      // Scheduled runs skip the AI when the page text is identical to last time; "Run now" always re-reads.
-      const scan = await scanWebPage(text, trigger === "schedule" ? feed.contentHash : null);
+      // Scheduled runs skip the AI when the page text is identical to last time, or identical to a page another source
+      // already processed; "Run now" always re-reads. Only one AI scan of a source runs at a time.
+      aiFeed = true;
+      const lock = await acquireAiLock(feed.name);
+      if (!lock) {
+        const skipped = "Skipped: previous AI run still active (AI not called).";
+        await logRun({ source: feed.name, kind: "feed", trigger, status: "skipped", message: `${skipped} · ai_called=false`, startedAt });
+        return { name: feed.name, message: skipped };
+      }
+      let scan: Awaited<ReturnType<typeof scanWebPage>>;
+      try {
+        const others =
+          trigger === "schedule"
+            ? (await prisma.feedSource.findMany({ where: { id: { not: feed.id }, contentHash: { not: null } }, select: { contentHash: true } })).map((o) => o.contentHash as string)
+            : [];
+        scan = await scanWebPage(text, trigger === "schedule" ? [...(feed.contentHash ? [feed.contentHash] : []), ...others] : null);
+      } finally {
+        await releaseAiLock(lock);
+      }
       newHash = scan.hash;
       tokens = scan.tokens;
       if (scan.unchanged) {
         unchanged = true;
-        message = "No changes since the last check (checked automatically).";
+        message = feed.contentHash === scan.hash ? "Unchanged: AI skipped (content unchanged)." : "Duplicate: AI skipped (the same content was already processed by another source).";
       } else {
         const out = await importRecords(scan.records, `feed:${feed.name}`, "PUBLISHED", check.url);
         stats = out;
@@ -180,12 +209,14 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
       where: { id },
       data: { lastRunAt: new Date(), lastStatus: "ok", lastMessage: message, ...(newHash && { contentHash: newHash }), ...(sheetStateOut && { sheetState: sheetStateOut }) },
     });
-    if (stats.created > 0) {
+    if (stats.created > 0 && (trigger === "manual" || aiWindow().open)) {
       const geo = await enrichLocations(30).catch(() => null);
       tokens += geo?.tokens ?? 0;
     }
-    // Hourly "nothing changed" checks are not worth a history row each; they would bury the real runs.
+    // Hourly "nothing changed" checks of CSV/Sheet links are not worth a history row each; they would bury the real runs.
+    // AI page scans run at most 4 times a day, so even an unchanged one is recorded (status skipped, AI not called).
     if (!unchanged) await logRun({ source: feed.name, kind: "feed", trigger, status: "ok", created: stats.created, duplicates: stats.skipped, rejected: stats.failed, aiTokens: tokens, message, startedAt });
+    else if (aiFeed) await logRun({ source: feed.name, kind: "feed", trigger, status: "skipped", aiTokens: 0, message: `${message} · ai_called=false`, startedAt });
     return { name: feed.name, message };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -205,13 +236,28 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
   }
 }
 
-/** Scheduled run: only feeds not run in the last ~hour. */
-export async function runAllFeeds() {
-  const feeds = await prisma.feedSource.findMany({ where: { active: true }, select: { id: true, lastRunAt: true } });
+/** Web pages are read by the AI. Google Sheets and CSV files are imported by code (the AI only maps unknown columns once). */
+const isAiFeed = (url: string) => !/^https:\/\/docs\.google\.com\/spreadsheets\//.test(url) && !/\.csv(\?|$)/i.test(url);
+
+/**
+ * Scheduled run.
+ *  - AI sources (web pages) run only inside the AI schedule (`aiSlotStart` set) and at most once per slot.
+ *  - Sheet / CSV sources keep their hourly throttle.
+ * `deferred` counts AI sources that are waiting for the next AI slot.
+ */
+export async function runAllFeeds(opts: { aiSlotStart?: Date | null } = {}) {
+  const feeds = await prisma.feedSource.findMany({ where: { active: true }, select: { id: true, url: true, lastRunAt: true } });
   const results = [];
+  let deferred = 0;
   for (const f of feeds) {
-    if (f.lastRunAt && Date.now() - f.lastRunAt.getTime() < MIN_INTERVAL_MS) continue;
+    if (isAiFeed(f.url)) {
+      const slot = opts.aiSlotStart ?? null;
+      if (!slot || (f.lastRunAt && f.lastRunAt >= slot)) {
+        if (!slot) deferred++;
+        continue;
+      }
+    } else if (f.lastRunAt && Date.now() - f.lastRunAt.getTime() < MIN_INTERVAL_MS) continue;
     results.push(await runFeedSource(f.id, "schedule"));
   }
-  return results;
+  return Object.assign(results, { deferred });
 }

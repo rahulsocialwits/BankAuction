@@ -6,21 +6,35 @@ import { logRun } from "./runLog";
 import { enrichLocations } from "./geo";
 import { autoReviewPending } from "./review";
 import { revalidateTag } from "next/cache";
+import { aiWindow, claimAiSlotWork, istLabel, nextSlotStart } from "./aiSchedule";
 
 export type TickTrigger = "cron" | "visitor";
 
-/** One scheduler tick: every live source runs (link sources are throttled to once an hour each). */
+/**
+ * One scheduler tick. Plain work (BankAuctions.in crawler, exact-duplicate cleanup, rule-based review) runs on every
+ * tick. AI work (link-source page scans, location checks, AI review) runs only inside the AI schedule: the first
+ * ~50 minutes after 00:00 / 06:00 / 12:00 / 18:00 IST (see aiSchedule.ts).
+ */
 export async function runTick(opts: { limit?: number; trigger?: TickTrigger; via?: string } = {}) {
   const startedAt = new Date();
   const trigger = opts.trigger ?? "cron";
   try {
+    const window = aiWindow(startedAt);
+    // Location checks and AI review are slot-wide jobs: exactly one tick per slot claims them.
+    const slotWork = window.open ? await claimAiSlotWork(window.slotStart) : false;
+
     const summary = await runBankAuctionsIngestion({ limit: opts.limit ?? 100, triggeredBy: "http-cron" });
-    const feeds = await runAllFeeds();
+    const feeds = await runAllFeeds({ aiSlotStart: window.open ? window.slotStart : null });
     const hidden = await autoCleanExactDuplicates();
-    const geo = await enrichLocations(48).catch(() => ({ processed: 0, tokens: 0, failed: true }));
+    const geo = slotWork ? await enrichLocations(96).catch(() => ({ processed: 0, tokens: 0, failed: true })) : { processed: 0, tokens: 0, failed: false };
     const places = geo.processed;
-    // Listings the importer was unsure about are reviewed automatically (rules first, AI only when needed).
-    const review = await autoReviewPending(60).catch(() => ({ published: 0, removed: 0, stillPending: 0, tokens: 0 }));
+    // Listings the importer was unsure about are reviewed automatically (rules every tick, AI only in the AI slot).
+    const review = await autoReviewPending(slotWork ? 100 : 60, { useAi: slotWork }).catch(() => ({ published: 0, removed: 0, stillPending: 0, tokens: 0 }));
+    const aiNote = slotWork
+      ? `AI slot ${istLabel(window.slotStart)}: ran`
+      : window.open
+        ? `AI slot ${istLabel(window.slotStart)}: already ran`
+        : `AI skipped (next AI scan ${istLabel(nextSlotStart(startedAt))})`;
     if (places > 0) {
       try {
         revalidateTag("localities", "max");
@@ -33,7 +47,7 @@ export async function runTick(opts: { limit?: number; trigger?: TickTrigger; via
       kind: "cron",
       trigger: trigger === "visitor" ? "schedule" : "cron",
       status: "ok",
-      message: `via ${opts.via ?? "HTTP"}; built-in: ${summary.skipped ? "paused" : `${summary.newProperties} new`}; feeds run: ${feeds.length}; exact duplicates hidden: ${hidden}; locations checked by AI: ${places}; auto-review: ${review.published} published, ${review.removed} removed, ${review.stillPending} left`,
+      message: `via ${opts.via ?? "HTTP"}; built-in: ${summary.skipped ? "paused" : `${summary.newProperties} new`}; feeds run: ${feeds.length}${feeds.deferred ? ` (${feeds.deferred} AI source(s) wait for the AI slot)` : ""}; ${aiNote}; exact duplicates hidden: ${hidden}; locations checked by AI: ${places}; auto-review: ${review.published} published, ${review.removed} removed, ${review.stillPending} left`,
       aiTokens: geo.tokens + review.tokens,
       startedAt,
     });

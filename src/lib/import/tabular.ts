@@ -1,13 +1,18 @@
 import { createHash } from "node:crypto";
 import { chatJSONDetailed } from "@/lib/ai/relayModelsClient";
 import { getAiConfig } from "@/lib/ai/aiConfig";
+import { isBlockedUrl } from "@/data-sources/feeds/blockedHosts";
 import { importCsvText, importRecords, parseCsv, MAX_ROWS, type ImportResult, type ListingRecord } from "./csvImport";
 
 /**
  * Imports any spreadsheet-like text (a Google Sheet tab, a CSV from a bank, an upload) whatever its column names.
- * If it already uses our template (a "title" column) it goes straight in. Otherwise the Relay AI looks at the
- * header and a few rows ONCE, says which column is which, and the code applies that mapping to every row —
- * so a sheet with 5,000 rows costs one small AI call, not 5,000. The mapping is remembered while the header is unchanged.
+ *  1. Our own template (a "title" column): straight in.
+ *  2. Clear column names (title / bank / reserve price / auction date …, including the "Phase 0" workbook's
+ *     Raw Source Records and Properties tabs): mapped by code, no AI at all.
+ *  3. Anything else: the Relay AI looks at the header and a few rows ONCE and says which column is which; the code
+ *     applies that mapping to every row. A sheet with 5,000 rows costs one small AI call, not 5,000. The mapping (and a
+ *     "not a property list" verdict) is remembered while the header is unchanged.
+ * Big tabs are imported in batches with a saved cursor, so a run never exceeds its time budget.
  */
 
 export interface TabMapping {
@@ -18,6 +23,8 @@ export interface TabState {
   hash?: string; // whole-tab content hash: unchanged => nothing to do
   mapKey?: string; // hash of the header + sample rows the mapping was made for
   mapping?: TabMapping;
+  skipKey?: string; // header the AI already judged "not a property list": not asked again
+  done?: number; // data rows already processed (cursor for big tabs)
 }
 
 const FIELDS = ["title", "bank", "category", "location", "description", "borrower", "reserve_price", "emd", "auction_start", "auction_method", "possession_status", "source_url"] as const;
@@ -73,31 +80,41 @@ function categoryFrom(raw: string | undefined, title: string): string {
   return "";
 }
 
+const cellOf = (r: string[], idx: number | undefined) => (idx === undefined ? "" : String(r[idx] ?? "").replace(/\s+/g, " ").trim());
+
+/** One row -> one listing (null when the row has no title). `auction_start` may be [date column, time column]. */
+function rowToRecord(r: string[], map: TabMapping): ListingRecord | null {
+  const t = map.columns.title;
+  const title = (Array.isArray(t) ? t.map((i) => cellOf(r, i)).filter(Boolean).join(" - ") : cellOf(r, t)).trim();
+  if (!title) return null;
+  const one = (f: string) => {
+    const v = map.columns[f];
+    return cellOf(r, Array.isArray(v) ? v[0] : v);
+  };
+  const start = map.columns.auction_start;
+  const startText = Array.isArray(start) ? start.map((i) => cellOf(r, i)).filter(Boolean).join(" ") : one("auction_start");
+  const possession = one("possession_status");
+  return {
+    title,
+    bank: one("bank"),
+    category: categoryFrom(one("category"), title),
+    location: one("location"),
+    description: one("description"),
+    borrower: one("borrower"),
+    reserve_price: cleanMoney(one("reserve_price")),
+    emd: cleanMoney(one("emd")),
+    auction_start: parseSheetDate(startText),
+    auction_method: one("auction_method"),
+    possession_status: /^[\\\-–—\s]*$/.test(possession) ? "" : possession,
+    source_url: /^https?:\/\//i.test(one("source_url")) ? one("source_url") : "",
+  };
+}
+
 function applyMapping(rows: string[][], map: TabMapping): ListingRecord[] {
-  const cell = (r: string[], idx: number | undefined) => (idx === undefined ? "" : String(r[idx] ?? "").replace(/\s+/g, " ").trim());
   const out: ListingRecord[] = [];
   for (const r of rows.slice(map.headerRow + 1)) {
-    const t = map.columns.title;
-    const title = (Array.isArray(t) ? t.map((i) => cell(r, i)).filter(Boolean).join(" - ") : cell(r, t)).trim();
-    if (!title) continue;
-    const one = (f: string) => {
-      const v = map.columns[f];
-      return cell(r, Array.isArray(v) ? v[0] : v);
-    };
-    out.push({
-      title,
-      bank: one("bank"),
-      category: categoryFrom(one("category"), title),
-      location: one("location"),
-      description: one("description"),
-      borrower: one("borrower"),
-      reserve_price: cleanMoney(one("reserve_price")),
-      emd: cleanMoney(one("emd")),
-      auction_start: parseSheetDate(one("auction_start")),
-      auction_method: one("auction_method"),
-      possession_status: one("possession_status"),
-      source_url: /^https?:\/\//i.test(one("source_url")) ? one("source_url") : "",
-    });
+    const rec = rowToRecord(r, map);
+    if (rec) out.push(rec);
   }
   return out;
 }
@@ -119,6 +136,79 @@ function validMapping(m: unknown, width: number): TabMapping | null {
   return { headerRow: Number.isInteger(header_row) && (header_row as number) >= 0 && (header_row as number) < 10 ? (header_row as number) : 0, columns: cols };
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Known layouts: clear column names are mapped by code (no AI, no tokens)
+// ---------------------------------------------------------------------------------------------------------------------
+
+const norm = (h: string) => h.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// Normalised header name -> field. The first synonym that exists in the header wins (order matters).
+const SYNONYMS: Record<string, string[]> = {
+  title: ["title", "propertytitle", "rawtitle", "propertyname", "listingtitle", "assettitle"],
+  bank: ["bank", "bankname", "rawbank", "institution", "lender"],
+  category: ["category", "propertytype", "rawpropertytype", "assettype"],
+  location: ["fulladdress", "rawlocation", "location", "city", "address"],
+  description: ["description", "propertydescription", "rawdescription"],
+  reserve_price: ["reserveprice", "rawreserveprice", "reserve", "baseprice"],
+  emd: ["emd", "emdamount", "rawemd", "earnestmoney"],
+  auction_start: ["auctiondate", "rawauctiondate", "auctionstart", "auctionstartdate", "dateofauction"],
+  auction_time: ["auctiontime", "rawauctiontime"],
+  possession_status: ["possessionstatus", "rawpossession"],
+  source_url: ["sourcelistingurl", "sourceurl", "listingurl", "officialnoticeurl", "saleurl"],
+};
+
+export interface KnownLayout {
+  kind: "raw_source" | "properties" | "generic";
+  mapping: TabMapping;
+  index: Record<string, number>; // normalised header -> column index
+  typeIndex?: number; // the column that says what kind of asset it is (to keep movables out)
+}
+
+/** Recognises a tab whose column names say what they are. Returns null when the AI has to look at it. */
+export function detectLayout(header: string[]): KnownLayout | null {
+  const index: Record<string, number> = {};
+  header.forEach((h, i) => { const k = norm(h); if (k && index[k] === undefined) index[k] = i; });
+  const columns: Record<string, number | number[]> = {};
+  for (const [field, names] of Object.entries(SYNONYMS)) {
+    const hit = names.find((n) => index[n] !== undefined);
+    if (hit) columns[field] = index[hit];
+  }
+  if (columns.title === undefined) return null;
+  // A property list also carries at least two of: bank, price, place, auction date.
+  const signals = ["bank", "reserve_price", "location", "auction_start"].filter((f) => columns[f] !== undefined).length;
+  if (signals < 2) return null;
+  if (columns.auction_start !== undefined && columns.auction_time !== undefined) columns.auction_start = [columns.auction_start as number, columns.auction_time as number];
+  delete columns.auction_time;
+  const kind = index.islatestsnapshot !== undefined ? "raw_source" : index.propertytitle !== undefined && index.propertyid !== undefined ? "properties" : "generic";
+  return { kind, mapping: { headerRow: 0, columns }, index };
+}
+
+/** Typical movable assets: never imported (this site lists real estate only). */
+const MOVABLE = /\b(machinery|machineries|gold|jewel+ery|ornaments?|bullion|silver|vehicles?|stock|inventory|shares?|securities|furniture|equipment|going concern|business)\b/i;
+
+export interface RowVerdict {
+  accept: boolean;
+  reason?: string;
+}
+
+/** Row-level rules of a known layout: older snapshots, failed fetches, movables and blocked sources never come in. */
+export function judgeRow(layout: KnownLayout, row: string[], rec: ListingRecord | null): RowVerdict {
+  const get = (k: string) => String(row[layout.index[k]] ?? "").trim();
+  if (!rec) return { accept: false, reason: "no title" };
+  if (layout.kind === "raw_source") {
+    if (get("islatestsnapshot").toUpperCase() !== "TRUE") return { accept: false, reason: "older snapshot" };
+    if (layout.index.fetchstatus !== undefined && get("fetchstatus").toLowerCase() !== "success") return { accept: false, reason: "fetch error" };
+    if (get("parsingstatus").toLowerCase() === "unparsed") return { accept: false, reason: "not parsed" };
+  }
+  if (layout.kind === "properties" && /(reject|duplicate|archiv|delet|inactive|removed)/i.test(get("recordstatus"))) return { accept: false, reason: "record not active" };
+  const typeCol = layout.typeIndex;
+  const type = typeCol === undefined ? "" : String(row[typeCol] ?? "");
+  if (MOVABLE.test(type) || /^\s*(gold|jewel|vehicle|car|truck|tractor|machinery|plant (and|&) machinery)\b/i.test(rec.title ?? "")) return { accept: false, reason: "movable asset (not real estate)" };
+  const urls = [rec.source_url, get("sourceurl"), get("sourcelistingurl")].filter(Boolean) as string[];
+  if (urls.some((u) => isBlockedUrl(u))) return { accept: false, reason: "source is on the do-not-fetch list" };
+  return { accept: true };
+}
+
 /** Dry run for tests and the admin: what the AI would map, and the first rows it would import. Writes nothing. */
 export async function previewTabular(csv: string, take = 3) {
   const rows = parseCsv(csv.replace(/^﻿/, ""));
@@ -134,14 +224,62 @@ export interface TabularResult extends ImportResult {
   usedAi: boolean;
   unchanged?: boolean;
   skippedReason?: string;
+  remaining?: number; // data rows still waiting for the next run
+  notes?: string; // e.g. "42 older snapshot, 100 movable asset"
   state: TabState;
 }
 
-export async function importTabular(csv: string, statusSource: string, opts: { sourceUrl?: string; state?: TabState; force?: boolean } = {}): Promise<TabularResult> {
+/**
+ * The Auctions tab of the workbook, keyed by property_id: date/time, EMD and platform of each property\u0027s latest
+ * (non-cancelled) auction. A re-auction replaces the earlier round; the property itself stays one record.
+ */
+export function auctionJoin(csv: string): Map<string, { start: string; emd: string; method: string }> {
+  const rows = parseCsv(csv.replace(/^\uFEFF/, ""));
+  const out = new Map<string, { start: string; emd: string; method: string }>();
+  if (rows.length < 2) return out;
+  const idx: Record<string, number> = {};
+  rows[0].forEach((h, i) => { const k = norm(h); if (idx[k] === undefined) idx[k] = i; });
+  if (idx.propertyid === undefined) return out;
+  for (const r of rows.slice(1)) {
+    const pid = String(r[idx.propertyid] ?? "").trim();
+    if (!pid || /cancel/i.test(String(r[idx.auctionstatus] ?? ""))) continue;
+    const start = parseSheetDate([r[idx.auctiondate], r[idx.auctiontime]].filter(Boolean).join(" "));
+    const had = out.get(pid);
+    if (!had || start > had.start) out.set(pid, { start, emd: cleanMoney(r[idx.emdamount]), method: String(r[idx.auctionplatform] ?? "").trim() });
+  }
+  return out;
+}
+
+/** Rows of a tab -> listings, with the reasons rows were left out. Pure: no database. */
+export function recordsFromRows(rows: string[][], layout: KnownLayout, from: number, to: number, join: Map<string, { start: string; emd: string; method: string }> | null = null) {
+  const records: ListingRecord[] = [];
+  const left: Record<string, number> = {};
+  const data = rows.slice(1);
+  for (let i = from; i < Math.min(to, data.length); i++) {
+    const rec = rowToRecord(data[i], layout.mapping);
+    const v = judgeRow(layout, data[i], rec);
+    if (v.accept && rec && join) {
+      const j = join.get(String(data[i][layout.index.propertyid] ?? "").trim());
+      if (j) { rec.auction_start ||= j.start; rec.emd ||= j.emd; rec.auction_method ||= j.method; }
+    }
+    if (v.accept && rec) records.push(rec);
+    else left[v.reason ?? "skipped"] = (left[v.reason ?? "skipped"] ?? 0) + 1;
+  }
+  return { records, left };
+}
+
+export const describeLeft = (left: Record<string, number>) => Object.entries(left).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`).join(", ");
+
+export async function importTabular(
+  csv: string,
+  statusSource: string,
+  opts: { sourceUrl?: string; state?: TabState; force?: boolean; budgetMs?: number; auctionsCsv?: string } = {},
+): Promise<TabularResult> {
   const text = csv.replace(/^﻿/, "");
   const hash = sha(text);
   const prev = opts.state ?? {};
   const base = { created: 0, skipped: 0, failed: 0, tokens: 0, usedAi: false };
+  const deadline = Date.now() + (opts.budgetMs ?? 90_000);
 
   if (!opts.force && prev.hash === hash) return { ...base, unchanged: true, state: prev };
 
@@ -154,10 +292,48 @@ export async function importTabular(csv: string, statusSource: string, opts: { s
     return { ...base, ...r, state: { ...prev, hash } };
   }
 
+  // Not a property list at all (a registry, a log, a lookup table): leave it alone without asking the AI.
+  const headerText = rows[0].map(norm).join(" ");
+  const layout = detectLayout(rows[0]);
+  if (!layout && !/(title|property|reserve|emd|auction|address|location|listing|asset)/.test(headerText)) {
+    return { ...base, skippedReason: "not a property list (no property columns)", state: { ...prev, hash } };
+  }
+
+  if (layout) {
+    // Clear column names: mapped by code. Big tabs continue from the saved cursor.
+    layout.typeIndex = layout.index.rawpropertytype ?? layout.index.propertytype ?? layout.index.assettype ?? layout.index.category;
+    const join = layout.kind === "properties" && opts.auctionsCsv ? auctionJoin(opts.auctionsCsv) : null;
+    const total = rows.length - 1;
+    let cursor = prev.mapKey === "layout" && typeof prev.done === "number" && prev.done <= total ? prev.done : 0;
+    const leftAll: Record<string, number> = {};
+    let acc: ImportResult = { created: 0, skipped: 0, failed: 0 };
+    const STEP = MAX_ROWS;
+    while (cursor < total && Date.now() < deadline) {
+      const to = Math.min(cursor + STEP, total);
+      const { records, left } = recordsFromRows(rows, layout, cursor, to, join);
+      for (const [k, n] of Object.entries(left)) leftAll[k] = (leftAll[k] ?? 0) + n;
+      if (records.length) {
+        const r = await importRecords(records, statusSource, "PUBLISHED", opts.sourceUrl);
+        acc = { created: acc.created + r.created, skipped: acc.skipped + r.skipped, failed: acc.failed + r.failed };
+      }
+      cursor = to;
+    }
+    const complete = cursor >= total;
+    return {
+      ...base,
+      ...acc,
+      remaining: total - cursor,
+      notes: describeLeft(leftAll),
+      state: { hash: complete ? hash : undefined, mapKey: "layout", done: cursor },
+    };
+  }
+
+  // Unknown layout: the AI maps it once (and remembers a "not a property list" verdict).
   const cfg = await getAiConfig();
   const width = Math.max(...rows.slice(0, 8).map((r) => r.length));
   const sample = rows.slice(0, 8).map((r) => r.slice(0, 24).map((c) => c.replace(/\s+/g, " ").trim().slice(0, 70)));
   const mapKey = sha(JSON.stringify(sample.slice(0, 3)));
+  if (prev.skipKey === mapKey) return { ...base, skippedReason: "not a property list (checked before)", state: { ...prev, hash } };
 
   let mapping: TabMapping | null = prev.mapKey === mapKey ? (prev.mapping ?? null) : null;
   let tokens = 0;
@@ -167,7 +343,7 @@ export async function importTabular(csv: string, statusSource: string, opts: { s
     const ai = await chatJSONDetailed<{ skip?: boolean; reason?: string; header_row?: number; columns?: Record<string, unknown> }>(SYSTEM, JSON.stringify(sample));
     tokens = ai.tokens;
     usedAi = true;
-    if (ai.data?.skip) return { ...base, tokens, usedAi, skippedReason: ai.data.reason ?? "not a property list", state: { ...prev, hash, mapKey, mapping: undefined } };
+    if (ai.data?.skip) return { ...base, tokens, usedAi, skippedReason: ai.data.reason ?? "not a property list", state: { ...prev, hash, skipKey: mapKey, mapKey: undefined, mapping: undefined } };
     mapping = validMapping(ai.data, width);
     if (!mapping) return { ...base, tokens, usedAi, skippedReason: "AI could not find a title column", state: { ...prev, hash } };
   }

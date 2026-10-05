@@ -4,6 +4,7 @@ import { getAiConfig } from "@/lib/ai/aiConfig";
 import SubmitButton from "@/components/admin/SubmitButton";
 import EngineTabs from "@/components/admin/EngineTabs";
 import { toggleBuiltIn, toggleFeedSource, deleteFeedSource } from "./actions";
+import { aiScheduleStatus, istLabel } from "@/lib/pipeline/aiSchedule";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -19,8 +20,10 @@ function ago(d: Date | null | undefined) {
   return d.toLocaleDateString("en-IN");
 }
 
-// Link sources auto-run about once an hour; the next scheduler tick after that picks them up.
-function nextRun(last: Date | null | undefined) {
+// Web-page link sources (read by the AI) run only in the AI schedule; Sheet / CSV links keep their hourly throttle.
+function nextRun(last: Date | null | undefined, url: string, aiNext: Date) {
+  const isAi = !/^https:\/\/docs\.google\.com\/spreadsheets\//.test(url) && !/\.csv(\?|$)/i.test(url);
+  if (isAi) return istLabel(aiNext) + " (AI scan)";
   if (!last) return "on the next tick";
   const mins = Math.round((last.getTime() + 55 * 60000 - Date.now()) / 60000);
   return mins <= 0 ? "on the next tick (within ~30 min)" : `in about ${mins} min`;
@@ -41,7 +44,7 @@ const btn = "text-xs border border-brand-border rounded-lg px-3 py-1.5 hover:bg-
 
 export default async function DataEnginePage() {
   const since24h = new Date(Date.now() - 864e5);
-  const [builtIn, lastJob, feeds, published, pending, lastTick, lastRuns, tokens24, ai] = await Promise.all([
+  const [builtIn, lastJob, feeds, published, pending, lastTick, lastRuns, tokens24, ai, aiSchedule] = await Promise.all([
     prisma.source.findUnique({ where: { name: BUILT_IN_NAME } }),
     prisma.sourceRunLog.findFirst({ where: { kind: "builtin" }, orderBy: { startedAt: "desc" } }),
     prisma.feedSource.findMany({ orderBy: { createdAt: "asc" } }),
@@ -51,6 +54,7 @@ export default async function DataEnginePage() {
     prisma.sourceRunLog.findMany({ where: { startedAt: { gte: since24h } }, orderBy: { startedAt: "desc" }, take: 200 }),
     prisma.sourceRunLog.aggregate({ where: { startedAt: { gte: since24h } }, _sum: { aiTokens: true, created: true } }),
     getAiConfig(),
+    aiScheduleStatus(),
   ]);
 
   const builtInPaused = builtIn?.status === "DISABLED";
@@ -118,6 +122,39 @@ export default async function DataEnginePage() {
             <div className="mt-1 text-brand-muted">{lastRuns.filter((r) => r.status === "error" || r.status === "blocked").length} failed runs</div>
           </div>
         </div>
+      </section>
+
+      <section className="bg-white border border-brand-border rounded-xl p-4 mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h2 className="font-semibold">AI Scan Schedule</h2>
+          <Badge tone={aiSchedule.windowOpen ? (aiSchedule.ranThisSlot ? "green" : "amber") : "gray"}>
+            {aiSchedule.windowOpen ? (aiSchedule.ranThisSlot ? "AI slot ran" : "AI slot open") : "Waiting for the next slot"}
+          </Badge>
+        </div>
+        <dl className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          <div className="rounded-lg border border-brand-border p-3">
+            <dt className="text-brand-muted mb-1">AI Scan Schedule</dt>
+            <dd className="font-medium">{aiSchedule.slots.join(" · ")}</dd>
+          </div>
+          <div className="rounded-lg border border-brand-border p-3">
+            <dt className="text-brand-muted mb-1">Next AI Scan</dt>
+            <dd className="font-medium">{istLabel(aiSchedule.nextAt)}</dd>
+          </div>
+          <div className="rounded-lg border border-brand-border p-3">
+            <dt className="text-brand-muted mb-1">Timezone · Frequency</dt>
+            <dd className="font-medium">{aiSchedule.timezone} · every 6 hours</dd>
+          </div>
+          <div className="rounded-lg border border-brand-border p-3">
+            <dt className="text-brand-muted mb-1">Last AI slot</dt>
+            <dd className="font-medium">{aiSchedule.lastRunAt ? istLabel(aiSchedule.lastRunAt) : "none yet"}</dd>
+          </div>
+        </dl>
+        <ul className="mt-3 space-y-0.5 text-xs text-brand-muted">
+          <li>• Content unchanged → AI skipped</li>
+          <li>• Duplicate (same content already processed) → AI skipped</li>
+          <li>• Run already active → AI skipped</li>
+          <li>• Outside the schedule, only code runs (BankAuctions.in crawler, duplicate cleanup, rule-based review); no AI tokens are used.</li>
+        </ul>
       </section>
 
       <h2 className="font-semibold mb-2">Needs attention {problems.length > 0 && <span className="text-red-600">({problems.length})</span>}</h2>
@@ -195,7 +232,7 @@ export default async function DataEnginePage() {
             </div>
             <div className="mt-3 text-xs text-brand-muted flex flex-wrap items-start gap-x-6 gap-y-1">
               <span>Last run: {ago(f.lastRunAt)}</span>
-              {f.active && <span className="text-green-700">Next auto-run: {nextRun(f.lastRunAt)}</span>}
+              {f.active && <span className="text-green-700">Next auto-run: {nextRun(f.lastRunAt, f.url, aiSchedule.nextAt)}</span>}
               {f.lastStatus && <Badge tone={f.lastStatus === "ok" ? "green" : "red"}>{f.lastStatus === "ok" ? "OK" : "Error"}</Badge>}
               {f.lastMessage && <span className="break-words">{f.lastMessage}</span>}
             </div>
@@ -214,7 +251,10 @@ export default async function DataEnginePage() {
           scheduler at it every 30 minutes (cron-job.org is the most dependable free option). GitHub Actions and the daily
           Vercel cron are backups. Every call shows up above as &quot;Last tick&quot;.
         </p>
-        <p>Link sources are throttled to one scan per hour each, and a page that has not changed costs no AI tokens.</p>
+        <p>
+          Web-page link sources are read by the AI only at 00:00, 06:00, 12:00 and 18:00 IST, and a page that has not changed (or that another source
+          already processed) costs no AI tokens. BankAuctions.in and Sheet/CSV links are not slowed down.
+        </p>
       </section>
     </div>
   );

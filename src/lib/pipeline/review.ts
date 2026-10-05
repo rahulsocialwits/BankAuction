@@ -37,7 +37,7 @@ export interface ReviewResult {
   tokens: number;
 }
 
-export async function autoReviewPending(limit = 60): Promise<ReviewResult> {
+export async function autoReviewPending(limit = 60, opts: { useAi?: boolean } = {}): Promise<ReviewResult> {
   const pending = await prisma.property.findMany({
     where: { status: "PENDING_REVIEW" },
     select: {
@@ -82,6 +82,11 @@ export async function autoReviewPending(limit = 60): Promise<ReviewResult> {
   }
 
   if (ambiguous.length === 0) return out;
+  // Outside the AI schedule only the code rules above run; the unsure ones wait for the next AI slot.
+  if (opts.useAi === false) {
+    out.stillPending = ambiguous.length;
+    return out;
+  }
   const cfg = await getAiConfig();
   if (!cfg.enabled || !cfg.keyValid) {
     out.stillPending = ambiguous.length;

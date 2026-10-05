@@ -26,18 +26,33 @@ export async function listSheetTabs(id: string, fallbackGid: string | null): Pro
   const res = await get(`https://docs.google.com/spreadsheets/d/${id}/htmlview`);
   const html = res.ok ? await res.text() : "";
   const tabs: SheetTab[] = [];
-  for (const m of html.matchAll(/id="sheet-button-(\d+)"[^>]*>\s*<a[^>]*>([^<]*)<\/a>/g)) {
-    tabs.push({ gid: m[1], name: decodeEntities(m[2]).trim() || `Tab ${m[1]}` });
-  }
+  const seen = new Set<string>();
+  const add = (gid: string, name: string) => {
+    if (seen.has(gid)) return;
+    seen.add(gid);
+    tabs.push({ gid, name: name.trim() || `Tab ${gid}` });
+  };
+  // Current format: the page builds its tab bar from  items.push({name: "Tab name", pageUrl: "...", gid: "123", ...})
+  for (const m of html.matchAll(/items\.push\(\{\s*name:\s*"((?:[^"\\]|\\.)*)"[^}]*?\bgid:\s*"(\d+)"/g)) add(m[2], decodeJs(m[1]));
+  // Older format: <li id="sheet-button-123"><a>Tab name</a></li>
+  for (const m of html.matchAll(/id="sheet-button-(\d+)"[^>]*>\s*<a[^>]*>([^<]*)<\/a>/g)) add(m[1], decodeEntities(m[2]));
   if (tabs.length) return tabs;
   return [{ gid: fallbackGid ?? "0", name: "Sheet" }];
 }
 
 const decodeEntities = (s: string) => s.replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">");
 
+/** A JavaScript string literal's content: \xNN, \uNNNN and \/ escapes. */
+const decodeJs = (s: string) =>
+  s
+    .replace(/\\x([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\(.)/g, "$1");
+
 export async function fetchTabCsv(id: string, gid: string): Promise<string> {
   const res = await get(`https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`);
   if (res.status === 401 || res.status === 403 || res.status === 404) throw new Error(NOT_PUBLIC);
+  if (res.status === 400) throw new Error("Google Sheets answered HTTP 400: that tab does not exist (wrong #gid= in the link). Use the sheet link without #gid= to read every tab.");
   if (!res.ok) throw new Error(`Google Sheets answered HTTP ${res.status}`);
   const text = await res.text();
   if (text.trimStart().startsWith("<")) throw new Error(NOT_PUBLIC); // an HTML sign-in page instead of data

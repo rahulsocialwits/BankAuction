@@ -59,7 +59,28 @@ export async function robotsCheck(pageUrl: string): Promise<RobotsVerdict> {
   return allowed ? "allowed" : "disallowed";
 }
 
-function htmlToText(html: string): string {
+/**
+ * Page chrome that carries no listings (menus, site header/footer, side bars, forms, embeds) is dropped before the text
+ * is hashed or sent to the AI: fewer tokens, and a changing menu or footer no longer looks like "new content".
+ * Only the site-level header (near the top, with a menu) and footer (near the bottom) are removed, never a card's own
+ * header/footer. If too little text would remain, the caller falls back to the full text.
+ */
+function stripChrome(html: string): string {
+  const len = html.length;
+  return html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<header\b[\s\S]*?<\/header>/gi, (m, at: number) => (at < len * 0.15 && /<nav\b/i.test(m) ? " " : m))
+    .replace(/<footer\b[\s\S]*?<\/footer>/gi, (m, at: number) => (at > len * 0.8 ? " " : m))
+    .replace(/<(nav|aside|form|select|iframe)\b[\s\S]*?<\/\1>/gi, " ");
+}
+
+export function htmlToText(html: string): string {
+  const full = convertHtml(html);
+  const lean = convertHtml(stripChrome(html));
+  return lean.length >= 300 && lean.length >= full.length * 0.4 ? lean : full;
+}
+
+function convertHtml(html: string): string {
   return html
     .replace(/<(script|style|noscript|svg)[\s\S]*?<\/\1>/gi, " ")
     .replace(/<\/(p|div|tr|li|h\d|br)>/gi, "\n")
@@ -81,12 +102,16 @@ export interface ScanResult {
   unchanged: boolean; // page text identical to the previous scan: the AI was not called
 }
 
-/** Page → listings. If the page text hash equals `previousHash` the AI call is skipped entirely. */
-export async function scanWebPage(html: string, previousHash?: string | null): Promise<ScanResult> {
+/**
+ * Page → listings. If the page text hash equals `previousHash` (or, for a list, any hash already processed, e.g. by
+ * another source) the AI call is skipped entirely.
+ */
+export async function scanWebPage(html: string, previousHash?: string | string[] | null): Promise<ScanResult> {
   const cfg = await getAiConfig();
   const text = htmlToText(html).slice(0, cfg.maxPageChars);
   const hash = createHash("sha256").update(text).digest("hex");
-  if (previousHash && previousHash === hash) return { records: [], tokens: 0, model: cfg.model, hash, unchanged: true };
+  const known = Array.isArray(previousHash) ? previousHash : previousHash ? [previousHash] : [];
+  if (known.includes(hash)) return { records: [], tokens: 0, model: cfg.model, hash, unchanged: true };
 
   const system =
     (cfg.extractionPrompt ?? DEFAULT_EXTRACTION_PROMPT) +
