@@ -407,7 +407,8 @@ export async function importRecords(
           continue;
         }
       }
-      if (opts.strict && !(col("reserve_price") || col("auction_start"))) { failed++; continue; }
+      // A listing without a reserve price would show "Not Available" to visitors: it is not published until its price is known.
+      if (opts.strict && !(col("reserve_price") && (col("auction_start") || col("auction_end")))) { failed++; continue; }
       if (opts.strict && !col("location") && !col("legal_schedule")) { failed++; continue; }
 
       // Last look straight at the database (another source or a parallel run may have just added this property, under any

@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db/prisma";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { PropertyCategory, PropertyStatus } from "@prisma/client";
+import { requireMaster } from "@/lib/auth/adminAuth";
+import { propertyWhere } from "@/lib/admin/propertyFilter";
 
 function refresh(slug?: string) {
   revalidatePath("/admin/properties");
@@ -40,6 +42,18 @@ export async function removeProperty(formData: FormData) {
   if (!id) return;
   const p = await prisma.property.update({ where: { id }, data: { status: "REMOVED" } });
   refresh(p.slug);
+}
+
+/** Hides EVERY listing that matches the current filters (master only). Same soft delete as "Delete": nothing is re-imported. */
+export async function bulkRemoveProperties(formData: FormData) {
+  await requireMaster();
+  const g = (k: string) => String(formData.get(k) ?? "") || undefined;
+  const where = propertyWhere({ status: g("status"), q: g("q"), source: g("source"), bank: g("bank"), issue: g("issue"), master: true });
+  // Safety: a bulk delete needs at least one narrowing filter, never "everything".
+  if (!g("q") && !g("source") && !g("bank") && !g("issue")) return;
+  const res = await prisma.property.updateMany({ where: { AND: [where, { status: { not: "REMOVED" } }] }, data: { status: "REMOVED" } });
+  refresh();
+  redirect(`/admin/properties?status=REMOVED&bulk=${res.count}`);
 }
 
 export async function restoreProperty(formData: FormData) {

@@ -2,7 +2,9 @@ import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import type { Prisma, PropertyStatus } from "@prisma/client";
 import SubmitButton from "@/components/admin/SubmitButton";
-import { approveProperty, removeProperty, restoreProperty } from "./actions";
+import ConfirmButton from "@/components/admin/ConfirmButton";
+import { approveProperty, bulkRemoveProperties, removeProperty, restoreProperty } from "./actions";
+import { ISSUES, propertyWhere } from "@/lib/admin/propertyFilter";
 import { isMasterAdmin } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
@@ -27,19 +29,25 @@ const STYLES: Record<string, string> = {
 
 const small = "text-xs border border-brand-border rounded-lg px-2.5 py-1 hover:bg-brand-bg";
 
-export default async function AdminPropertiesPage({ searchParams }: { searchParams: Promise<{ status?: string; q?: string }> }) {
-  const { status, q } = await searchParams;
+export default async function AdminPropertiesPage({ searchParams }: { searchParams: Promise<{ status?: string; q?: string; source?: string; bank?: string; issue?: string; bulk?: string }> }) {
+  const { status, q, source: srcF, bank: bankF, issue, bulk } = await searchParams;
   const master = await isMasterAdmin();
   // A normal admin never sees pipeline concepts (duplicates, sources); they only manage listings.
   const tabs = master ? TABS : TABS.filter(([, v]) => v !== "DUPLICATE");
   const active = status && status !== "ALL" && (master || status !== "DUPLICATE") ? status : "ALL";
 
-  const where: Prisma.PropertyWhereInput = {
-    // "All" hides duplicates and removed items so they never clutter the working list.
-    status: active === "ALL" ? { notIn: ["DUPLICATE", "REMOVED"] } : (active as PropertyStatus),
-    // (a normal admin's "All" already excludes pipeline-hidden duplicates)
-    ...(q ? { OR: [{ title: { contains: q, mode: "insensitive" } }, { addressText: { contains: q, mode: "insensitive" } }] } : {}),
+  const where: Prisma.PropertyWhereInput = propertyWhere({ status: active, q, source: srcF, bank: bankF, issue, master });
+  const qs = (o: Record<string, string | undefined>) => {
+    const m = { status: active, q, source: srcF, bank: bankF, issue, ...o };
+    return "?" + Object.entries(m).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`).join("&");
   };
+  const [sources, banks] = master
+    ? await Promise.all([
+        prisma.auction.groupBy({ by: ["statusSource"], _count: { _all: true }, where: { statusSource: { not: null } }, orderBy: { _count: { statusSource: "desc" } } }),
+        prisma.bank.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      ])
+    : [[], []];
+  const narrowed = !!(q || srcF || bankF || issue);
 
   const [properties, total] = await Promise.all([
     prisma.property.findMany({
@@ -68,22 +76,51 @@ export default async function AdminPropertiesPage({ searchParams }: { searchPara
         {tabs.map(([label, value]) => (
           <Link
             key={value}
-            href={`/admin/properties?status=${value}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+            href={`/admin/properties${qs({ status: value })}`}
             className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold border ${active === value ? "bg-brand text-white border-brand" : "bg-white border-brand-border text-brand-muted hover:border-brand"}`}
           >
             {label}
           </Link>
         ))}
-        <form className="ml-auto flex gap-2">
+        <form className="ml-auto flex flex-wrap gap-2">
           <input type="hidden" name="status" value={active} />
           <input name="q" defaultValue={q} placeholder="Search title or place…" className="border border-brand-border rounded-lg px-3 py-1.5 text-xs w-48" />
-          <button className={small}>Search</button>
+          {master && (
+            <>
+              <select name="source" defaultValue={srcF ?? ""} className="border border-brand-border rounded-lg px-2 py-1.5 text-xs max-w-[190px]">
+                <option value="">All sources</option>
+                {sources.map((s2) => <option key={s2.statusSource} value={s2.statusSource ?? ""}>{(s2.statusSource ?? "").replace(/^feed:/, "")} ({s2._count._all})</option>)}
+              </select>
+              <select name="bank" defaultValue={bankF ?? ""} className="border border-brand-border rounded-lg px-2 py-1.5 text-xs max-w-[190px]">
+                <option value="">All banks</option>
+                {banks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+              <select name="issue" defaultValue={issue ?? ""} className="border border-brand-border rounded-lg px-2 py-1.5 text-xs">
+                <option value="">Any information</option>
+                {ISSUES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </>
+          )}
+          <button className={small}>Filter</button>
+          {narrowed && <Link href={`/admin/properties?status=${active}`} className={small}>Clear</Link>}
         </form>
       </div>
 
+      {bulk && <div role="status" className="rounded-xl border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">{bulk} listing(s) hidden (Removed). They can be restored one by one from the Removed tab.</div>}
+
       <div className="bg-white border border-brand-border rounded-xl overflow-hidden">
-        <div className="p-3 border-b border-brand-border text-xs text-brand-muted">
-          Showing {properties.length} of {total}
+        <div className="p-3 border-b border-brand-border text-xs text-brand-muted flex flex-wrap items-center gap-3">
+          <span>Showing {properties.length} of {total}</span>
+          {master && narrowed && active !== "REMOVED" && total > 0 && (
+            <form action={bulkRemoveProperties} className="ml-auto">
+              <input type="hidden" name="status" value={active} />
+              <input type="hidden" name="q" value={q ?? ""} />
+              <input type="hidden" name="source" value={srcF ?? ""} />
+              <input type="hidden" name="bank" value={bankF ?? ""} />
+              <input type="hidden" name="issue" value={issue ?? ""} />
+              <ConfirmButton message={`Hide all ${total} listings that match this filter? (They move to Removed and are not re-imported.)`} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700">Delete all {total} filtered</ConfirmButton>
+            </form>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
