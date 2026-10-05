@@ -11,6 +11,7 @@ export interface PropertyCardData {
   reservePrice: unknown; // Prisma Decimal | null
   auctionStart: Date | null;
   status: AuctionStatus | null;
+  imageUrl: string | null;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -65,7 +66,7 @@ export default function PropertyCard({ property }: { property: PropertyCardData 
       <div className="relative aspect-[5/3] bg-[#E8EDF5] overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={PLACEHOLDER_IMAGE_URL}
+          src={property.imageUrl ?? PLACEHOLDER_IMAGE_URL}
           alt={property.title}
           loading="lazy"
           decoding="async"
