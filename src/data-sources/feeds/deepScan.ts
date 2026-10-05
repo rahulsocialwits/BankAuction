@@ -295,6 +295,22 @@ export function extractBaanknetEmbeddedAuctions(html: string, pageUrl: string): 
     const title = str(r.propertyHeading, 240) || (sub || type || "Property") + " for sale" + (city ? " in " + city : "");
     const sourceUrl = auctionId ? "https://baanknet.com/auction-detail/" + auctionId : "https://baanknet.com/property-detail/" + propertyId;
 
+    const media: { type: string; title: string; url: string }[] = [];
+    const propertyMedia = Array.isArray(r.propertyMedia) ? r.propertyMedia : [];
+    for (const m of propertyMedia) {
+      if (!m || typeof m !== "object") continue;
+      const x = m as Record<string, unknown>;
+      const rawUrl = str(x.url, 1000);
+      const filepath = str(x.filepath, 800).replace(/^\/+/, "");
+      const url = rawUrl || (filepath ? "https://cdn.baanknet.com/" + filepath : "");
+      if (url) media.push({ type: "PHOTO", title: str(x.filename, 180) || "Property image", url });
+    }
+    const displayImage = str(r.displayImage, 1000);
+    if (displayImage) {
+      const url = /^https?:\/\//i.test(displayImage) ? displayImage : "https://cdn.baanknet.com/" + displayImage.replace(/^\/+/, "");
+      if (!media.some((m) => m.url === url)) media.unshift({ type: "PHOTO", title: "Property image", url });
+    }
+
     const docs: { type: string; title: string; url: string }[] = [];
     const auctionDocs = Array.isArray(r.auctionDocuments) ? r.auctionDocuments : [];
     for (const d of auctionDocs) {
@@ -347,6 +363,7 @@ export function extractBaanknetEmbeddedAuctions(html: string, pageUrl: string): 
       source_property_type: sub || type,
       source_url: sourceUrl,
       documents: JSON.stringify(docs),
+      media: JSON.stringify(media),
       borrower_status: r.borrowerName ? "available" : "not_available_from_source",
       deep_done: "1",
     });
