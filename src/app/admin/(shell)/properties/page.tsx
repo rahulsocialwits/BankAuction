@@ -6,7 +6,7 @@ import ConfirmButton from "@/components/admin/ConfirmButton";
 import { approveProperty, bulkRemoveProperties, removeProperty, restoreProperty } from "./actions";
 import { fixThinNow } from "../engine/actions";
 import { countThin } from "@/lib/pipeline/thinFix";
-import { ISSUES, NO_BORROWER_WHERE, propertyWhere } from "@/lib/admin/propertyFilter";
+import { ISSUES, propertyWhere } from "@/lib/admin/propertyFilter";
 import { isMasterAdmin } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
@@ -74,15 +74,6 @@ export default async function AdminPropertiesPage({ searchParams }: { searchPara
         </div>
         <Link href="/admin/properties/new" className="rounded-xl bg-brand text-white px-4 py-2.5 text-sm font-semibold text-center">+ Add property</Link>
       </div>
-
-      {noBorrower > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-          <span><b>{noBorrower}</b> published listing(s) do not state a borrower name. The site shows only listings with a borrower name; hide all of these now (they move to Removed, nothing is deleted).</span>
-          <form action={hideNoBorrower} className="ml-auto">
-            <ConfirmButton message={`Hide all ${noBorrower} listings without a borrower name?`} className="rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700">Hide listings without borrower</ConfirmButton>
-          </form>
-        </div>
-      )}
 
       {thin > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
