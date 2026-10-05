@@ -59,5 +59,5 @@ test("BAANKNET Next.js Flight auction data is imported without rendering the det
   assert.equal(records[0].external_id, "src:baanknet.com:366354");
   assert.equal(records[0].source_url, "https://baanknet.com/auction-detail/366354");
   assert.equal(records[0].borrower, "TEST BORROWER");
-  assert.match(records[0].documents ?? "", /cdn\\.baanknet\\.com/);
+  assert.match(records[0].documents ?? "", /cdn\.baanknet\.com/);
 });
