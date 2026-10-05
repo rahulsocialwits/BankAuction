@@ -69,7 +69,7 @@ export interface DeepDeps {
   /** Exact reason code of the last failed fetchDoc per address. */
   failure?: Map<string, string>;
   /** Counters of the JavaScript render fallback. */
-  renderStats?: { rendered: number; failed: number };
+  renderStats?: { rendered: number; failed: number; lastError?: string };
   /** Releases the browser, if one was started. */
   close?: () => Promise<void>;
 }
@@ -268,7 +268,7 @@ export function realDeps(): DeepDeps {
   const gate = new RobotsGate(); // robots.txt is read once per site
   let nextSlot = 0; // requests start at least PAUSE_MS apart, even when several pages are being read side by side
   const failure = new Map<string, string>();
-  const renderStats = { rendered: 0, failed: 0 };
+  const renderStats: { rendered: number; failed: number; lastError?: string } = { rendered: 0, failed: 0 };
   let renderer: RenderingFetcher | null = null;
   return {
     failure,
@@ -308,7 +308,7 @@ export function realDeps(): DeepDeps {
       if (RENDER_ENABLED && isJsShell(html).shell) {
         renderer ??= new RenderingFetcher(gate);
         const r = fopts?.via ? await renderer.renderLinked(fopts.via, url) : await renderer.render(url);
-        if (!r.ok) { renderStats.failed++; console.log(`[crawler] render failed (${r.failure}): ${r.reason} (${url})`); return fail(r.failure); }
+        if (!r.ok) { renderStats.failed++; renderStats.lastError = `${r.failure}: ${r.reason}`.slice(0, 300); console.log(`[crawler] render failed (${r.failure}): ${r.reason} (${url})`); return fail(r.failure); }
         renderStats.rendered++;
         return { kind: "html", html: r.page.html.slice(0, MAX_HTML_BYTES), text: r.page.text, rendered: true };
       }

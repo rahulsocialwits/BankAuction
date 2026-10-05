@@ -202,6 +202,8 @@ export async function scanSiteForNew(opts: {
   say(`Scanning ${opts.startUrl} …`);
   const disc = await discoverListingUrls(opts.startUrl, deps, { maxPages: opts.maxIndexPages ?? 30, deadline: Math.min(deadline, Date.now() + 90_000) });
   say(`  ${disc.pagesRead} index page(s) read, ${disc.details.length} listing page(s) found${disc.shapes.length ? ` (${disc.shapes.map((s) => `${s.shape}: ${s.count}${s.verified ? "" : " ✗"}`).join(", ")})` : ""}`);
+  // A browser that cannot start (or a page it could not render) is stated in the run message, not hidden behind "0 listing pages".
+  if (deps.renderStats?.failed) disc.notes.push(`the JavaScript render fallback failed ${deps.renderStats.failed} time(s) — ${deps.renderStats.lastError ?? "unknown reason"}`);
   for (const n of disc.notes) say(`  note: ${n}`);
 
   // Already imported earlier (by this scan or an older one): their address is stored on the auction.
