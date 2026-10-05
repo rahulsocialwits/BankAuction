@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { addAsLiveSource, runScrapDemo, type DemoState } from "./actions";
 import { GROUPS } from "@/lib/scrapDemo/fields";
-import { DEFAULT_SETTINGS } from "@/lib/scrapDemo/settings";
+import { DEFAULT_SETTINGS, HARD_LIMITS } from "@/lib/scrapDemo/settings";
 import type { CandidateDiag, DemoResult, FieldValue } from "@/lib/scrapDemo/types";
 
 const field = "w-full rounded-lg border border-brand-border bg-white px-3 py-2 text-sm";
@@ -201,15 +201,15 @@ export default function DemoRunner() {
 
         {isWeb && (
           <details className="rounded-lg border border-brand-border p-3">
-            <summary className="cursor-pointer text-xs font-semibold">Scan settings (limits)</summary>
+            <summary className="cursor-pointer text-xs font-semibold">Scan settings (0 = no limit)</summary>
             <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-              <label>Max pages<input name="maxPages" type="number" min={1} max={150} defaultValue={s.maxPages} className={field} /></label>
-              <label>Max depth<input name="maxDepth" type="number" min={0} max={5} defaultValue={s.maxDepth} className={field} /></label>
-              <label>Max property candidates<input name="maxCandidates" type="number" min={1} max={40} defaultValue={s.maxCandidates} className={field} /></label>
-              <label>Max pages for the selected property<input name="maxDeepPages" type="number" min={1} max={40} defaultValue={s.maxDeepPages} className={field} /></label>
-              <label>Max runtime (seconds)<input name="timeLimitSec" type="number" min={20} max={200} defaultValue={s.timeLimitSec} className={field} /></label>
-              <label>Pages fetched side by side<input name="concurrency" type="number" min={1} max={4} defaultValue={s.concurrency} className={field} /></label>
-              <label>Max browser-rendered pages<input name="maxBrowserPages" type="number" min={0} max={20} defaultValue={s.maxBrowserPages} className={field} /></label>
+              <label>Max pages<input name="maxPages" type="number" min={0} max={HARD_LIMITS.maxPages[1]} defaultValue={s.maxPages} className={field} /></label>
+              <label>Max depth<input name="maxDepth" type="number" min={0} max={HARD_LIMITS.maxDepth[1]} defaultValue={s.maxDepth} className={field} /></label>
+              <label>Max property candidates<input name="maxCandidates" type="number" min={0} max={HARD_LIMITS.maxCandidates[1]} defaultValue={s.maxCandidates} className={field} /></label>
+              <label>Max pages for the selected property<input name="maxDeepPages" type="number" min={0} max={HARD_LIMITS.maxDeepPages[1]} defaultValue={s.maxDeepPages} className={field} /></label>
+              <label>Max runtime (seconds)<input name="timeLimitSec" type="number" min={0} max={HARD_LIMITS.timeLimitSec[1]} defaultValue={s.timeLimitSec} className={field} /></label>
+              <label>Pages fetched side by side<input name="concurrency" type="number" min={0} max={HARD_LIMITS.concurrency[1]} defaultValue={s.concurrency} className={field} /></label>
+              <label>Max browser-rendered pages<input name="maxBrowserPages" type="number" min={0} max={HARD_LIMITS.maxBrowserPages[1]} defaultValue={s.maxBrowserPages} className={field} /></label>
               <div className="space-y-2 pt-5">
                 <label className="flex items-center gap-2"><input type="checkbox" name="useSitemap" defaultChecked />Use public sitemap</label>
                 <label className="flex items-center gap-2"><input type="checkbox" name="useBrowser" defaultChecked />Browser rendering for JS pages</label>

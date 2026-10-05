@@ -284,7 +284,15 @@ export function extractLinks(html: string, base: string): RawLink[] {
     const url = abs(m[1] ?? m[2] ?? "", base);
     if (!url || seen.has(url)) continue;
     seen.add(url);
-    out.push({ url, text: clean(m[3]).slice(0, 200) });
+    out.push({ url, text: clean(m[3]).slice(0, 200) || (attr(m[0], "title") ?? attr(m[0], "aria-label") ?? "").slice(0, 200) });
+  }
+  // documents a page shows inside itself (iframe / embed / object) are documents too
+  const emb = /<(?:iframe|embed|object)[^>]*?(?:src|data)\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>/gi;
+  for (let m = emb.exec(html); m; m = emb.exec(html)) {
+    const url = abs(m[1] ?? m[2] ?? "", base);
+    if (!url || seen.has(url) || !(DOC_EXT.test(url) || /(download|attachment|uploads?\/|getfile|viewfile|document|notice)/i.test(url))) continue;
+    seen.add(url);
+    out.push({ url, text: "Embedded document" });
   }
   return out;
 }
@@ -336,7 +344,9 @@ export function extractDocuments(links: RawLink[], sourcePage: string): DocRef[]
   const out: DocRef[] = [];
   for (const l of links) {
     const isFile = DOC_EXT.test(new URL(l.url).pathname + new URL(l.url).search);
-    if (!isFile && !(DOC_WORDS.test(l.text) && /(download|view|pdf|notice|document|terms)/i.test(`${l.text} ${l.url}`) && l.text.length < 120)) continue;
+    const pathy = /(download|attachment|uploads?\/|getfile|viewfile|view-?document|dms)/i.test(new URL(l.url).pathname + new URL(l.url).search);
+    // a document link: a file, a "Download / Sale notice / Terms" link, or a download-style address (even with an icon-only or generic text)
+    if (!isFile && !(DOC_WORDS.test(l.text) && /(download|view|pdf|notice|document|terms)/i.test(`${l.text} ${l.url}`) && l.text.length < 120) && !(pathy && l.text.length < 120)) continue;
     if (!isFile && /(login|register|contact|about)/i.test(l.url)) continue;
     const ext = l.url.match(DOC_EXT)?.[1]?.toLowerCase() ?? null;
     const mimeByExt: Record<string, string> = { pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", zip: "application/zip", csv: "text/csv" };

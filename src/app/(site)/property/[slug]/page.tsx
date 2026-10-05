@@ -141,13 +141,14 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
           <section className="bg-white border border-brand-border rounded-2xl p-5 mb-6">
             <h2 className="font-semibold mb-4">Auction Summary</h2>
             <dl className="grid grid-cols-2 gap-4">
-              <Field label="Reserve Price" value={<span className="text-brand font-semibold">{formatMoney(auction?.reservePrice)}</span>} />
-              <Field label="EMD" value={formatMoney(auction?.emd)} />
-              <Field label="Auction Start" value={formatDate(auction?.auctionStart ?? null)} />
-              <Field label="Auction End" value={formatDate(auction?.auctionEnd ?? null)} />
-              <Field label="Application Deadline" value={formatDate(auction?.applicationDeadline ?? null)} />
-              <Field label="Auction Method" value={auction?.auctionMethod ?? "Not Available"} />
-              <Field label="Possession Status" value={auction?.possessionStatus ?? "Not Available"} />
+              {/* Only what the notice states is shown; a missing value is never printed as "Not Available" */}
+              {auction?.reservePrice != null && <Field label="Reserve Price" value={<span className="text-brand font-semibold">{formatMoney(auction.reservePrice)}</span>} />}
+              {auction?.emd != null && <Field label="EMD" value={formatMoney(auction.emd)} />}
+              {auction?.auctionStart && <Field label="Auction Start" value={formatDate(auction.auctionStart)} />}
+              {auction?.auctionEnd && <Field label="Auction End" value={formatDate(auction.auctionEnd)} />}
+              {auction?.applicationDeadline && <Field label="Application Deadline" value={formatDate(auction.applicationDeadline)} />}
+              {auction?.auctionMethod && <Field label="Auction Method" value={auction.auctionMethod} />}
+              {auction?.possessionStatus && <Field label="Possession Status" value={auction.possessionStatus} />}
               {auction?.noticeNumber && <Field label="Notice Number" value={auction.noticeNumber} />}
               {auction?.minimumIncrement && <Field label="Minimum Bid Increment" value={formatMoney(auction.minimumIncrement)} />}
               {(auction?.inspectionDate || auction?.inspectionLocation) && (
@@ -156,6 +157,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
                   value={[auction.inspectionDate ? formatDate(auction.inspectionDate) : null, auction.inspectionTime, auction.inspectionLocation].filter(Boolean).join(" · ")}
                 />
               )}
+              {auction?.borrower && (
               <div>
                 <dt className="text-xs text-brand-muted mb-0.5">Borrower</dt>
                 <dd className="text-sm font-medium">
@@ -164,11 +166,10 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
                       <span className="blur-[5px] select-none group-hover:blur-[6px]">{auction.borrower}</span>
                       <span className="text-[11px] text-gold font-semibold whitespace-nowrap">Unlock →</span>
                     </Link>
-                  ) : (
-                    "Not Available"
-                  )}
+                  ) : null}
                 </dd>
               </div>
+              )}
             </dl>
           </section>
 

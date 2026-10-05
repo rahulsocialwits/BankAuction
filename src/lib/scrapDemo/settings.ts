@@ -13,33 +13,37 @@ export interface ScanSettings {
 }
 
 export const DEFAULT_SETTINGS: ScanSettings = {
-  maxPages: 100,
-  maxDepth: 4,
-  maxCandidates: 20,
-  maxDeepPages: 25,
-  timeLimitSec: 150,
-  concurrency: 3,
-  maxBrowserPages: 10,
+  maxPages: 1000,
+  maxDepth: 8,
+  maxCandidates: 300,
+  maxDeepPages: 100,
+  timeLimitSec: 280,
+  concurrency: 4,
+  maxBrowserPages: 100,
   useSitemap: true,
   useBrowser: true,
 };
 
-/** Whatever the form sends, these ceilings apply. */
+/**
+ * Ceilings (a value of 0 in the form means "no limit" = the ceiling). The only real wall is time: one demo request ends after
+ * about 5 minutes, so a whole big website is read by adding it as a Live source (it continues on every scheduler tick, unlimited).
+ */
 export const HARD_LIMITS: Record<Exclude<keyof ScanSettings, "useSitemap" | "useBrowser">, [number, number]> = {
-  maxPages: [1, 150],
-  maxDepth: [0, 5],
-  maxCandidates: [1, 40],
-  maxDeepPages: [1, 40],
-  timeLimitSec: [20, 200],
-  concurrency: [1, 4],
-  maxBrowserPages: [0, 20],
+  maxPages: [1, 5000],
+  maxDepth: [0, 12],
+  maxCandidates: [1, 2000],
+  maxDeepPages: [1, 300],
+  timeLimitSec: [20, 285],
+  concurrency: [1, 6],
+  maxBrowserPages: [0, 300],
 };
 
 export function clampSettings(raw: Partial<Record<keyof ScanSettings, unknown>>): ScanSettings {
   const out = { ...DEFAULT_SETTINGS };
   for (const k of Object.keys(HARD_LIMITS) as (keyof typeof HARD_LIMITS)[]) {
     const n = Number(raw[k]);
-    if (Number.isFinite(n)) out[k] = Math.min(HARD_LIMITS[k][1], Math.max(HARD_LIMITS[k][0], Math.round(n)));
+    if (Number.isFinite(n) && n === 0 && raw[k] !== "" && raw[k] !== null) out[k] = HARD_LIMITS[k][1]; // 0 = unlimited
+    else if (Number.isFinite(n)) out[k] = Math.min(HARD_LIMITS[k][1], Math.max(HARD_LIMITS[k][0], Math.round(n)));
   }
   if (raw.useSitemap !== undefined) out.useSitemap = raw.useSitemap === true || raw.useSitemap === "on";
   if (raw.useBrowser !== undefined) out.useBrowser = raw.useBrowser === true || raw.useBrowser === "on";

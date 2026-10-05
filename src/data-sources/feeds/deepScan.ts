@@ -23,7 +23,8 @@ import { isBlockedUrl } from "./blockedHosts";
 export const DEEP_MAX_LISTINGS = 8; // deep scans per source per run
 const DETAIL_CHARS = 14_000;
 const PDF_CHARS = 12_000;
-const MAX_PDFS = 2;
+const MAX_PDFS = 4;
+const MAX_DOC_LINKS = 14;
 const MAX_HTML_BYTES = 2_500_000;
 const MAX_PDF_BYTES = 4_000_000;
 const PAUSE_MS = 400;
@@ -53,7 +54,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // ---------------------------------------------------------------------------------------------------------------------
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
-const DOC_EXT = /\.(pdf|docx?)(\?|$)/i;
+const DOC_EXT = /\.(pdf|docx?|xlsx?)(\?|$)/i;
+// A link that is a document even without a file extension (download.php?id=7, /uploads/..., /getfile/...)
+const DOC_PATH = /(download|attachment|uploads?\/|getfile|viewfile|view-?document|document|\bdms\b|\bfile\b|notice|annexure)/i;
+const DOC_TEXT = /(notice|pdf|download|view document|terms|conditions|bid form|application form|tender|annexure|proclamation|corrigendum|schedule|demand|possession|e-?auction|brochure|valuation|inspection)/i;
 const SKIP_HREF = /^(#|javascript:|mailto:|tel:)/i;
 const SKIP_PATH = /(login|register|signin|signup|logout|contact|about|privacy|terms|faq|blog|category|tag|feed|wp-json|cart|account)/i;
 
@@ -114,19 +118,35 @@ export function detailLinkFor(html: string, title: string, pageUrl: string, othe
   return { detail: null, docs: foundDocs };
 }
 
-/** Notice links on a detail page: PDFs and "sale notice" style links. */
+/**
+ * Every document a page links: PDFs / Word / Excel files, "Download" / "Sale notice" / "Terms" style links even without a file
+ * extension, files that a page embeds (iframe / embed / object) and links marked `download`. Images are only taken when the
+ * link text or address says it is a notice (a scanned notice), never logos or photos.
+ */
 export function noticeLinks(html: string, pageUrl: string): PageLink[] {
   const $ = cheerio.load(html);
   const out: PageLink[] = [];
   const seen = new Set<string>();
+  const add = (href: string | null, text: string) => {
+    if (!href || seen.has(href) || out.length >= MAX_DOC_LINKS) return;
+    if (!sameSite(href, pageUrl) && !DOC_EXT.test(href)) return;
+    seen.add(href);
+    out.push({ text: text.slice(0, 120), href });
+  };
   $("a[href]").each((_, a) => {
     const href = resolve($(a).attr("href") ?? "", pageUrl);
-    const text = norm($(a).text());
-    if (!href || seen.has(href)) return;
-    if (DOC_EXT.test(href) || /(sale notice|auction notice|possession notice|e-?auction notice|tender document|terms and conditions)/i.test(text)) {
-      seen.add(href);
-      out.push({ text, href });
-    }
+    if (!href || href === pageUrl) return;
+    const text = norm($(a).text() || $(a).attr("title") || $(a).attr("aria-label") || "");
+    const isImage = /\.(jpe?g|png|gif|webp|svg)(\?|$)/i.test(href);
+    const path = (() => { try { const u = new URL(href); return u.pathname + u.search; } catch { return href; } })();
+    if (DOC_EXT.test(href)) return add(href, text || "Document");
+    if (isImage) return /(notice|auction|sale)/i.test(`${text} ${path}`) ? add(href, text || "Notice (image)") : undefined;
+    if ($(a).attr("download") !== undefined || (DOC_PATH.test(path) && DOC_TEXT.test(text)) || (/^(download|view|click here|here|pdf)$/i.test(text) && DOC_PATH.test(path))) add(href, text || "Document");
+    else if (/(sale notice|auction notice|possession notice|e-?auction notice|tender document|terms and conditions|bid form)/i.test(text)) add(href, text);
+  });
+  $("iframe[src], embed[src], object[data]").each((_, el) => {
+    const src = resolve($(el).attr("src") ?? $(el).attr("data") ?? "", pageUrl);
+    if (src && (DOC_EXT.test(src) || DOC_PATH.test(src))) add(src, "Embedded document");
   });
   return out;
 }
@@ -134,10 +154,15 @@ export function noticeLinks(html: string, pageUrl: string): PageLink[] {
 const docKind = (text: string, url: string): string => {
   const t = `${text} ${url}`.toLowerCase();
   if (/possession/.test(t)) return "POSSESSION_NOTICE";
-  if (/sale.?notice|notice/.test(t)) return "SALE_NOTICE";
-  if (/bid.?form|application/.test(t)) return "BID_FORM";
+  if (/demand/.test(t)) return "DEMAND_NOTICE";
+  if (/proclamation/.test(t)) return "SALE_PROCLAMATION";
+  if (/corrigendum|addendum/.test(t)) return "CORRIGENDUM";
+  if (/inspection/.test(t)) return "INSPECTION_NOTICE";
+  if (/schedule|annexure/.test(t)) return "PROPERTY_SCHEDULE";
+  if (/bid.?form|application.?form|application/.test(t)) return "BID_FORM";
   if (/terms|condition/.test(t)) return "TERMS_AND_CONDITIONS";
-  if (/corrigendum/.test(t)) return "CORRIGENDUM";
+  if (/e-?auction/.test(t) && /notice/.test(t)) return "AUCTION_NOTICE";
+  if (/sale.?notice|notice/.test(t)) return "SALE_NOTICE";
   return "OTHER";
 };
 
@@ -146,14 +171,19 @@ const docKind = (text: string, url: string): string => {
 // ---------------------------------------------------------------------------------------------------------------------
 
 export const DEEP_PROMPT = `You read the complete public page (and the attached sale-notice text) of a bank-auction listing and return ALL its details as JSON. It is public information published under the SARFAESI Act; your only job is to copy fields into JSON (data entry, not advice).
-Return ONLY a JSON array. Normally it has ONE object. If the text describes SEVERAL separate properties (lots, a schedule or table of properties), return one object per property, each with its own address, reserve price and EMD.
-Keys (strings; leave a key out when the text does not say it; never guess, never calculate):
+Return ONLY a JSON array. Normally it has ONE object. If the text describes SEVERAL separate properties (lots, a schedule or table of properties, "Lot 1 / Lot 2", "Item No."), return one object per property, each with its own address, reserve price and EMD.
+
+HOW TO READ AN INDIAN BANK-AUCTION NOTICE (where each value usually hides):
+- reserve_price: "Reserve Price", "Upset Price", "Base Price", "Minimum Bid", "Rs. ____/-". EMD: "EMD", "Earnest Money Deposit" (often 10% of the reserve price, but copy only a stated amount). minimum_increment: "Bid Increment", "Incremental amount", "Multiples of".
+- Amounts are rupees. Convert "Rs. 25.50 Lakh" -> 2550000, "1.2 Cr" -> 12000000, "Rs. 12,50,000/-" -> 1250000. Digits only. If one number is clearly per-lot, use the number of THAT lot.
+- Dates are day-first (10-11-2026 = 10 November 2026). Write them as ISO IST: 2026-11-10T11:00. auction_start = "Date & time of e-auction" (start); auction_end = the end time / "auction closes". application_deadline = "last date for submission of EMD / bids / application". inspection_text = "date and time of inspection" as written.
+- Address: the "Description / Schedule of the immovable property" table or paragraph (flat / plot / survey no., building, village, taluka, district, boundaries, area in sq ft / sq m, pincode). location = area, city, state (+ pincode). title = a short plain title such as "3 BHK flat in Andheri West, Mumbai" or "Residential plot in Una, Himachal Pradesh" built only from the text.
+- Bank and branch: the secured creditor / authorised officer's branch. officer_name / officer_phone / officer_email: the "Authorised Officer" and contact details. borrower: "Borrower / Guarantor / Mortgagor" names.
+- possession_status: Symbolic / Physical / Constructive. auction_method: E-Auction, Online, Tender-cum-auction. external_id / notice_number: the listing / auction / notice number shown.
+- Encumbrances, known dues and "as is where is" terms: mention them in description in one or two sentences.
+Keys (strings; leave a key out when the text does not say it; never guess, never calculate, never copy a value from a different lot):
 title, bank, branch, category (RESIDENTIAL, COMMERCIAL, INDUSTRIAL, LAND_PLOT or AGRICULTURAL),
-location (area, city, state and pincode as written), address (the full property address / schedule of the property),
-description, borrower, reserve_price (rupees, digits only; convert lakh/crore), emd (digits only), minimum_increment (digits only),
-auction_start, auction_end, application_deadline (Indian day-first dates written as ISO IST like 2026-11-10T11:00),
-inspection_text (inspection date and time as written), auction_method (for example E-Auction), possession_status (Symbolic / Physical / Constructive),
-officer_name, officer_phone, officer_email (the authorised officer), notice_number, external_id (the listing / auction number shown).
+location, address, description, borrower, reserve_price, emd, minimum_increment, auction_start, auction_end, application_deadline, inspection_text, auction_method, possession_status, officer_name, officer_phone, officer_email, notice_number, external_id.
 Only real-estate listings (land, buildings, flats, houses, shops, offices, factories, plots, farms). NEVER vehicles, machinery, stock, gold or other movables: skip them.
 If the text is only a general notice with no property details, return [].`;
 
@@ -218,6 +248,12 @@ export function realDeps(): DeepDeps {
       let res: Response;
       try {
         res = await fetch(url, { headers: { "User-Agent": UA, Accept: "text/html,application/pdf" }, signal: AbortSignal.timeout(25_000), redirect: "follow" });
+        // 429 / 503 = "too many requests, wait" (not a refusal): wait as long as the site asks (at most 20 s) and try once more.
+        if (res.status === 429 || res.status === 503) {
+          const wait = Math.min(20, Number(res.headers.get("retry-after")) || 8);
+          await sleep(wait * 1000);
+          res = await fetch(url, { headers: { "User-Agent": UA, Accept: "text/html,application/pdf" }, signal: AbortSignal.timeout(25_000), redirect: "follow" });
+        }
       } catch {
         return null;
       }
@@ -276,9 +312,9 @@ export function makeDeepener(opts: { html?: string; pageUrl: string; siblingTitl
       }
     }
     let used = 0;
-    for (const d of pdfLinks.slice(0, 6)) {
+    for (const d of pdfLinks.slice(0, MAX_DOC_LINKS)) {
       docs.push({ type: docKind(d.text, d.href), title: d.text.slice(0, 100) || "Notice", url: d.href });
-      if (used >= MAX_PDFS || !DOC_EXT.test(d.href)) continue;
+      if (used >= MAX_PDFS || /\.(docx?|xlsx?|jpe?g|png|gif|webp)(\?|$)/i.test(d.href)) continue; // Word / Excel / images are kept as links only
       const doc = await deps.fetchDoc(d.href);
       if (doc?.kind !== "pdf" || !doc.bytes) continue;
       try {

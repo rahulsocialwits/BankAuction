@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { isAiFeed, UNREACHABLE } from "@/data-sources/feeds/run";
 import { webStateOf } from "@/data-sources/feeds/siteScan";
-import { importAllNow, importEverythingNow, pauseImportAll, pauseImportingEverything, fixThinNow } from "../engine/actions";
+import { importAllNow, importEverythingNow, pauseImportAll, pauseImportingEverything, fixThinNow, runFeedSourceNow, toggleFeedSource } from "../engine/actions";
 import { countThin } from "@/lib/pipeline/thinFix";
 import SubmitButton from "@/components/admin/SubmitButton";
 
@@ -88,10 +88,20 @@ export default async function LiveView() {
                     <td className="px-3 py-2">{w.seen.length}</td>
                     <td className="max-w-[420px] break-words px-3 py-2 text-brand-muted">{f.lastMessage ?? "—"}</td>
                     <td className="px-3 py-2">
-                      <form action={w.importAll ? pauseImportAll : importAllNow}>
-                        <input type="hidden" name="id" value={f.id} />
-                        <button type="submit" className="whitespace-nowrap rounded-md border border-brand-border px-2.5 py-1 font-semibold hover:bg-brand-bg">{w.importAll ? "⏸ Pause importing" : "Import all"}</button>
-                      </form>
+                      <div className="flex flex-wrap gap-1.5">
+                        <form action={runFeedSourceNow}>
+                          <input type="hidden" name="id" value={f.id} />
+                          <button type="submit" className="whitespace-nowrap rounded-md border border-brand-border px-2.5 py-1 font-semibold hover:bg-brand-bg">▶ Run</button>
+                        </form>
+                        <form action={toggleFeedSource}>
+                          <input type="hidden" name="id" value={f.id} />
+                          <button type="submit" className="whitespace-nowrap rounded-md border border-brand-border px-2.5 py-1 font-semibold hover:bg-brand-bg">{f.active ? "⏸ Pause" : "▶ Resume"}</button>
+                        </form>
+                        <form action={w.importAll ? pauseImportAll : importAllNow}>
+                          <input type="hidden" name="id" value={f.id} />
+                          <button type="submit" className="whitespace-nowrap rounded-md border border-brand-border px-2.5 py-1 font-semibold hover:bg-brand-bg">{w.importAll ? "⏸ Pause importing" : "⚡ Import all"}</button>
+                        </form>
+                      </div>
                     </td>
                   </tr>
                 );

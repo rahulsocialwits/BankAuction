@@ -5,6 +5,11 @@ import type { ListingRecord } from "@/lib/import/csvImport";
 
 export const UA = "BankAuctionBot/1.0 (+https://auction.bizsocio.com)";
 
+/** A robots.txt pattern with `*` wildcards and a `$` end anchor, matched against path + query. */
+function robotsMatch(pattern: string, path: string): boolean {
+  return new RegExp("^" + pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\\\$$/, "$")).test(path);
+}
+
 export type RobotsVerdict = "allowed" | "disallowed" | "unreachable";
 
 /**
@@ -53,8 +58,8 @@ export async function robotsCheck(pageUrl: string): Promise<RobotsVerdict> {
   let bestLen = -1;
   let allowed = true;
   for (const g of applicable) {
-    for (const p of g.disallow) if (path.startsWith(p) && p.length > bestLen) { bestLen = p.length; allowed = false; }
-    for (const p of g.allow) if (path.startsWith(p) && p.length >= bestLen) { bestLen = p.length; allowed = true; }
+    for (const p of g.disallow) if (robotsMatch(p, path) && p.length > bestLen) { bestLen = p.length; allowed = false; }
+    for (const p of g.allow) if (robotsMatch(p, path) && p.length >= bestLen) { bestLen = p.length; allowed = true; }
   }
   return allowed ? "allowed" : "disallowed";
 }
@@ -92,7 +97,10 @@ function convertHtml(html: string): string {
     .trim();
 }
 
-export const DEFAULT_EXTRACTION_PROMPT = `You extract bank auction property listings from web page text. The text is a public auction notice published by a bank or an auction portal under the SARFAESI Act; it is ordinary public information, and your only job is to copy its fields into JSON (this is data entry, not advice or content generation). Return ONLY a JSON array (no prose). Each item has these string keys, omitting any you cannot find in the text (never guess or invent values): title, bank, category (one of RESIDENTIAL, COMMERCIAL, INDUSTRIAL, LAND_PLOT, AGRICULTURAL), location, description, borrower, reserve_price (digits only, rupees), emd (digits only), auction_start (ISO like 2026-11-10T11:00), auction_method, possession_status. Only include real property auction listings (land, buildings, flats, houses, shops, offices, factories, plots). NEVER include vehicles (cars, bikes, trucks, tractors, machinery); skip them completely. If there are none, return [].`;
+export const DEFAULT_EXTRACTION_PROMPT = `You extract bank auction property listings from web page text. The text is a public auction page published by a bank or an auction portal under the SARFAESI Act; it is ordinary public information, and your only job is to copy its fields into JSON (this is data entry, not advice or content generation). Return ONLY a JSON array (no prose). One item per property shown (a list page has many cards: return EVERY card, do not stop after the first ones).
+Each item has these string keys, omitting any you cannot find in the text (never guess, never calculate, never copy a value from another card): title, bank, branch, category (one of RESIDENTIAL, COMMERCIAL, INDUSTRIAL, LAND_PLOT, AGRICULTURAL), location (area, city, state, pincode as written), description, borrower, reserve_price (digits only, rupees: "Rs. 25.5 Lakh" = 2550000, "1.2 Cr" = 12000000), emd (digits only), auction_start (day-first dates, ISO IST like 2026-11-10T11:00), auction_end, auction_method, possession_status, external_id (the listing / auction number printed on the card).
+Labels to look for: Reserve / Upset / Base price, EMD / Earnest money, Auction date / E-auction on, Bank, Branch, Property address / Schedule. A card without a reserve price is still returned (the title and place are enough) but nothing is invented for it.
+Only include real property auction listings (land, buildings, flats, houses, shops, offices, factories, plots). NEVER include vehicles (cars, bikes, trucks, tractors), machinery, gold or other movables; skip them completely. Ignore menus, filters, banners, adverts and "related" boxes. If there are none, return [].`;
 
 export interface ScanResult {
   records: ListingRecord[];

@@ -98,14 +98,19 @@ export default function PropertyCard({ property }: { property: PropertyCardData 
 
         <div className="mt-auto pt-4">
           <div className="flex items-end justify-between border-t border-brand-border pt-3">
-            <div>
-              <div className="text-[11px] text-brand-muted">Reserve Price</div>
-              <div className="text-base font-bold text-brand">{formatMoney(property.reservePrice)}</div>
-            </div>
-            <div className="text-right">
-              <div className="text-[11px] text-brand-muted">Auction Date</div>
-              <div className="text-xs font-medium">{formatDate(property.auctionStart)}</div>
-            </div>
+            {/* a value the notice does not state is left out, never shown as "Not Available" */}
+            {property.reservePrice !== null && property.reservePrice !== undefined && (
+              <div>
+                <div className="text-[11px] text-brand-muted">Reserve Price</div>
+                <div className="text-base font-bold text-brand">{formatMoney(property.reservePrice)}</div>
+              </div>
+            )}
+            {property.auctionStart && (
+              <div className="ml-auto text-right">
+                <div className="text-[11px] text-brand-muted">Auction Date</div>
+                <div className="text-xs font-medium">{formatDate(property.auctionStart)}</div>
+              </div>
+            )}
           </div>
         </div>
       </div>
