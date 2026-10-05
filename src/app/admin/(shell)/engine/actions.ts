@@ -124,7 +124,11 @@ export async function importAllBuiltIn() {
   const row = await ensureSourceRow();
   if (row.status === "DISABLED") await prisma.source.update({ where: { id: row.id }, data: { status: "HEALTHY" } });
   await setBuiltInImportAll(true);
-  after(() => runBankAuctionsIngestion({ all: true, budgetMs: 240_000, triggeredBy: "manual" }).catch(() => null));
+  after(async () => {
+    // nothing left to read (the whole site is already imported) = switch the mode off again instead of showing "Importing all…" forever
+    const r = await runBankAuctionsIngestion({ all: true, budgetMs: 240_000, triggeredBy: "manual" }).catch(() => null);
+    if (r && !r.skipped && !r.remaining && r.errors.length === 0) await setBuiltInImportAll(false).catch(() => undefined);
+  });
   refresh();
 }
 
