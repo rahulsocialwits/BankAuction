@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import PropertyCard from "@/components/PropertyCard";
 import PropertyFilterForm from "@/components/PropertyFilterForm";
-import { listPublishedProperties, toPropertyCardData, StatusGroup } from "@/lib/queries/listProperties";
+import { listPublishedProperties, countPublishedProperties, toPropertyCardData, StatusGroup, type PropertyFilters } from "@/lib/queries/listProperties";
 import { getLocalityMap } from "@/lib/queries/localities";
 import { getPlaces } from "@/lib/queries/places";
 import { prisma } from "@/lib/db/prisma";
@@ -17,7 +18,7 @@ const CATEGORIES: { label: string; value: PropertyCategory }[] = [
   { label: "Agricultural", value: "AGRICULTURAL" },
 ];
 
-type SP = { category?: string; q?: string; bank?: string; state?: string; city?: string; locality?: string; status?: string; priceMin?: string; priceMax?: string };
+type SP = { category?: string; q?: string; bank?: string; state?: string; city?: string; locality?: string; status?: string; priceMin?: string; priceMax?: string; page?: string };
 
 function placeLabel(sp: SP) {
   if (sp.locality && sp.city) return `${sp.locality}, ${sp.city}`;
@@ -48,10 +49,13 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 export default async function PropertiesPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const { category, q, bank, state, city, locality, status, priceMin, priceMax } = sp;
+  const page = Math.max(1, Number(sp.page ?? "1") || 1);
+  const PAGE_SIZE = 48;
   const validCategory = CATEGORIES.find((c) => c.value === category)?.value;
-  const statusGroup: StatusGroup = status === "completed" || status === "all" ? status : "active";
+  const statusGroup: StatusGroup = status === "completed" || status === "active" ? status : "all";
 
-  const [properties, banks, localities, places] = await Promise.all([
+  const filters: PropertyFilters = { category: validCategory, keyword: q || undefined, state: state || undefined, city: city || undefined, locality: locality || undefined, statusGroup, bankId: bank || undefined, priceMin: priceMin ? Number(priceMin) : undefined, priceMax: priceMax ? Number(priceMax) : undefined };
+  const [properties, totalCount, banks, localities, places] = await Promise.all([
     listPublishedProperties(
       {
         category: validCategory,
@@ -63,9 +67,11 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
         bankId: bank || undefined,
         priceMin: priceMin ? Number(priceMin) : undefined,
         priceMax: priceMax ? Number(priceMax) : undefined,
-      },
-      48
+      filters,
+      PAGE_SIZE,
+      (page - 1) * PAGE_SIZE,
     ),
+    countPublishedProperties(filters),
     prisma.bank.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     getLocalityMap(),
     getPlaces(),
@@ -78,7 +84,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
       <h1 className="text-2xl sm:text-3xl font-bold text-brand mb-1">
         {place ? `Bank Auction Properties in ${place}` : "Bank Auction Properties"}
       </h1>
-      <p className="text-brand-muted text-sm mb-6">{properties.length} listing(s) found</p>
+      <p className="text-brand-muted text-sm mb-6">Showing {totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalCount)} of {totalCount.toLocaleString("en-IN")} listing(s)</p>
 
       <PropertyFilterForm
         localities={localities}
@@ -100,6 +106,21 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
           ))}
         </div>
       )}
+
+      {totalCount > PAGE_SIZE && (() => {
+        const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+        const params = new URLSearchParams();
+        for (const [key, value] of Object.entries({ category, q, bank, state, city, locality, status: statusGroup, priceMin, priceMax })) {
+          if (value) params.set(key, value);
+        }
+        return (
+          <nav aria-label="Property pages" className="mt-10 flex items-center justify-center gap-2">
+            {page > 1 && <Link href={"/properties?" + new URLSearchParams([...params, ["page", String(page - 1)]]).toString()} className="px-4 py-2 rounded-lg border border-brand-border text-sm font-medium hover:border-brand">← Previous</Link>}
+            <span className="px-4 py-2 text-sm text-brand-muted">Page {page} of {totalPages}</span>
+            {page < totalPages && <Link href={"/properties?" + new URLSearchParams([...params, ["page", String(page + 1)]]).toString()} className="px-4 py-2 rounded-lg border border-brand-border text-sm font-medium hover:border-brand">Next →</Link>}
+          </nav>
+        );
+      })()}
     </main>
   );
 }
