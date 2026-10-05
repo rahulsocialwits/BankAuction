@@ -13,25 +13,16 @@ import { prisma } from "@/lib/db/prisma";
  */
 
 export const AI_TIMEZONE = "Asia/Kolkata";
-export const AI_SLOT_HOURS_IST = [0, 6, 12, 18] as const;
-export const AI_WINDOW_MIN = 50; // ticks arrive every ~30 min, so 1–2 of them fall inside each slot window
-const IST_OFFSET_MS = 330 * 60_000; // +05:30
-const SLOT_MS = 6 * 3_600_000;
+const IST_OFFSET_MS = 330 * 60_000;
+const SLOT_MS = 15 * 60_000;
 
-/** Start (as a real instant) of the AI slot that contains `now`. */
 export function slotStartFor(now: Date = new Date()): Date {
-  const ist = new Date(now.getTime() + IST_OFFSET_MS); // read IST wall-clock fields through the UTC getters
-  const hour = ist.getUTCHours();
-  const slotHour = [...AI_SLOT_HOURS_IST].filter((h) => h <= hour).pop() ?? 0;
-  return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate(), slotHour, 0, 0) - IST_OFFSET_MS);
+  const ist = new Date(now.getTime() + IST_OFFSET_MS);
+  return new Date(Math.floor(ist.getTime() / SLOT_MS) * SLOT_MS - IST_OFFSET_MS);
 }
-
 export const nextSlotStart = (now: Date = new Date()) => new Date(slotStartFor(now).getTime() + SLOT_MS);
-
-/** Pure time check: is `now` inside the window in which AI work may start? */
 export function aiWindow(now: Date = new Date()): { open: boolean; slotStart: Date } {
-  const slotStart = slotStartFor(now);
-  return { open: now.getTime() - slotStart.getTime() < AI_WINDOW_MIN * 60_000, slotStart };
+  return { open: true, slotStart: slotStartFor(now) };
 }
 
 export const istLabel = (d: Date) =>
@@ -95,7 +86,7 @@ export async function aiScheduleStatus(now: Date = new Date()) {
   const ran = await prisma.sourceRunLog.findFirst({ where: { kind: "ai-slot", source: SLOT_SOURCE, message: `slot ${slotStart.toISOString()}` }, select: { startedAt: true } }).catch(() => null);
   const last = await prisma.sourceRunLog.findFirst({ where: { kind: "ai-slot", source: SLOT_SOURCE }, orderBy: { startedAt: "desc" }, select: { startedAt: true } }).catch(() => null);
   return {
-    slots: AI_SLOT_HOURS_IST.map((h) => `${String(h).padStart(2, "0")}:00 IST`),
+    slots: ["Every 15 minutes"],
     timezone: `${AI_TIMEZONE} (IST)`,
     windowOpen: open,
     ranThisSlot: !!ran,
