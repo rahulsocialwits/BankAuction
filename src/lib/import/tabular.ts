@@ -3,6 +3,7 @@ import { chatJSONDetailed } from "@/lib/ai/relayModelsClient";
 import { getAiConfig } from "@/lib/ai/aiConfig";
 import { isBlockedUrl } from "@/data-sources/feeds/blockedHosts";
 import { importCsvText, importRecords, parseCsv, MAX_ROWS, type ImportResult, type ListingRecord } from "./csvImport";
+import { moneyNumber, richRecordFromRow } from "./richRaw";
 
 /**
  * Imports any spreadsheet-like text (a Google Sheet tab, a CSV from a bank, an upload) whatever its column names.
@@ -25,7 +26,10 @@ export interface TabState {
   mapping?: TabMapping;
   skipKey?: string; // header the AI already judged "not a property list": not asked again
   done?: number; // data rows already processed (cursor for big tabs)
+  ver?: number; // import logic version: a newer one re-reads the whole tab once (fills and corrects earlier imports)
 }
+
+const IMPORT_VERSION = 2;
 
 const FIELDS = ["title", "bank", "category", "location", "description", "borrower", "reserve_price", "emd", "auction_start", "auction_method", "possession_status", "source_url"] as const;
 
@@ -40,10 +44,8 @@ Reply ONLY with JSON: {"skip":false,"header_row":0,"columns":{"title":[1,2],"ban
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
-function cleanMoney(v: string | undefined): string {
-  const m = String(v ?? "").replace(/[₹,\s]/g, "").replace(/^rs\.?/i, "").match(/\d+(\.\d+)?/);
-  return m ? m[0] : "";
-}
+// "₹2.51 L" is 2,51,000, not 2.51: amounts with a Lakh / Crore / K unit are scaled.
+const cleanMoney = (v: string | undefined): string => moneyNumber(v);
 
 const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 
@@ -206,6 +208,8 @@ export function judgeRow(layout: KnownLayout, row: string[], rec: ListingRecord 
   if (MOVABLE.test(type) || /^\s*(gold|jewel|vehicle|car|truck|tractor|machinery|plant (and|&) machinery)\b/i.test(rec.title ?? "")) return { accept: false, reason: "movable asset (not real estate)" };
   const urls = [rec.source_url, get("sourceurl"), get("sourcelistingurl")].filter(Boolean) as string[];
   if (urls.some((u) => isBlockedUrl(u))) return { accept: false, reason: "source is on the do-not-fetch list" };
+  const ended = Date.parse(rec.auction_end || rec.auction_start || "");
+  if (Number.isFinite(ended) && Date.now() - ended > STALE_MS) return { accept: false, reason: "auction ended more than 14 days ago" };
   return { accept: true };
 }
 
@@ -250,14 +254,18 @@ export function auctionJoin(csv: string): Map<string, { start: string; emd: stri
   return out;
 }
 
+/** Auctions that ended long ago are not imported as new listings (same rule as the built-in crawler). */
+const STALE_MS = 14 * 864e5;
+
 /** Rows of a tab -> listings, with the reasons rows were left out. Pure: no database. */
 export function recordsFromRows(rows: string[][], layout: KnownLayout, from: number, to: number, join: Map<string, { start: string; emd: string; method: string }> | null = null) {
   const records: ListingRecord[] = [];
   const left: Record<string, number> = {};
   const data = rows.slice(1);
   for (let i = from; i < Math.min(to, data.length); i++) {
-    const rec = rowToRecord(data[i], layout.mapping);
-    const v = judgeRow(layout, data[i], rec);
+    const row = data[i];
+    const rec = layout.kind === "raw_source" ? richRecordFromRow(row, (name) => String(row[layout.index[norm(name)]] ?? "").trim()) : rowToRecord(row, layout.mapping);
+    const v = judgeRow(layout, row, rec);
     if (v.accept && rec && join) {
       const j = join.get(String(data[i][layout.index.propertyid] ?? "").trim());
       if (j) { rec.auction_start ||= j.start; rec.emd ||= j.emd; rec.auction_method ||= j.method; }
@@ -281,7 +289,7 @@ export async function importTabular(
   const base = { created: 0, skipped: 0, failed: 0, tokens: 0, usedAi: false };
   const deadline = Date.now() + (opts.budgetMs ?? 90_000);
 
-  if (!opts.force && prev.hash === hash) return { ...base, unchanged: true, state: prev };
+  if (!opts.force && prev.hash === hash && (prev.mapKey !== "layout" || prev.ver === IMPORT_VERSION)) return { ...base, unchanged: true, state: prev };
 
   const rows = parseCsv(text);
   if (rows.length < 2) return { ...base, skippedReason: "empty tab", state: { ...prev, hash } };
@@ -304,17 +312,17 @@ export async function importTabular(
     layout.typeIndex = layout.index.rawpropertytype ?? layout.index.propertytype ?? layout.index.assettype ?? layout.index.category;
     const join = layout.kind === "properties" && opts.auctionsCsv ? auctionJoin(opts.auctionsCsv) : null;
     const total = rows.length - 1;
-    let cursor = prev.mapKey === "layout" && typeof prev.done === "number" && prev.done <= total ? prev.done : 0;
+    let cursor = prev.mapKey === "layout" && prev.ver === IMPORT_VERSION && typeof prev.done === "number" && prev.done <= total ? prev.done : 0;
     const leftAll: Record<string, number> = {};
-    let acc: ImportResult = { created: 0, skipped: 0, failed: 0 };
+    let acc: ImportResult = { created: 0, skipped: 0, failed: 0, updated: 0 };
     const STEP = MAX_ROWS;
     while (cursor < total && Date.now() < deadline) {
       const to = Math.min(cursor + STEP, total);
       const { records, left } = recordsFromRows(rows, layout, cursor, to, join);
       for (const [k, n] of Object.entries(left)) leftAll[k] = (leftAll[k] ?? 0) + n;
       if (records.length) {
-        const r = await importRecords(records, statusSource, "PUBLISHED", opts.sourceUrl);
-        acc = { created: acc.created + r.created, skipped: acc.skipped + r.skipped, failed: acc.failed + r.failed };
+        const r = await importRecords(records, statusSource, "PUBLISHED", opts.sourceUrl, { enrich: layout.kind === "raw_source" });
+        acc = { created: acc.created + r.created, skipped: acc.skipped + r.skipped, failed: acc.failed + r.failed, updated: (acc.updated ?? 0) + (r.updated ?? 0) };
       }
       cursor = to;
     }
@@ -324,7 +332,7 @@ export async function importTabular(
       ...acc,
       remaining: total - cursor,
       notes: describeLeft(leftAll),
-      state: { hash: complete ? hash : undefined, mapKey: "layout", done: cursor },
+      state: { hash: complete ? hash : undefined, mapKey: "layout", done: cursor, ver: IMPORT_VERSION },
     };
   }
 

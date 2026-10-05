@@ -1,6 +1,7 @@
-import { PropertyCategory, PropertyStatus } from "@prisma/client";
+import { PropertyCategory, PropertyStatus, type DocumentType } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { slugify } from "@/lib/normalization/parsers";
+import { deriveAuctionStatusFromDates } from "@/lib/domain/deriveAuctionStatus";
 
 /** Vehicles (cars, bikes, trucks, tractors …) are out of scope for this site. */
 export function isVehicleListing(title: string, category?: string | null): boolean {
@@ -17,8 +18,9 @@ export const MAX_ROWS = 500;
 
 export interface ImportResult {
   created: number;
-  skipped: number;
+  skipped: number; // already on the site (duplicates)
   failed: number;
+  updated?: number; // of those, listings whose missing details were filled in or corrected
   error?: "header";
 }
 
@@ -85,17 +87,177 @@ function sameDay(a: Date, b: Date) {
   return a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
 }
 
-interface Known { tokens: Set<string>; reserve: number | null; start: Date | null }
+interface Known { tokens: Set<string>; reserve: number | null; start: Date | null; auctionId: string; propertyId: string; ext: string | null }
+
+/** Source times are Indian Standard Time. A time written without an offset is IST, never "whatever the server's zone is". */
+export function parseListingDate(s: string | undefined): Date | null {
+  const t = String(s ?? "").trim();
+  if (!t) return null;
+  const withZone = /(Z|[+-]\d{2}:?\d{2})$/.test(t) ? t : /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(t) ? `${t.length === 16 ? t + ":00" : t}+05:30` : /^\d{4}-\d{2}-\d{2}$/.test(t) ? `${t}T11:00:00+05:30` : t;
+  const d = new Date(withZone);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+const money = (v: string | undefined): number | null => {
+  const n = Number(String(v ?? "").replace(/[₹,\s]/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+const yn = (v: string | undefined): boolean | null => (v === "yes" ? true : v === "no" ? false : null);
+
+type Doc = { type: string; title: string; url: string };
+const docsOf = (rec: ListingRecord): Doc[] => {
+  try {
+    const list = JSON.parse(rec.documents ?? "[]") as Doc[];
+    return Array.isArray(list) ? list.filter((d) => d && /^https?:\/\//i.test(d.url)) : [];
+  } catch {
+    return [];
+  }
+};
+
+async function attachDocuments(propertyId: string, docs: Doc[]): Promise<boolean> {
+  let added = false;
+  for (const d of docs.slice(0, 12)) {
+    const document = await prisma.document.upsert({
+      where: { sourceUrl: d.url },
+      update: {},
+      create: { sourceUrl: d.url, title: d.title?.slice(0, 120) || null, type: (DOC_TYPES.includes(d.type) ? d.type : "OTHER") as DocumentType },
+    });
+    const had = await prisma.propertyDocument.findUnique({ where: { propertyId_documentId: { propertyId, documentId: document.id } } });
+    if (!had) {
+      await prisma.propertyDocument.create({ data: { propertyId, documentId: document.id } });
+      added = true;
+    }
+  }
+  return added;
+}
+
+const DOC_TYPES = ["SALE_NOTICE", "AUCTION_NOTICE", "SALE_PROCLAMATION", "BID_FORM", "TERMS_AND_CONDITIONS", "PROPERTY_SCHEDULE", "POSSESSION_NOTICE", "DEMAND_NOTICE", "CORRIGENDUM", "INSPECTION_NOTICE", "APPLICATION_FORM", "OTHER"];
+
+/** The auction columns a listing can fill (everything beyond title, bank and price). */
+function auctionExtras(rec: ListingRecord) {
+  const start = parseListingDate(rec.auction_start);
+  const end = parseListingDate(rec.auction_end);
+  return {
+    externalAuctionId: rec.external_id || null,
+    noticeNumber: rec.notice_number || null,
+    auctionType: rec.auction_type || null,
+    authorizedOfficer: rec.officer_name || null,
+    officerPhone: rec.officer_phone || null,
+    officerEmail: rec.officer_email || null,
+    minimumIncrement: money(rec.minimum_increment),
+    auctionEnd: end,
+    applicationDeadline: parseListingDate(rec.application_deadline),
+    inspectionDate: parseListingDate(rec.inspection_date),
+    inspectionTime: rec.inspection_time || null,
+    inspectionContact: rec.inspection_text || null,
+    dscRequired: yn(rec.dsc_required),
+    acceptReserveAsFirstBid: yn(rec.accept_reserve_first),
+    autoExtension: yn(rec.auto_extension),
+    extensionDurationMins: rec.extension_mins ? Number(rec.extension_mins) || null : null,
+    extensionTrigger: rec.extension_trigger || null,
+    status: deriveAuctionStatusFromDates(start, end),
+  };
+}
+
+/**
+ * A listing that is already on the site: fill what is missing from the richer source and correct what is clearly wrong.
+ *  - empty fields are filled; existing values are kept
+ *  - a price/EMD that lost its unit ("₹2.51" for 2,51,000) is corrected
+ *  - for auctions this same feed created: times (shifted by the old time-zone bug) and the status are corrected too
+ *  - an address that still carries a "[Open in Google Maps →](…)" link is cleaned
+ */
+async function enrichExisting(hit: Known, rec: ListingRecord, statusSource: string): Promise<boolean> {
+  const [a, p] = await Promise.all([
+    prisma.auction.findUnique({ where: { id: hit.auctionId } }),
+    prisma.property.findUnique({ where: { id: hit.propertyId }, select: { addressText: true, latitude: true, longitude: true, description: true, attributes: { select: { key: true } } } }),
+  ]);
+  if (!a || !p) return false;
+  // A different listing id is a different auction round of a similar-looking property: never mix its details in.
+  if (rec.external_id && a.externalAuctionId && rec.external_id !== a.externalAuctionId) return false;
+  let changed = false;
+  const mine = a.statusSource === statusSource;
+  const x = auctionExtras(rec);
+  const data: Record<string, unknown> = {};
+  const fill = (key: keyof typeof x, cur: unknown) => {
+    const v = x[key];
+    if (v !== null && v !== undefined && v !== "" && (cur === null || cur === undefined || cur === "")) data[key] = v;
+  };
+  fill("externalAuctionId", a.externalAuctionId);
+  fill("noticeNumber", a.noticeNumber);
+  fill("auctionType", a.auctionType);
+  fill("authorizedOfficer", a.authorizedOfficer);
+  fill("officerPhone", a.officerPhone);
+  fill("officerEmail", a.officerEmail);
+  fill("minimumIncrement", a.minimumIncrement);
+  fill("auctionEnd", a.auctionEnd);
+  fill("applicationDeadline", a.applicationDeadline);
+  fill("inspectionDate", a.inspectionDate);
+  fill("inspectionTime", a.inspectionTime);
+  fill("inspectionContact", a.inspectionContact);
+  fill("dscRequired", a.dscRequired);
+  fill("acceptReserveAsFirstBid", a.acceptReserveAsFirstBid);
+  fill("autoExtension", a.autoExtension);
+  fill("extensionDurationMins", a.extensionDurationMins);
+  fill("extensionTrigger", a.extensionTrigger);
+  if (rec.auction_method && !a.auctionMethod) data.auctionMethod = rec.auction_method;
+  if (rec.borrower && !a.borrower) data.borrower = rec.borrower;
+  if (rec.possession_status && !a.possessionStatus) data.possessionStatus = rec.possession_status;
+  const reserve = money(rec.reserve_price);
+  const emd = money(rec.emd);
+  if (reserve && (!a.reservePrice || (Number(a.reservePrice) < 1000 && reserve >= Number(a.reservePrice) * 100))) data.reservePrice = reserve;
+  if (emd && (!a.emd || (Number(a.emd) < 1000 && emd >= Number(a.emd) * 100))) data.emd = emd;
+  if (mine) {
+    const start = parseListingDate(rec.auction_start);
+    const same = (u: Date | null | undefined, v: Date | null | undefined) => (u ? u.getTime() : null) === (v ? v.getTime() : null);
+    if (start && !same(a.auctionStart, start)) data.auctionStart = start;
+    if (x.auctionEnd && !same(a.auctionEnd, x.auctionEnd)) data.auctionEnd = x.auctionEnd;
+    const status = deriveAuctionStatusFromDates(start ?? a.auctionStart, x.auctionEnd ?? a.auctionEnd);
+    if (status !== a.status) data.status = status;
+  } else if (!a.auctionStart) {
+    const start = parseListingDate(rec.auction_start);
+    if (start) data.auctionStart = start;
+  }
+  if (Object.keys(data).length) {
+    await prisma.auction.update({ where: { id: a.id }, data });
+    changed = true;
+  }
+
+  const pdata: Record<string, unknown> = {};
+  const place = rec.location?.trim();
+  if (place && (!p.addressText || /\]\(|google maps/i.test(p.addressText))) pdata.addressText = place;
+  if (rec.latitude && rec.longitude && p.latitude === null && p.longitude === null) {
+    pdata.latitude = Number(rec.latitude);
+    pdata.longitude = Number(rec.longitude);
+  }
+  if (rec.description && !p.description) pdata.description = rec.description;
+  if (Object.keys(pdata).length) {
+    await prisma.property.update({ where: { id: hit.propertyId }, data: pdata });
+    changed = true;
+  }
+  const have = new Set(p.attributes.map((t) => t.key));
+  if (rec.legal_schedule && !have.has("legal_schedule")) {
+    await prisma.propertyAttribute.create({ data: { propertyId: hit.propertyId, key: "legal_schedule", value: rec.legal_schedule } });
+    changed = true;
+  }
+  if (rec.source_property_type && !have.has("source_property_type")) {
+    await prisma.propertyAttribute.create({ data: { propertyId: hit.propertyId, key: "source_property_type", value: rec.source_property_type } });
+    changed = true;
+  }
+  if (await attachDocuments(hit.propertyId, docsOf(rec))) changed = true;
+  return changed;
+}
 
 export async function importRecords(
   records: ListingRecord[],
   statusSource: string,
   propertyStatus: PropertyStatus,
   sourceUrl?: string,
+  opts: { enrich?: boolean } = {},
 ): Promise<ImportResult> {
   let created = 0;
   let skipped = 0;
   let failed = 0;
+  let updated = 0;
   // Existing listings per bank (loaded once per run), extended as new ones are created,
   // so duplicates inside the same batch and across sources are both caught.
   const knownByBank = new Map<string, Known[]>();
@@ -105,18 +267,22 @@ export async function importRecords(
     if (!list) {
       const rows = await prisma.auction.findMany({
         where: { bankId },
-        select: { reservePrice: true, auctionStart: true, property: { select: { title: true } } },
+        select: { id: true, propertyId: true, externalAuctionId: true, reservePrice: true, auctionStart: true, property: { select: { title: true } } },
         take: 20000,
       });
       list = rows.map((r) => ({
         tokens: tokens(r.property.title),
         reserve: r.reservePrice ? Number(r.reservePrice) : null,
         start: r.auctionStart,
+        auctionId: r.id,
+        propertyId: r.propertyId,
+        ext: r.externalAuctionId,
       }));
       knownByBank.set(key, list);
     }
     return list;
   }
+  const branchIds = new Map<string, string>();
 
   for (const rec of records.slice(0, MAX_ROWS)) {
     const col = (name: string) => String(rec[name] ?? "").trim();
@@ -133,28 +299,41 @@ export async function importRecords(
         : null;
 
       const reservePrice = Number(col("reserve_price").replace(/[₹,\s]/g, ""));
-      const startDate = col("auction_start") ? new Date(col("auction_start")) : null;
-      const validStart = startDate && !isNaN(startDate.getTime()) ? startDate : null;
+      const validStart = parseListingDate(col("auction_start"));
       const titleTokens = tokens(title);
 
       const list = await known(bank?.id ?? null);
-      const isDup = list.some(
-        (k) =>
-          similar(titleTokens, k.tokens) ||
-          // Same bank, same reserve price, same auction day = same property even if titled differently.
-          (reservePrice > 0 && k.reserve === reservePrice && !!validStart && !!k.start && sameDay(validStart, k.start)) ||
-          // Same bank and the very same reserve price with a clearly overlapping title: the AI sometimes words a
-          // title differently from one run to the next, and many pages carry no auction date to compare.
-          (reservePrice > 0 && k.reserve === reservePrice && overlap(titleTokens, k.tokens) >= 0.4),
-      );
-      if (isDup) { skipped++; continue; }
-      list.push({ tokens: titleTokens, reserve: reservePrice > 0 ? reservePrice : null, start: validStart });
+      // The source's own listing id is the surest match (the built-in crawler stores the same id).
+      const sameId = opts.enrich && col("external_id") ? list.find((k) => k.ext === col("external_id")) : undefined;
+      const hit =
+        sameId ??
+        list.find(
+          (k) =>
+            similar(titleTokens, k.tokens) ||
+            // Same bank, same reserve price, same auction day = same property even if titled differently.
+            (reservePrice > 0 && k.reserve === reservePrice && !!validStart && !!k.start && sameDay(validStart, k.start)) ||
+            // Same bank and the very same reserve price with a clearly overlapping title: the AI sometimes words a
+            // title differently from one run to the next, and many pages carry no auction date to compare.
+            (reservePrice > 0 && k.reserve === reservePrice && overlap(titleTokens, k.tokens) >= 0.4),
+        );
+      if (hit) {
+        if (opts.enrich && (await enrichExisting(hit, rec, statusSource))) updated++;
+        skipped++;
+        continue;
+      }
 
       const base = slugify(title);
       const slug = (await prisma.property.findUnique({ where: { slug: base } })) ? `${base}-${Date.now()}-${created}` : base;
       const catRaw = col("category").toUpperCase().replace(/[ &]+/g, "_");
       const category = CATEGORIES.includes(catRaw) ? (catRaw as PropertyCategory) : undefined;
       const emd = Number(col("emd").replace(/[₹,\s]/g, ""));
+
+      let branchId: string | undefined;
+      if (bank && col("branch")) {
+        const key = `${bank.id}|${col("branch")}`;
+        branchId = branchIds.get(key) ?? (await prisma.bankBranch.upsert({ where: { bankId_name: { bankId: bank.id, name: col("branch") } }, update: {}, create: { bankId: bank.id, name: col("branch") } })).id;
+        branchIds.set(key, branchId);
+      }
 
       const property = await prisma.property.create({
         data: {
@@ -163,28 +342,38 @@ export async function importRecords(
           category,
           description: col("description") || null,
           addressText: col("location") || null,
+          latitude: col("latitude") ? Number(col("latitude")) : undefined,
+          longitude: col("longitude") ? Number(col("longitude")) : undefined,
           status: propertyStatus,
         },
       });
-      await prisma.auction.create({
+      const extras = auctionExtras(rec);
+      const auction = await prisma.auction.create({
         data: {
           propertyId: property.id,
           bankId: bank?.id,
+          branchId,
           borrower: col("borrower") || null,
           reservePrice: reservePrice > 0 ? reservePrice : undefined,
           emd: emd > 0 ? emd : undefined,
           auctionStart: validStart ?? undefined,
           auctionMethod: col("auction_method") || null,
           possessionStatus: col("possession_status") || null,
-          status: "UPCOMING",
+          ...extras,
+          // Feeds that carry no end date keep the old behaviour (upcoming); with dates the status follows them.
+          status: validStart || extras.auctionEnd ? deriveAuctionStatusFromDates(validStart, extras.auctionEnd) : "UPCOMING",
           statusSource,
           sourceUrl: col("source_url") || sourceUrl || null,
         },
       });
+      if (col("legal_schedule")) await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "legal_schedule", value: col("legal_schedule") } });
+      if (col("source_property_type")) await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "source_property_type", value: col("source_property_type") } });
+      await attachDocuments(property.id, docsOf(rec));
+      list.push({ tokens: titleTokens, reserve: reservePrice > 0 ? reservePrice : null, start: validStart, auctionId: auction.id, propertyId: property.id, ext: col("external_id") || null });
       created++;
     } catch {
       failed++;
     }
   }
-  return { created, skipped, failed };
+  return { created, skipped, failed, updated };
 }

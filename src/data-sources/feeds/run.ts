@@ -37,8 +37,9 @@ export function toCsvUrl(url: string): string {
   return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv${gid ? `&gid=${gid}` : ""}`;
 }
 
-function describe(out: Pick<ImportResult, "created" | "skipped" | "failed">) {
-  return `${out.created} new, ${out.skipped} duplicate skipped, ${out.failed} rejected`;
+function describe(out: Pick<ImportResult, "created" | "skipped" | "failed"> & { updated?: number }) {
+  const dup = out.updated ? `${out.skipped} already on the site (${out.updated} of them updated with missing details)` : `${out.skipped} duplicate skipped`;
+  return `${out.created} new, ${dup}, ${out.failed} rejected`;
 }
 
 const safeJson = (s: string | null | undefined): { tabs?: Record<string, unknown> } | null => {
@@ -61,9 +62,10 @@ async function runSheet(sheetState: string | null, feedName: string, url: string
   // One run never exceeds its time budget; a big tab continues from its saved cursor on the next run.
   const deadline = Date.now() + (trigger === "manual" ? 240_000 : 100_000);
 
-  const total = { created: 0, skipped: 0, failed: 0 };
+  const total = { created: 0, skipped: 0, failed: 0, updated: 0 };
   const lines: string[] = [];
   const notProperty: string[] = [];
+  let emptyTabs = 0;
   let tokens = 0;
   let changedTabs = 0;
   let errors = 0;
@@ -75,10 +77,12 @@ async function runSheet(sheetState: string | null, feedName: string, url: string
       tokens += r.tokens;
       if (r.unchanged) continue;
       if (r.skippedReason && /not a property list/i.test(r.skippedReason)) { notProperty.push(tab.name); continue; }
+      if (r.skippedReason === "empty tab") { emptyTabs++; continue; }
       changedTabs++;
       total.created += r.created;
       total.skipped += r.skipped;
       total.failed += r.failed;
+      total.updated += r.updated ?? 0;
       const more = r.remaining ? `; ${r.remaining.toLocaleString("en-IN")} row(s) continue on the next run` : "";
       const left = r.notes ? `; left out: ${r.notes}` : "";
       lines.push(`${tab.name}: ${r.skippedReason ? `skipped (${r.skippedReason})` : describe(r)}${left}${more}`);
@@ -93,7 +97,7 @@ async function runSheet(sheetState: string | null, feedName: string, url: string
   const unchanged = changedTabs === 0 && errors === 0;
   const message = unchanged
     ? `No changes in any of the ${tabs.length} tab(s) (checked automatically).`
-    : `${tabs.length} tab(s) read — ${describe(total)}. ${lines.join(" | ")}${notProperty.length ? ` | ${notProperty.length} other tab(s) are not property lists and were left alone` : ""}${tokens ? ` (${tokens} AI tokens)` : " (no AI tokens)"}`;
+    : `${tabs.length} tab(s) read — ${describe(total)}. ${lines.join(" | ")}${emptyTabs + notProperty.length ? ` | ${emptyTabs + notProperty.length} other tab(s) left alone (${emptyTabs} empty, ${notProperty.length} not property lists)` : ""}${tokens ? ` (${tokens} AI tokens)` : " (no AI tokens)"}`;
   return { stats: total, tokens, unchanged, message, stateJson: JSON.stringify({ tabs: state }) };
 }
 
