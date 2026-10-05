@@ -341,7 +341,7 @@ export interface WebState {
 export function webStateOf(raw: string | null | undefined): WebState {
   try {
     const w = (raw ? JSON.parse(raw) : null)?.web;
-    return { seen: Array.isArray(w?.seen) ? w.seen.filter((s: unknown): s is string => typeof s === "string") : [], lastAt: typeof w?.lastAt === "string" ? w.lastAt : null, importAll: w?.importAll === true, verified: Array.isArray(w?.verified) ? w.verified.filter((x: unknown): x is string => typeof x === "string") : [] };
+    return { seen: Array.isArray(w?.seen) ? w.seen.filter((s: unknown): s is string => typeof s === "string") : [], lastAt: typeof w?.lastAt === "string" ? w.lastAt : null, importAll: w?.importAll === true, baanknetPage: typeof w?.baanknetPage === "number" ? w.baanknetPage : undefined, baanknetTotalPages: typeof w?.baanknetTotalPages === "number" ? w.baanknetTotalPages : undefined, verified: Array.isArray(w?.verified) ? w.verified.filter((x: unknown): x is string => typeof x === "string") : [] };
   } catch {
     return { seen: [], lastAt: null };
   }
