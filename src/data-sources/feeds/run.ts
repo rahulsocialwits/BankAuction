@@ -7,7 +7,7 @@ import { enrichLocations } from "@/lib/pipeline/geo";
 import { importTabular, type TabState } from "@/lib/import/tabular";
 import { fetchTabCsv, listSheetTabs, sheetIdFromUrl } from "./sheets";
 import { acquireAiLock, aiWindow, releaseAiLock } from "@/lib/pipeline/aiSchedule";
-import { isBlockedHost } from "./blockedHosts";
+import { BLOCKED_HOSTS, isBlockedHost } from "./blockedHosts";
 import { DEEP_MAX_LISTINGS, makeDeepener } from "./deepScan";
 import { scanSiteForNew, webStateOf, withWebState } from "./siteScan";
 
@@ -32,7 +32,8 @@ export function validateFeedUrl(raw: string): { ok: true; url: string } | { ok: 
   try { u = new URL(raw.trim()); } catch { return { ok: false, reason: "Invalid URL" }; }
   if (u.protocol !== "https:") return { ok: false, reason: "Only https links are allowed" };
   if (isBlockedHost(u.hostname)) {
-    return { ok: false, reason: BLOCKED_REASON };
+    // A policy decision of this project (not a technical error): these hosts are never fetched. Say so, and say what IS allowed.
+    return { ok: false, reason: `${u.hostname} is on this project's do-not-fetch list (${BLOCKED_HOSTS.join(", ")}): its terms do not allow copying, so it can never be added as a source. Allowed instead: the bank's own public notices, a PDF / CSV / Google Sheet you supply, pasted text, or an authorised partner / API feed.` };
   }
   return { ok: true, url: u.toString() };
 }
