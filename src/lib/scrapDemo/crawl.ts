@@ -100,14 +100,19 @@ export interface Fetched {
   status: number;
   contentType: string;
   html: string;
+  ms: number;
+  redirects: number;
 }
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class Crawler {
   requests = 0;
   readonly host: string;
   private robots = new Map<string, RobotsEntry>();
+  private sitemapsByOrigin = new Map<string, string[]>();
   private checkedHosts = new Set<string>();
-  private lastAt = 0;
+  private nextSlot = 0;
 
   constructor(
     startUrl: string,
@@ -117,17 +122,28 @@ export class Crawler {
     this.host = siteOf(new URL(startUrl).hostname);
   }
 
+  /** Same site as the start page (www. and the bare domain count as one). Pages are only ever fetched from here. */
   sameSite(url: string): boolean {
     try { return siteOf(new URL(url).hostname) === this.host; } catch { return false; }
   }
 
-  private async pause() {
-    const wait = this.lastAt + PAUSE_MS - Date.now();
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    this.lastAt = Date.now();
+  /** The site or one of its sub-domains. Used for the data requests a rendered page makes, never for crawling pages. */
+  sameFamily(url: string): boolean {
+    try { const h = siteOf(new URL(url).hostname); return h === this.host || h.endsWith("." + this.host); } catch { return false; }
   }
 
-  private budget() {
+  timeLeft(): number { return this.deadline - Date.now(); }
+
+  /** Requests are spaced out even when several run side by side. */
+  private async slot() {
+    const now = Date.now();
+    const at = Math.max(now, this.nextSlot);
+    this.nextSlot = at + PAUSE_MS;
+    if (at > now) await sleep(at - now);
+  }
+
+  /** Counts one request against the budget and the time limit. The browser renderer uses this too. */
+  consume() {
     if (this.requests >= this.maxRequests) throw new Failed(`request budget reached (${this.maxRequests})`);
     if (Date.now() > this.deadline) throw new Failed("time limit reached");
     this.requests++;
@@ -144,7 +160,11 @@ export class Crawler {
         if (res.status === 401 || res.status === 403) entry = { kind: "disallowed" };
         else if (res.status >= 400 && res.status < 500) entry = { kind: "rules", groups: [] };
         else if (!res.ok) entry = { kind: "unreachable" };
-        else entry = { kind: "rules", groups: parseRobots(await res.text()) };
+        else {
+          const body = await res.text();
+          entry = { kind: "rules", groups: parseRobots(body) };
+          this.sitemapsByOrigin.set(u.origin, [...body.matchAll(/^\s*sitemap\s*:\s*(\S+)/gim)].map((m) => m[1]).slice(0, 8));
+        }
       } catch {
         entry = { kind: "unreachable" };
       }
@@ -155,19 +175,25 @@ export class Crawler {
     return pathAllowed(entry.groups, u.pathname + u.search) ? "allowed" : "disallowed";
   }
 
+  /** Sitemap addresses the site itself declares in robots.txt (after robotsFor ran for that site). */
+  declaredSitemaps(origin: string): string[] {
+    return this.sitemapsByOrigin.get(origin) ?? [];
+  }
+
   /** One page, with every protection check. Follows up to 3 redirects, only within the same site. */
   async page(startUrl: string): Promise<Fetched> {
     let url = startUrl;
+    const t0 = Date.now();
     for (let hop = 0; hop < 4; hop++) {
       const u = new URL(url);
       if (u.protocol !== "https:") throw new Failed("only https addresses are used in the demo");
       if (!this.sameSite(url)) throw new Failed(`outside the site (${u.hostname}); the demo stays on one domain`);
       const verdict = await this.robotsFor(url);
       if (verdict === "disallowed") throw new Refused(`robots.txt: ${u.hostname} does not allow our crawler on ${u.pathname || "/"} (or robots.txt itself answers 401/403). The page was not requested.`);
-      if (verdict === "unreachable") throw new Failed(`${u.hostname}/robots.txt did not answer properly (timeout, network error or 5xx); no page request was made`);
+      if (verdict === "unreachable") throw new Failed(`${u.hostname}/robots.txt request got no reply from the site (15 s). Some sites silently ignore automated requests; that is the site's own choice and the demo never works around it. No page request was made. Try again later, or use pasted text, a PDF or an authorised feed.`);
 
-      this.budget();
-      await this.pause();
+      this.consume();
+      await this.slot();
       let res: Response;
       try {
         res = await fetch(u, { headers: { "User-Agent": UA, Accept: "text/html,text/plain" }, redirect: "manual", signal: AbortSignal.timeout(20_000) });
@@ -194,9 +220,24 @@ export class Crawler {
       if (!/text\/(html|plain)|xhtml/i.test(contentType)) throw new Failed(`content type "${contentType || "unknown"}" is not a web page`);
       const html = (await res.text()).slice(0, MAX_BYTES);
       if (CHALLENGE.test(htmlToText(html).slice(0, 3000)) && html.length < 8000) throw new Refused(`protected access: HTTP ${status} but the page is a challenge or access-denied screen`);
-      return { url, status, contentType, html };
+      return { url, status, contentType, html, ms: Date.now() - t0, redirects: hop };
     }
     throw new Failed("too many redirects");
+  }
+
+  /** A sitemap (XML) from this site: robots-checked, one request, no gzip. Returns null if it is not available. */
+  async xml(url: string): Promise<string | null> {
+    try {
+      if (!this.sameSite(url) || /\.gz(\?|$)/i.test(url)) return null;
+      if ((await this.robotsFor(url)) !== "allowed") return null;
+      this.consume();
+      await this.slot();
+      const res = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/xml,text/xml,*/*" }, redirect: "follow", signal: AbortSignal.timeout(15_000) });
+      if (!res.ok || !this.sameSite(res.url)) return null;
+      return (await res.text()).slice(0, 2_000_000);
+    } catch {
+      return null;
+    }
   }
 
   /** Only asks a document's own server for its type and size (HEAD). Same site only; robots checked. */
@@ -204,8 +245,8 @@ export class Crawler {
     try {
       if (!this.sameSite(url)) return { check: "listed only", mime: null, sizeBytes: null, date: null };
       if ((await this.robotsFor(url)) !== "allowed") return { check: "REFUSED", mime: null, sizeBytes: null, date: null };
-      this.budget();
-      await this.pause();
+      this.consume();
+      await this.slot();
       const res = await fetch(url, { method: "HEAD", headers: { "User-Agent": UA }, redirect: "manual", signal: AbortSignal.timeout(12_000) });
       if (res.status === 401 || res.status === 403 || res.status === 429) return { check: "REFUSED", mime: null, sizeBytes: null, date: null };
       if (!res.ok) return { check: "unreachable", mime: null, sizeBytes: null, date: null };

@@ -2,39 +2,21 @@ import { prisma } from "@/lib/db/prisma";
 import { MOCK_FIELDS, SAMPLE_NOTICE } from "./sample";
 import { FIELDS, REQUIRED_KEYS } from "./fields";
 import { extractProperty, verify, type SourceText } from "./extract";
-import {
-  Crawler,
-  Failed,
-  Refused,
-  docType,
-  extractDocuments,
-  extractImages,
-  extractJsonLd,
-  extractLinks,
-  extractMap,
-  htmlToText,
-  isDetailCandidate,
-  listingScore,
-  looksLikeProperty,
-  pageTitle,
-  relatedLinks,
-  toCandidates,
-  type Fetched,
-  type RawLink,
-} from "./crawl";
-import type { Candidate, DemoResult, DemoSourceType, DemoStep, DocRef, FieldValue, ImageRef, LinkRef, PageRef, StepState } from "./types";
+import { Crawler, Failed, Refused } from "./crawl";
+import { BrowserRenderer } from "./browser";
+import { PageLoader, VEHICLE, explain, scanSite, selectProperty, type ScanOutput } from "./scan";
+import { deepScan, type DeepOutput } from "./deep";
+import { guessKind } from "./detect";
+import { DEFAULT_SETTINGS, type ScanSettings } from "./settings";
+import type { CandidateDiag, DemoResult, DemoSourceType, DemoStep, FieldValue, StepState } from "./types";
 
 /*
- * AI Python Scrap — DEMO (isolated): finds ONE property on a permitted public website and collects it in depth.
- * Read-only use of existing code: the Relay client + AI rules (via extract.ts), the demo robots gate (own copy), and a
- * read-only Property lookup for the duplicate warning. Nothing is written anywhere.
+ * AI Python Scrap — DEMO (isolated): scans a permitted public website, finds ONE property, collects it in depth.
+ * Read-only use of existing code: the Relay client + AI rules (via extract.ts) and a read-only Property lookup for the
+ * duplicate warning. Nothing is written anywhere.
  */
 
-const VEHICLE = /\b(vehicle|car|cars|bike|motorcycle|scooter|truck|tractor|two[- ]wheeler|four[- ]wheeler|innova|machinery)\b/i;
-const MAX_REQUESTS = 22;
-const MAX_LISTING_PAGES = 3;
-const MAX_TRIES = 4;
-const TIME_LIMIT_MS = 45_000;
+const MAX_TEXT = 200_000;
 
 // DEMO-ONLY deny-list. It is empty on purpose: the demo performs the normal access checks and shows the site's real answer.
 // (The production pipeline keeps its own, separate list; nothing here changes it.)
@@ -66,19 +48,37 @@ async function duplicateOf(title: string | null, price: number | null): Promise<
 
 const dateOk = (v: string) => /\d{1,2}[-/. ]\d{1,2}[-/. ]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}(st|nd|rd|th)?\s+[A-Za-z]{3,9},?\s+\d{4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}/.test(v);
 
-export async function runDemo(input: { name: string; type: DemoSourceType; url: string; pasted: string; mock: boolean }): Promise<DemoResult> {
+export interface DemoInput {
+  name: string;
+  type: DemoSourceType;
+  url: string;
+  urls: string; // "diagnose" mode: one address per line
+  pasted: string;
+  mock: boolean;
+  settings: ScanSettings;
+}
+
+export async function runDemo(input: DemoInput): Promise<DemoResult> {
   const t0 = Date.now();
+  const settings = input.settings ?? DEFAULT_SETTINGS;
   const steps: DemoStep[] = [];
-  const startUrl = input.type === "url" ? input.url.trim() : null;
+  const startUrl = input.type === "url" ? input.url.trim() : input.type === "diagnose" ? input.urls.split(/\s+/).find(Boolean) ?? null : null;
   const result: DemoResult = {
     status: "FAILED",
     reason: null,
     durationMs: 0,
     source: { name: input.name || "Demo source", type: input.type, url: startUrl },
+    settings,
     steps,
-    access: { host: null, denyListMatch: null, robots: null, httpStatus: null, collection: input.type === "url" ? "NOT STARTED" : "n/a (not a URL source)" },
-    limits: { maxPages: MAX_REQUESTS, maxDepth: 2, sameDomainOnly: true, requestsMade: 0 },
-    discovery: { startUrl, pagesInspected: 0, linksSeen: 0, candidates: [], candidateTotal: 0, path: [], selected: null },
+    access: { host: null, denyListMatch: null, robots: null, httpStatus: null, collection: input.type === "url" || input.type === "diagnose" ? "NOT STARTED" : "n/a (not a URL source)" },
+    limits: { requestsMade: 0 },
+    scan: {
+      startUrl, domain: null, pagesDiscovered: 0, pagesScanned: 0, pagesSkipped: 0, pagesRefused: 0, pagesFailed: 0, propertyCandidates: 0, candidatesChecked: 0, listingPages: 0, paginationPages: 0,
+      documentsFound: 0, imagesFound: 0, sitemapUrls: 0, sitemapNote: "—", browser: { requested: settings.useBrowser, used: 0, status: "not needed so far" },
+    },
+    pages: [],
+    candidates: [],
+    discovery: { path: [], selected: null },
     collection: { pages: [], documents: [], images: [], links: [], refused: [] },
     extraction: { mode: "NONE", model: null, tokens: null },
     property: null,
@@ -99,200 +99,135 @@ export async function runDemo(input: { name: string; type: DemoSourceType; url: 
   }
 
   let crawler: Crawler | null = null;
+  let loader: PageLoader | null = null;
+  const renderer = new BrowserRenderer();
   try {
     steps.push({ state: "QUEUED", outcome: "done", ms: 0, note: "Demo run created in memory (nothing is stored)" });
 
-    // ---- what the property package holds --------------------------------------------------------------------------
-    let detail: { url: string; html: string; text: string; title: string | null } | null = null;
-    const pageSources: SourceText[] = [];
-    let documents: DocRef[] = [];
-    let images: ImageRef[] = [];
-    let links: LinkRef[] = [];
-    let jsonLd: string[] = [];
-    let geo: { mapUrl: string | null; lat: number | null; lng: number | null } = { mapUrl: null, lat: null, lng: null };
+    let sources: SourceText[] = [];
+    let deep: DeepOutput | null = null;
+    let detail: { url: string; html: string; text: string } | null = null;
 
-    if (input.type === "url") {
-      if (!startUrl) throw new Failed("Enter a source URL.");
+    if (input.type === "url" || input.type === "diagnose") {
+      if (!startUrl) throw new Failed("Enter a website address.");
       let start: URL;
       try { start = new URL(startUrl); } catch { throw new Failed("Not a valid web address. Use a full https:// address."); }
+      if (start.protocol !== "https:") throw new Failed("Only https addresses are used in the demo.");
       result.access.host = start.hostname;
       const listed = DEMO_DENY_LIST.find((h) => start.hostname === h || start.hostname.endsWith("." + h));
       result.access.denyListMatch = listed ?? null;
       if (listed) throw new Refused(`demo deny-list: "${start.hostname}" matches "${listed}". No request was sent.`);
+      result.scan.domain = start.hostname;
 
-      crawler = new Crawler(startUrl, MAX_REQUESTS, t0 + TIME_LIMIT_MS);
-      const pages: PageRef[] = result.collection.pages;
-      const seenPages = new Set<string>();
+      crawler = new Crawler(startUrl, settings.maxPages + settings.maxDeepPages + 40, t0 + settings.timeLimitSec * 1000);
+      loader = new PageLoader(crawler, renderer, settings);
+      const L = loader;
 
-      const load = async (url: string, label: string): Promise<Fetched | null> => {
-        if (seenPages.has(url)) return null;
-        seenPages.add(url);
-        try {
-          const p = await crawler!.page(url);
-          pages.push({ url: p.url, label, status: "COLLECTED", httpStatus: p.status, chars: p.html.length });
-          if (label === "Start page") { result.access.robots = "allowed"; result.access.httpStatus = p.status; result.access.collection = "COLLECTED"; }
-          return p;
-        } catch (e) {
-          const refused = e instanceof Refused;
-          const reason = e instanceof Error ? e.message : String(e);
-          pages.push({ url, label, status: refused ? "REFUSED" : "FAILED", httpStatus: null, chars: 0, note: reason });
-          if (refused) result.collection.refused.push({ url, reason });
-          if (label === "Start page") {
-            result.access.collection = refused ? "REFUSED" : "FAILED";
-            result.access.robots = /robots\.txt/i.test(reason) ? (refused ? "disallowed" : "unreachable") : "allowed";
-            throw refused ? new Refused(`REFUSED — ${reason}`) : new Failed(`FAILED — ${reason}`);
-          }
-          return null;
-        }
-      };
-
-      // ---- 1) DISCOVERING: start page → listing pages → property links ---------------------------------------------
-      const found = await step(
-        "DISCOVERING",
-        async () => {
-          const startPage = await load(startUrl, "Start page");
-          if (!startPage) throw new Failed("Start page could not be read.");
-          const all: RawLink[] = [];
-          const pathParts = ["Start page"];
-          const startLinks = extractLinks(startPage.html, startPage.url).filter((l) => crawler!.sameSite(l.url));
-          all.push(...startLinks);
-          let candidates = toCandidates(startLinks);
-
-          // The start page may itself be a property detail page.
-          const startIsProperty = looksLikeProperty(htmlToText(startPage.html)) && candidates.length === 0;
-          if (!startIsProperty && candidates.length < 3) {
-            const listing = startLinks.filter((l) => !isDetailCandidate(l) && listingScore(l) >= 2).sort((a, b) => listingScore(b) - listingScore(a)).slice(0, MAX_LISTING_PAGES);
-            for (const l of listing) {
-              const p = await load(l.url, "Listing / search page");
-              if (!p) continue;
-              const ls = extractLinks(p.html, p.url).filter((x) => crawler!.sameSite(x.url));
-              all.push(...ls);
-              const more = toCandidates(ls);
-              if (more.length) { candidates = [...candidates, ...more]; if (!pathParts.includes("Listing / search page")) pathParts.push("Listing / search page"); }
-              if (candidates.length >= 12) break;
+      // ---- Diagnose mode: a few given addresses, each measured and explained ---------------------------------------
+      if (input.type === "diagnose") {
+        const list = [...new Set(input.urls.split(/\s+/).filter(Boolean))].slice(0, 8);
+        const diag: CandidateDiag[] = [];
+        await step(
+          "SITE SCANNING",
+          async () => {
+            for (const u of list) {
+              let uu: URL;
+              try { uu = new URL(u); } catch { diag.push(failDiag(u, false, "not a valid address")); continue; }
+              if (!crawler!.sameSite(uu.toString())) { diag.push(failDiag(u, false, `outside the site (${uu.hostname}); one domain per diagnosis`)); continue; }
+              const r = await L.load(u, { depth: 1, kind: guessKind({ url: u, text: "" }), phase: "scan", allowRender: true });
+              if (!r.ok) { diag.push(failDiag(u, r.refused, r.reason)); continue; }
+              diag.push(diagFromLoad(u, r));
             }
-          }
-          const uniq = new Map<string, Candidate>();
-          for (const c of candidates) if (!uniq.has(c.url)) uniq.set(c.url, c);
-          return { startPage, candidates: [...uniq.values()].sort((a, b) => b.score - a.score), pathParts, linksSeen: new Set(all.map((l) => l.url)).size, startIsProperty };
-        },
-        (f) => `${pages.length} page(s) inspected, ${f.linksSeen} links seen, ${f.candidates.length} property link candidate(s)`,
-      );
-      result.discovery = {
-        startUrl,
-        pagesInspected: pages.filter((p) => p.status === "COLLECTED").length,
-        linksSeen: found.linksSeen,
-        candidates: found.candidates.slice(0, 10),
-        candidateTotal: found.candidates.length,
-        path: found.pathParts,
-        selected: null,
-      };
-      result.counts.propertiesDiscovered = found.startIsProperty ? 1 : found.candidates.length;
+            return diag.length;
+          },
+          (n) => `${n} address(es) measured, ${L.browserUsed} rendered in a browser`,
+        );
+        result.candidates = diag;
+        result.pages = L.rows;
+        result.scan.browser = { requested: settings.useBrowser, used: L.browserUsed, status: L.browserStatus };
+        result.scan.pagesScanned = L.rows.filter((r) => r.mode === "HTTP" || r.mode === "BROWSER").length;
+        result.scan.pagesRefused = L.rows.filter((r) => r.mode === "REFUSED").length;
+        result.scan.pagesFailed = L.rows.filter((r) => r.mode === "FAILED").length;
+        result.access.robots = "allowed";
+        result.access.collection = result.scan.pagesScanned ? "COLLECTED" : "FAILED";
+        result.limits.requestsMade = crawler.requests;
+        steps.push({ state: "REVIEW", outcome: "done", ms: 0, note: "Diagnosis only: no property is extracted in this mode." });
+        result.status = "COMPLETED";
+        return finish(result, t0, renderer, crawler, loader);
+      }
 
-      // ---- 2) SELECTING: exactly ONE valid property --------------------------------------------------------------
+      // ---- 1) SITE SCANNING ---------------------------------------------------------------------------------------
+      let scan: ScanOutput;
+      try {
+        scan = await step("SITE SCANNING", () => scanSite(startUrl, settings, L), (s) => `${s.summary.pagesScanned} page(s) scanned, ${s.summary.pagesDiscovered} address(es) discovered (stopped: ${s.stopReason})`);
+      } catch (e) {
+        const first = L.rows[0];
+        result.access.robots = e instanceof Error && /robots\.txt/i.test(e.message) ? (e instanceof Refused ? "disallowed" : "unreachable") : first ? "allowed" : null;
+        result.access.httpStatus = first?.httpStatus ?? null;
+        result.access.collection = e instanceof Refused ? "REFUSED" : "FAILED";
+        throw e;
+      }
+      const first = L.rows.find((r) => r.depth === 0);
+      result.access.robots = "allowed";
+      result.access.httpStatus = first?.httpStatus ?? null;
+      result.access.collection = "COLLECTED";
+      result.scan = scan.summary;
+      steps.push({ state: "DISCOVERING", outcome: "done", ms: 0, note: `Sitemap: ${scan.summary.sitemapNote}. ${scan.summary.listingPages} listing page(s), ${scan.summary.paginationPages} pagination page(s), ${scan.summary.documentsFound} document link(s), ${scan.summary.imagesFound} image(s) seen.` });
+      steps.push({ state: "PROPERTY CANDIDATES", outcome: "done", ms: 0, note: `${scan.summary.propertyCandidates} property/auction link(s) found; ${scan.summary.candidatesChecked} fetched and scored.` });
+      result.counts.propertiesDiscovered = scan.summary.propertyCandidates;
+
+      // ---- 2) SELECTING exactly ONE property -------------------------------------------------------------------------
+      const sel = selectProperty(scan);
+      for (const row of L.rows.filter((r) => (r.kind === "PROPERTY" || r.kind === "AUCTION") && (r.mode === "REFUSED" || r.mode === "FAILED"))) {
+        sel.diag.push(failDiag(row.url, row.mode === "REFUSED", row.reason));
+      }
+      result.candidates = sel.diag;
+      result.pages = L.rows;
       const chosen = await step(
         "SELECTING",
-        async () => {
-          if (found.startIsProperty) return { page: found.startPage, tries: 0, skipped: [] as string[] };
-          const skipped: string[] = [];
-          let tries = 0;
-          for (const c of found.candidates) {
-            if (tries >= MAX_TRIES) break;
-            tries++;
-            const p = await load(c.url, "Property detail page");
-            if (!p) { skipped.push(`${c.url}: could not be read`); continue; }
-            const text = htmlToText(p.html);
-            if (!looksLikeProperty(text)) { skipped.push(`${c.url}: does not look like a property page`); continue; }
-            if (VEHICLE.test(`${pageTitle(p.html) ?? ""} ${text.slice(0, 600)}`)) { skipped.push(`${c.url}: vehicle (never imported)`); continue; }
-            return { page: p, tries, skipped };
+        () => {
+          if (!sel.chosen) {
+            const best = [...scan.kept].sort((a, b) => b.load.det.score - a.load.det.score)[0];
+            throw new Failed(
+              `No property page could be confirmed (${scan.summary.candidatesChecked} candidate page(s) fetched and scored). ` +
+                (best ? `Best candidate: ${best.url} — score ${best.load.det.score}. ${explain(best.load)} ` : "") +
+                `Browser renderer: ${L.browserStatus}. See "Candidate diagnostics" and "Scan Debug" below.`,
+            );
           }
-          throw new Failed(`No valid property page found (${tries} candidate(s) tried${skipped.length ? `: ${skipped.slice(0, 3).join("; ")}` : ""}).`);
+          return sel.chosen;
         },
-        (c) => `Selected 1 property after ${c.tries || 1} try(ies); the others are ignored`,
+        (c) => `Selected 1 of ${scan.summary.propertyCandidates} candidate(s): score ${c.load.det.score} (${c.load.det.label})${sel.why ? `. ${sel.why}` : ""}`,
       );
-      const p = chosen.page;
-      const text = htmlToText(p.html);
-      detail = { url: p.url, html: p.html, text, title: pageTitle(p.html) };
-      result.discovery.selected = { title: detail.title, url: detail.url };
-      result.discovery.path = [...found.pathParts.filter((x) => x !== "Property detail page"), "Property detail"];
-      if (found.startIsProperty) result.discovery.path = ["Start page (is the property page)"];
+      result.discovery = { path: [...scan.path.slice(0, -1), "Property detail"], selected: { title: chosen.load.stats.h1 ?? chosen.load.stats.title, url: chosen.url, score: chosen.load.det.score, label: chosen.load.det.label } };
       result.counts.propertiesSelected = 1;
 
-      // ---- 3) COLLECTING: the same property's own pages, documents, images, links -------------------------------
-      await step(
-        "COLLECTING",
-        async () => {
-          const detailLinks = extractLinks(detail!.html, detail!.url);
-          documents = extractDocuments(detailLinks, detail!.url);
-          images = extractImages(detail!.html, detail!.url, detail!.url);
-          jsonLd = extractJsonLd(detail!.html);
-          geo = extractMap(detail!.html, detailLinks);
-
-          pageSources.push({ id: "S1", label: "Property detail page", text: text.slice(0, 20_000) });
-
-          // Related public pages of the SAME property (same site only).
-          for (const rl of relatedLinks(detailLinks.filter((l) => crawler!.sameSite(l.url)), detail!.url, documents)) {
-            const rp = await load(rl.url, "Related page");
-            if (!rp) continue;
-            const rt = htmlToText(rp.html);
-            pageSources.push({ id: `S${pageSources.length + 1}`, label: `Related page: ${rl.text || rl.url}`.slice(0, 120), text: rt.slice(0, 5000) });
-            for (const d of extractDocuments(extractLinks(rp.html, rp.url), rp.url)) if (!documents.some((x) => x.url === d.url)) documents.push(d);
-            for (const im of extractImages(rp.html, rp.url, rp.url)) if (!images.some((x) => x.url === im.url)) images.push(im);
-          }
-
-          // Documents: ask each document's own server for its type and size (HEAD, robots-checked, same site only).
-          for (const d of documents.slice(0, 8)) {
-            const h = await crawler!.head(d.url);
-            d.check = h.check;
-            d.mime = h.mime ?? d.mime;
-            d.sizeBytes = h.sizeBytes;
-            d.date = h.date;
-            if (h.check === "REFUSED") result.collection.refused.push({ url: d.url, reason: "document refused automated access (robots or HTTP 401/403/429)" });
-          }
-          documents = documents.map((d) => ({ ...d, type: d.type || docType(d.title, d.url) }));
-
-          if (jsonLd.length) pageSources.push({ id: `S${pageSources.length + 1}`, label: "Structured data (JSON-LD)", text: jsonLd.join("\n").slice(0, 4000) });
-          if (documents.length || geo.mapUrl) {
-            pageSources.push({
-              id: `S${pageSources.length + 1}`,
-              label: "Links found on the property page (document titles, map)",
-              text: [...documents.map((d) => `${d.type}: ${d.title} (${d.url})`), geo.mapUrl ? `Map: ${geo.mapUrl}` : "", geo.lat !== null ? `Position: ${geo.lat}, ${geo.lng}` : ""].filter(Boolean).join("\n").slice(0, 3000),
-            });
-          }
-
-          links = [
-            { kind: "Property detail", url: detail!.url },
-            { kind: "Official source", url: new URL(startUrl).origin },
-            ...documents.map((d): LinkRef => ({ kind: d.type.includes("Notice") ? "Bank notice" : "Document", url: d.url })),
-            ...images.slice(0, 10).map((i): LinkRef => ({ kind: "Image", url: i.url })),
-            ...(geo.mapUrl ? [{ kind: "Map" as const, url: geo.mapUrl }] : []),
-            ...detailLinks.filter((l) => /inspection/i.test(l.text) && crawler!.sameSite(l.url)).slice(0, 2).map((l): LinkRef => ({ kind: "Inspection", url: l.url })),
-            ...detailLinks.filter((l) => /(e-?auction|bid now|participate)/i.test(l.text)).slice(0, 2).map((l): LinkRef => ({ kind: "Auction", url: l.url })),
-          ];
-          return true;
-        },
-        () => `${pageSources.length} source block(s), ${documents.length} document reference(s), ${images.length} image reference(s), ${result.collection.refused.length} refused`,
+      // ---- 3) DEEP SCANNING that property only -----------------------------------------------------------------------
+      deep = await step(
+        "DEEP SCANNING",
+        () => deepScan(chosen, L, startUrl),
+        (d) => `${d.pages.length} page(s) of this property, ${d.relatedCount} related, ${d.documents.length} document reference(s), ${d.images.length} image reference(s), ${d.refused.length} refused`,
       );
+      sources = deep.sources;
+      detail = deep.detail;
+      result.collection = { pages: deep.pages, documents: deep.documents, images: deep.images, links: deep.links, refused: deep.refused };
+      result.raw = { html: deep.detail.html.slice(0, 60_000), text: deep.detail.text.slice(0, 60_000), jsonLd: deep.jsonLd, truncated: deep.detail.html.length > 60_000 || deep.detail.text.length > 60_000 };
     } else {
-      // Sample or pasted text: it is the "property page"; discovery is not needed.
-      const text = input.type === "sample" ? SAMPLE_NOTICE : input.pasted.slice(0, 200_000);
-      steps.push({ state: "DISCOVERING", outcome: "skipped", ms: 0, note: "Not a website: nothing to discover" });
-      steps.push({ state: "SELECTING", outcome: "skipped", ms: 0, note: "The first property described in the text is used" });
+      // Sample or pasted text: it is the property page; no website to scan.
+      const text = input.type === "sample" ? SAMPLE_NOTICE : input.pasted.slice(0, MAX_TEXT);
+      steps.push({ state: "SITE SCANNING", outcome: "skipped", ms: 0, note: "Not a website: nothing to scan" });
+      steps.push({ state: "PROPERTY CANDIDATES", outcome: "skipped", ms: 0, note: "The first property described in the text is used" });
       await step("COLLECTING", () => (text.trim().length < 40 ? Promise.reject(new Failed("Paste the notice text first (at least a few lines).")) : true), () => `${text.length.toLocaleString("en-IN")} characters (${input.type === "sample" ? "built-in sample" : "pasted"})`);
-      detail = { url: "", html: text, text, title: null };
-      pageSources.push({ id: "S1", label: input.type === "sample" ? "Built-in sample notice" : "Pasted notice text", text: text.slice(0, 30_000) });
+      detail = { url: "", html: text, text };
+      sources = [{ id: "S1", label: input.type === "sample" ? "Built-in sample notice" : "Pasted notice text", text: text.slice(0, 30_000) }];
       result.counts.propertiesDiscovered = 1;
       result.counts.propertiesSelected = 1;
-      result.discovery.path = [input.type === "sample" ? "Sample notice" : "Pasted text"];
+      result.discovery = { path: [input.type === "sample" ? "Sample notice" : "Pasted text"], selected: null };
+      result.raw = { html: text.slice(0, 60_000), text: text.slice(0, 60_000), jsonLd: [], truncated: text.length > 60_000 };
     }
 
     result.limits.requestsMade = crawler?.requests ?? 0;
-    result.collection.documents = documents;
-    result.collection.images = images;
-    result.collection.links = links;
-    result.raw = { html: detail.html.slice(0, 60_000), text: detail.text.slice(0, 60_000), jsonLd, truncated: detail.html.length > 60_000 || detail.text.length > 60_000 };
-
-    await step("NORMALIZING", () => (detail!.text.trim().length < 40 ? Promise.reject(new Failed("Almost no readable text was found on the property page.")) : true), () => `Source package: ${pageSources.length} text block(s), raw HTML kept separately (${detail!.html.length.toLocaleString("en-IN")} characters)`);
+    const d = detail!;
+    await step("NORMALIZING", () => (d.text.trim().length < 40 ? Promise.reject(new Failed("Almost no readable text was found on the property page.")) : true), () => `Source package: ${sources.length} text block(s), ${sources.reduce((n, s) => n + s.text.length, 0).toLocaleString("en-IN")} characters for the AI; raw HTML kept separately (${d.html.length.toLocaleString("en-IN")} characters)`);
 
     // ---- 4) EXTRACTING: ONE property through the existing Relay client -------------------------------------------
     const ex = await step(
@@ -301,7 +236,7 @@ export async function runDemo(input: { name: string; type: DemoSourceType; url: 
         if (input.mock && input.type === "sample") {
           return { fields: Object.fromEntries(Object.entries(MOCK_FIELDS).map(([k, v]) => [k, { value: v, source: "S1" }])), vehicle: false, model: null as string | null, tokens: null as number | null, mode: "MOCK" as const };
         }
-        const e = await extractProperty(pageSources);
+        const e = await extractProperty(sources);
         return { ...e, mode: "AI" as const };
       },
       (e) => `${Object.keys(e.fields).length} field(s) found via ${e.mode === "AI" ? "the existing Relay extraction" : "MOCK sample response"}${e.vehicle ? " (vehicle)" : ""}`,
@@ -309,23 +244,23 @@ export async function runDemo(input: { name: string; type: DemoSourceType; url: 
     result.extraction = { mode: ex.mode, model: ex.model, tokens: ex.tokens };
 
     // ---- 5) VALIDATING ---------------------------------------------------------------------------------------------
+    const geo = deep?.geo ?? { mapUrl: null, lat: null, lng: null };
     const prop = await step(
       "VALIDATING",
       async () => {
-        const textOf = new Map(pageSources.map((s) => [s.id, s.text]));
-        const labelOf = new Map(pageSources.map((s) => [s.id, s.label]));
+        const textOf = new Map(sources.map((s) => [s.id, s.text]));
+        const labelOf = new Map(sources.map((s) => [s.id, s.label]));
         const warnings: string[] = [];
-        const fields: FieldValue[] = FIELDS.map((d) => {
-          const got = ex.fields[d.key];
+        const fields: FieldValue[] = FIELDS.map((def) => {
+          const got = ex.fields[def.key];
           const value = got?.value ?? null;
           const src = got?.source && textOf.has(got.source) ? got.source : value ? "S1" : null;
-          const ok = value && src ? verify(d, value, textOf.get(src) ?? "") || verify(d, value, [...textOf.values()].join("\n")) : null;
-          if (value && ok === false) warnings.push(`${d.label}: the value was not found word-for-word in the source (check it before trusting it).`);
-          if (value && d.kind === "money" && !num(value)) warnings.push(`${d.label}: price format not recognised ("${value.slice(0, 30)}").`);
-          if (value && d.kind === "date" && !dateOk(value)) warnings.push(`${d.label}: date format not recognised ("${value.slice(0, 30)}").`);
-          return { key: d.key, label: d.label, group: d.group, value, source: src ? `${src} · ${labelOf.get(src) ?? ""}`.trim() : null, verified: ok };
+          const ok = value && src ? verify(def, value, textOf.get(src) ?? "") || verify(def, value, [...textOf.values()].join("\n")) : null;
+          if (value && ok === false) warnings.push(`${def.label}: the value was not found word-for-word in the source (check it before trusting it).`);
+          if (value && def.kind === "money" && !num(value)) warnings.push(`${def.label}: price format not recognised ("${value.slice(0, 30)}").`);
+          if (value && def.kind === "date" && !dateOk(value)) warnings.push(`${def.label}: date format not recognised ("${value.slice(0, 30)}").`);
+          return { key: def.key, label: def.label, group: def.group, value, source: src ? `${src} — ${labelOf.get(src) ?? ""}`.trim() : null, verified: ok };
         });
-        // Coordinates/map found directly on the page fill the position fields when the AI did not.
         const setIf = (key: string, value: string | null, why: string) => {
           const f = fields.find((x) => x.key === key);
           if (f && !f.value && value) { f.value = value; f.source = why; f.verified = true; }
@@ -354,9 +289,9 @@ export async function runDemo(input: { name: string; type: DemoSourceType; url: 
       ...result.counts,
       complete,
       missing: prop.fields.length - complete,
-      documents: documents.length,
-      images: images.length,
-      sourcePages: result.collection.pages.filter((p) => p.status === "COLLECTED").length || pageSources.length,
+      documents: result.collection.documents.length,
+      images: result.collection.images.length,
+      sourcePages: result.collection.pages.filter((p) => p.status === "COLLECTED").length || sources.length,
       propertiesExtracted: 1,
     };
     steps.push({ state: "REVIEW", outcome: "done", ms: 0, note: "One property ready for review. Demo mode: there is no import button and nothing is written." });
@@ -365,7 +300,62 @@ export async function runDemo(input: { name: string; type: DemoSourceType; url: 
     result.status = e instanceof Refused ? "REFUSED" : "FAILED";
     result.reason = e instanceof Error ? e.message : String(e);
   }
+  return finish(result, t0, renderer, crawler, loader);
+}
+
+async function finish(result: DemoResult, t0: number, renderer: BrowserRenderer, crawler: Crawler | null, loader: PageLoader | null): Promise<DemoResult> {
+  await renderer.close();
+  if (loader) {
+    result.pages = loader.rows;
+    result.scan.browser = { requested: result.settings.useBrowser, used: loader.browserUsed, status: loader.browserStatus };
+  }
   result.limits.requestsMade = crawler?.requests ?? result.limits.requestsMade;
   result.durationMs = Date.now() - t0;
   return result;
+}
+
+function failDiag(url: string, refused: boolean, reason: string): CandidateDiag {
+  return {
+    diagnostics: null,
+    url,
+    kind: (() => { try { return guessKind({ url, text: "" }); } catch { return "OTHER" as const; } })(),
+    httpStatus: null,
+    rendered: false,
+    jsShell: false,
+    textChars: 0,
+    score: null,
+    label: null,
+    signalsFound: 0,
+    signalsTotal: 14,
+    signals: [],
+    title: null,
+    propertyId: null,
+    reserve: null,
+    auctionDate: null,
+    verdict: "REJECTED",
+    reason: `${refused ? "REFUSED" : "FAILED"} — ${reason}`,
+  };
+}
+
+function diagFromLoad(url: string, l: import("./scan").LoadOk): CandidateDiag {
+  return {
+    diagnostics: l.diagnostics,
+    url,
+    kind: guessKind({ url, text: "" }),
+    httpStatus: l.httpStatus,
+    rendered: l.rendered,
+    jsShell: l.shell,
+    textChars: l.stats.textChars,
+    score: l.det.score,
+    label: l.det.label,
+    signalsFound: l.det.signals.length,
+    signalsTotal: l.det.signalsTotal,
+    signals: l.det.signals,
+    title: l.det.detected.title,
+    propertyId: l.det.detected.propertyId ?? l.det.detected.auctionId,
+    reserve: l.det.detected.reserve,
+    auctionDate: l.det.detected.auctionDate,
+    verdict: l.det.score >= 51 ? "ACCEPTED" : "REJECTED",
+    reason: `${l.det.score >= 51 ? "ACCEPTED as a property page. " : "REJECTED: below the property threshold (51). "}${explain(l)}`,
+  };
 }

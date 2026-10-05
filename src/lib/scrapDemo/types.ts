@@ -1,8 +1,10 @@
 // AI Python Scrap — DEMO. Everything lives in memory for one request: nothing is saved and nothing touches production data.
 
-export type DemoSourceType = "sample" | "url" | "paste";
+import type { ScanSettings } from "./settings";
+
+export type DemoSourceType = "sample" | "url" | "paste" | "diagnose";
 export type DemoStatus = "COMPLETED" | "REFUSED" | "FAILED";
-export type StepState = "QUEUED" | "DISCOVERING" | "SELECTING" | "COLLECTING" | "NORMALIZING" | "EXTRACTING" | "VALIDATING" | "REVIEW";
+export type StepState = "QUEUED" | "SITE SCANNING" | "DISCOVERING" | "PROPERTY CANDIDATES" | "SELECTING" | "DEEP SCANNING" | "COLLECTING" | "NORMALIZING" | "EXTRACTING" | "VALIDATING" | "REVIEW";
 
 export interface DemoStep {
   state: StepState;
@@ -19,19 +21,104 @@ export interface DemoAccess {
   collection: "NOT STARTED" | "COLLECTED" | "REFUSED" | "FAILED" | "n/a (not a URL source)";
 }
 
-export interface PageRef {
+export type PageKind = "HOME" | "NAVIGATION" | "SEARCH" | "LISTING" | "PAGINATION" | "PROPERTY" | "AUCTION" | "NOTICE" | "DOCUMENT" | "IMAGE" | "LOCATION" | "OTHER";
+
+/** One row of the "Scan Debug" table. */
+export interface PageDebug {
+  phase: "scan" | "deep";
   url: string;
-  label: string; // e.g. "Start page", "Listing page", "Property detail page", "Related page"
-  status: "COLLECTED" | "REFUSED" | "FAILED";
+  depth: number;
+  kind: PageKind;
   httpStatus: number | null;
-  chars: number;
-  note?: string;
+  mode: "HTTP" | "BROWSER" | "REFUSED" | "FAILED";
+  ms: number;
+  links: number;
+  textChars: number;
+  scripts: number;
+  jsShell: boolean;
+  score: number | null; // property detection score 0-100
+  label: string | null; // NOT PROPERTY / POSSIBLE / STRONG / CONFIRMED
+  reason: string;
 }
 
+export interface ScanSummary {
+  startUrl: string | null;
+  domain: string | null;
+  pagesDiscovered: number;
+  pagesScanned: number;
+  pagesSkipped: number;
+  pagesRefused: number;
+  pagesFailed: number;
+  propertyCandidates: number; // links that look like a property/auction page (verified or not)
+  candidatesChecked: number; // of those, pages actually fetched and scored
+  listingPages: number;
+  paginationPages: number;
+  documentsFound: number;
+  imagesFound: number;
+  sitemapUrls: number;
+  sitemapNote: string;
+  browser: { requested: boolean; used: number; status: string };
+}
+
+/** A link that looks like a property/auction page (used by the URL scoring in crawl.ts). */
 export interface Candidate {
   url: string;
   text: string;
   score: number;
+}
+
+export type PageState = "STATIC_CONTENT" | "JS_SHELL" | "PROPERTY_PAGE" | "UNKNOWN" | "REFUSED";
+
+/** Everything measured about one fetched page, so "why was it (not) accepted?" is never a guess. */
+export interface PageDiagnostics {
+  finalUrl: string;
+  contentType: string;
+  redirects: number;
+  htmlChars: number; // plain HTTP response
+  httpTextChars: number; // visible text in the plain HTTP response
+  renderedTextChars: number | null; // visible text after browser rendering (null when it was not rendered)
+  title: string | null;
+  h1: string | null;
+  h2Count: number;
+  scripts: number;
+  links: number;
+  images: number;
+  jsonLdCount: number;
+  keywords: { property: number; auction: number; bank: number; reserve: number; emd: number; date: number; address: number };
+  renderMode: "HTTP_HTML" | "BROWSER_RENDER" | "FAILED";
+  pageState: PageState;
+  shellWhy: string;
+}
+
+/** Why a candidate property page was accepted or rejected (the debug view the Baanknet test needs). */
+export interface CandidateDiag {
+  diagnostics: PageDiagnostics | null;
+  url: string;
+  kind: PageKind;
+  httpStatus: number | null;
+  rendered: boolean; // true when the browser renderer produced the content
+  jsShell: boolean; // the plain HTML was an empty application shell
+  textChars: number;
+  score: number | null;
+  label: string | null;
+  signalsFound: number;
+  signalsTotal: number;
+  signals: string[];
+  title: string | null;
+  propertyId: string | null;
+  reserve: string | null;
+  auctionDate: string | null;
+  verdict: "ACCEPTED" | "REJECTED" | "NOT FETCHED";
+  reason: string;
+}
+
+export interface PageRef {
+  url: string;
+  label: string; // e.g. "Property detail page", "Related page"
+  status: "COLLECTED" | "REFUSED" | "FAILED";
+  httpStatus: number | null;
+  chars: number;
+  note?: string;
 }
 
 export interface DocRef {
@@ -72,20 +159,19 @@ export interface DemoResult {
   reason: string | null;
   durationMs: number;
   source: { name: string; type: DemoSourceType; url: string | null };
+  settings: ScanSettings;
   steps: DemoStep[];
   access: DemoAccess;
-  limits: { maxPages: number; maxDepth: number; sameDomainOnly: true; requestsMade: number };
+  limits: { requestsMade: number };
+  scan: ScanSummary;
+  pages: PageDebug[]; // every page the scan and the deep scan touched
+  candidates: CandidateDiag[]; // the best candidates, with the reason each was accepted or rejected
   discovery: {
-    startUrl: string | null;
-    pagesInspected: number;
-    linksSeen: number;
-    candidates: Candidate[]; // top candidate property links
-    candidateTotal: number;
-    path: string[]; // e.g. Homepage → Listing page → Property detail
-    selected: { title: string | null; url: string | null } | null;
+    path: string[]; // e.g. Start page → Listing page → Property detail
+    selected: { title: string | null; url: string | null; score: number | null; label: string | null } | null;
   };
   collection: {
-    pages: PageRef[];
+    pages: PageRef[]; // the selected property's own pages
     documents: DocRef[];
     images: ImageRef[];
     links: LinkRef[];
