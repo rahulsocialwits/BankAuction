@@ -31,6 +31,7 @@ const MAX_DOC_LINKS = 14;
 const MAX_HTML_BYTES = 2_500_000;
 const MAX_PDF_BYTES = 4_000_000;
 const PAUSE_MS = 400;
+const BAANKNET_PAUSE_MS = 150;
 
 export interface PageLink {
   text: string;
@@ -438,7 +439,9 @@ export function realDeps(o: { onEvent?: (line: string) => void } = {}): DeepDeps
       if (isBlockedUrl(url)) return fail("internal_policy_block");
       if (!/^https:/i.test(url)) return fail("not_https");
       if ((await gate.check(url)) !== "allowed") return fail("robots_disallowed");
-      const gap = Math.max(PAUSE_MS, (await gate.delayFor(url)) * 1000); // the site's own Crawl-delay, when it states one
+      const host = (() => { try { return siteOf(new URL(url).hostname); } catch { return ""; } })();
+      const basePause = host === "baanknet.com" ? BAANKNET_PAUSE_MS : PAUSE_MS;
+      const gap = Math.max(basePause, (await gate.delayFor(url)) * 1000); // the site's own Crawl-delay, when it states one
       const at = Math.max(Date.now(), nextSlot);
       nextSlot = at + gap;
       if (at > Date.now()) await sleep(at - Date.now());
