@@ -116,9 +116,9 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
         }
         return (
           <nav aria-label="Property pages" className="mt-10 flex items-center justify-center gap-2">
-            {page > 1 && <Link href={"/properties?" + new URLSearchParams([...params, ["page", String(page - 1)]]).toString()} className="px-4 py-2 rounded-lg border border-brand-border text-sm font-medium hover:border-brand">← Previous</Link>}
+            {page > 1 && (() => { const prev = new URLSearchParams(params); prev.set("page", String(page - 1)); return <Link href={"/properties?" + prev.toString()} className="px-4 py-2 rounded-lg border border-brand-border text-sm font-medium hover:border-brand">← Previous</Link>; })()}
             <span className="px-4 py-2 text-sm text-brand-muted">Page {page} of {totalPages}</span>
-            {page < totalPages && <Link href={"/properties?" + new URLSearchParams([...params, ["page", String(page + 1)]]).toString()} className="px-4 py-2 rounded-lg border border-brand-border text-sm font-medium hover:border-brand">Next →</Link>}
+            {page < totalPages && (() => { const next = new URLSearchParams(params); next.set("page", String(page + 1)); return <Link href={"/properties?" + next.toString()} className="px-4 py-2 rounded-lg border border-brand-border text-sm font-medium hover:border-brand">Next →</Link>; })()}
           </nav>
         );
       })()}
