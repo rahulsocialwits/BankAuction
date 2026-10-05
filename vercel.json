@@ -1,6 +1,6 @@
 {
   "regions": ["bom1"],
   "crons": [
-    { "path": "/api/cron/ingest?limit=100", "schedule": "*/30 * * * *" }
+    { "path": "/api/cron/ingest?limit=100", "schedule": "*/15 * * * *" }
   ]
 }
