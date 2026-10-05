@@ -221,10 +221,27 @@ export class BrowserRenderer {
       }
       await link.scrollIntoViewIfNeeded().catch(() => undefined);
       await link.click({ timeout: 8_000 });
-      await page.waitForURL((u: URL) => u.pathname.startsWith(target.pathname) && u.pathname.length > target.pathname.length, { timeout: 12_000 }).catch(() => undefined);
-      // a property page is long: wait until the app has filled it (not a fixed delay), then a short quiet check
-      await page.waitForFunction(() => (document.body ? document.body.innerText.length : 0) > 900, undefined, { timeout: 10_000 }).catch(() => undefined);
-      await page.waitForLoadState("networkidle", { timeout: 3_000 }).catch(() => undefined);
+      // BAANKNET is a client-side route: the real detail URL is produced by the click.
+      // Do not wait for networkidle here; background analytics can keep a SPA "busy" indefinitely.
+      const routeChanged = await page.waitForURL(
+        (u: URL) => u.pathname.startsWith(target.pathname) && u.pathname.length > target.pathname.length,
+        { timeout: 8_000 },
+      ).then(() => true).catch(() => false);
+
+      // The useful readiness signal is the rendered property data, not network idleness.
+      // We only need enough visible content to know the detail view has populated.
+      const populated = await page.waitForFunction(
+        () => {
+          const text = document.body?.innerText ?? "";
+          const hasPropertySignals = /(property\s+address|reserve\s+price|emd\s+amount|auction\s+(start|end)|borrower'?s?\s+name|bank\s+property\s+id)/i.test(text);
+          return text.length > 900 && hasPropertySignals;
+        },
+        undefined,
+        { timeout: routeChanged ? 8_000 : 10_000 },
+      ).then(() => true).catch(() => false);
+
+      // Give a very small stabilization window after property content is visible.
+      if (populated) await page.waitForTimeout(250);
 
       const finalUrl: string = page.url();
       const html: string = await page.content();
