@@ -48,14 +48,20 @@ export class BrowserRenderer {
     if (this.ctx) return null;
     if (this.launchError) return this.launchError;
     try {
-      const pw = await dyn("playwright-core").catch(() => null);
-      if (!pw) throw new Error("the browser library (playwright-core) is not installed in this environment");
+      // Plain string imports (not a variable): the build can then see them and copy these packages AND their own dependencies
+      // (for example tar-fs of @sparticuz/chromium) into the serverless function. Both are listed in serverExternalPackages, so
+      // they are loaded from node_modules at run time and never bundled or sent to the browser.
+      let pwError = "";
+      const pw: any = await import("playwright-core").catch((e: unknown) => { pwError = e instanceof Error ? e.message.split("\n")[0] : String(e); return null; });
+      if (!pw) throw new Error(`the browser library (playwright-core) could not be loaded: ${pwError || "not installed"}`);
       const chromium = pw.chromium ?? pw.default?.chromium;
       let executablePath: string | undefined = process.env.SCRAP_DEMO_CHROME_PATH || undefined;
       let args: string[] = [];
       if (!executablePath) {
-        const sp = await dyn("@sparticuz/chromium").catch(() => null);
-        if (sp && process.platform === "linux") {
+        if (process.platform === "linux") {
+          let spError = "";
+          const sp: any = await import("@sparticuz/chromium").catch((e: unknown) => { spError = e instanceof Error ? e.message.split("\n")[0] : String(e); return null; });
+          if (!sp) throw new Error(`the serverless Chromium package (@sparticuz/chromium) could not be loaded on this server: ${spError || "unknown"}`);
           const c = sp.default ?? sp;
           executablePath = await c.executablePath();
           args = (c.args as string[]).filter((a) => !/web-security/i.test(a));
