@@ -70,6 +70,8 @@ export interface SiteDiscovery {
   pagesRead: number;
   shapes: { shape: string; count: number; verified: boolean; sample: string }[];
   notes: string[];
+  baanknetNextPage?: number;
+  baanknetTotalPages?: number;
 }
 
 export async function discoverListingUrls(
@@ -92,14 +94,15 @@ export async function discoverListingUrls(
 async function discoverCore(
   start: string,
   deps: Pick<DeepDeps, "fetchDoc" | "failure">,
-  opts: { maxPages?: number; maxDetails?: number; deadline?: number; trusted?: string[]; verifyBudgetMs?: number },
+  opts: { maxPages?: number; maxDetails?: number; deadline?: number; trusted?: string[]; verifyBudgetMs?: number; baanknetStartPage?: number },
   scope: string,
 ): Promise<SiteDiscovery> {
   const maxPages = opts.maxPages ?? 30;
   const maxDetails = opts.maxDetails ?? 500;
   const deadline = opts.deadline ?? Date.now() + 120_000;
   const origin = normalizeUrl(start, start)!;
-  const queue: string[] = [origin];
+  const startUrl = (() => { const u = new URL(origin); const n = opts.baanknetStartPage ?? 1; if (siteOf(u.hostname) === "baanknet.com" && n > 1) u.searchParams.set("page", String(n)); return normalizeUrl(u.toString(), origin)!; })();
+  const queue: string[] = [startUrl];
   const visited = new Set<string>();
   const queued = new Set<string>([origin]);
   const perShape = new Map<string, number>();
@@ -108,6 +111,8 @@ async function discoverCore(
   const via = new Map<string, string>(); // listing address -> the index page that links to it (a single-page app is opened from there)
   const notes: string[] = [];
   let pages = 0;
+  let baanknetLastPage = 0;
+  let baanknetTotalPages = 0;
 
   while (queue.length && pages < maxPages && Date.now() < deadline) {
     const url = queue.shift()!;
@@ -142,6 +147,8 @@ async function discoverCore(
       const pageNumber = (name: string) => Number((metaHtml.match(new RegExp('"' + name + '"\\s*:\\s*(\\d+)')) ?? [])[1] ?? "1");
       const current = pageNumber("currentPage");
       const total = pageNumber("totalPages");
+      if (current > baanknetLastPage) baanknetLastPage = current;
+      if (total > baanknetTotalPages) baanknetTotalPages = total;
       if (current >= 1 && total > current) {
         const next = current + 1;
         const nu = new URL(url);
@@ -206,7 +213,7 @@ async function discoverCore(
   if (!details.length) notes.push("no group of addresses looked like property pages (the site may load its listings with JavaScript)");
   const allDetails = [...new Set([...details, ...directDetails])];
   const sorted = allDetails.sort((a, b) => idOf(b) - idOf(a)).slice(0, maxDetails);
-  return { details: sorted, via: Object.fromEntries(sorted.map((u) => [u, via.get(u) ?? origin])), pagesRead: pages, shapes, notes };
+  return { details: sorted, via: Object.fromEntries(sorted.map((u) => [u, via.get(u) ?? origin])), pagesRead: pages, shapes, notes, baanknetNextPage: baanknetLastPage > 0 && baanknetTotalPages > baanknetLastPage ? baanknetLastPage + 1 : undefined, baanknetTotalPages: baanknetTotalPages || undefined };
 }
 
 export interface SiteScanResult {
@@ -225,6 +232,8 @@ export interface SiteScanResult {
   /** Every listing that was NOT imported, with the exact reason(s) (never just a count). */
   rejections: { url: string; title?: string; reasons: string[] }[];
   rendered: number; // pages read after running their JavaScript in a browser
+  baanknetNextPage?: number;
+  baanknetTotalPages?: number;
 }
 
 /** Finds the listing pages of a site, reads the NEW ones in full and imports them. `dryRun` stops after discovery. */
@@ -242,6 +251,7 @@ export async function scanSiteForNew(opts: {
   /** How many listing pages are read side by side (the AI is the slow part). */
   concurrency?: number;
   onProgress?: (line: string) => void;
+  baanknetStartPage?: number;
 }): Promise<SiteScanResult> {
   const say = opts.onProgress ?? (() => undefined);
   const deps = opts.deps ?? realDeps({ onEvent: opts.onProgress });
@@ -250,7 +260,7 @@ export async function scanSiteForNew(opts: {
   const maxNew = opts.maxNew ?? 10;
 
   say(`Scanning ${opts.startUrl} …`);
-  const disc = await discoverListingUrls(opts.startUrl, deps, { maxPages: opts.maxIndexPages ?? 30, deadline: Math.min(deadline, Date.now() + 90_000), trusted: opts.trustedShapes });
+  const disc = await discoverListingUrls(opts.startUrl, deps, { maxPages: opts.maxIndexPages ?? 30, maxDetails: /baanknet\\.com$/i.test(new URL(opts.startUrl).hostname) ? 10000 : 500, deadline: Math.min(deadline, Date.now() + 90_000), trusted: opts.trustedShapes, baanknetStartPage: opts.baanknetStartPage });
   say(`  ${disc.pagesRead} index page(s) read, ${disc.details.length} listing page(s) found${disc.shapes.length ? ` (${disc.shapes.map((s) => `${s.shape}: ${s.count}${s.verified ? "" : " ✗"}`).join(", ")})` : ""}`);
   // A browser that cannot start (or a page it could not render) is stated in the run message, not hidden behind "0 listing pages".
   if (deps.renderStats?.failed) disc.notes.push(`the JavaScript render fallback failed ${deps.renderStats.failed} time(s) — ${deps.renderStats.lastError ?? "unknown reason"}`);
@@ -267,7 +277,8 @@ export async function scanSiteForNew(opts: {
   for (const u of known) seen.add(u);
   say(`  ${fresh.length} new listing page(s) (${unseen.length - fresh.length} already on the site)`);
 
-  const out: SiteScanResult = { discovered: disc.details.length, unseen: fresh.length, read: 0, import: { created: 0, skipped: 0, failed: 0, updated: 0 }, tokens: 0, pdfs: 0, pending: fresh.length > maxNew, seen: [], notes: disc.notes, shapes: disc.shapes, verifiedShapes: disc.shapes.filter((x) => x.verified).map((x) => x.shape), rejections: [], rendered: 0 };
+  const isBaanknet = /baanknet\\.com$/i.test(new URL(opts.startUrl).hostname);
+  const out: SiteScanResult = { discovered: disc.details.length, unseen: fresh.length, read: 0, import: { created: 0, skipped: 0, failed: 0, updated: 0 }, tokens: 0, pdfs: 0, pending: fresh.length > maxNew || !!disc.baanknetNextPage, seen: [], notes: disc.notes, shapes: disc.shapes, verifiedShapes: disc.shapes.filter((x) => x.verified).map((x) => x.shape), rejections: [], rendered: 0, baanknetNextPage: disc.baanknetNextPage, baanknetTotalPages: disc.baanknetTotalPages };
   if (opts.dryRun) {
     for (const u of fresh.slice(0, 15)) say(`    would read: ${u}`);
     out.seen = [...seen];
@@ -305,7 +316,7 @@ export async function scanSiteForNew(opts: {
   };
   await Promise.all(Array.from({ length: Math.max(1, Math.min(opts.concurrency ?? 1, 8)) }, worker));
   await writes;
-  out.pending = out.pending || next < todo.length || fresh.length > maxNew;
+  out.pending = out.pending || next < todo.length || fresh.length > maxNew || !!disc.baanknetNextPage;
   out.rendered = deps.renderStats?.rendered ?? 0;
   await deps.close?.(); // the browser (if one was started) is released
   out.tokens = deepener.stats.tokens;
