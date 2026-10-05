@@ -7,6 +7,7 @@ import { importTabular, type TabState } from "@/lib/import/tabular";
 import { fetchTabCsv, listSheetTabs, sheetIdFromUrl } from "./sheets";
 import { acquireAiLock, aiWindow, releaseAiLock } from "@/lib/pipeline/aiSchedule";
 import { isBlockedHost } from "./blockedHosts";
+import { makeDeepener } from "./deepScan";
 
 // Sites whose terms or robots.txt disallow copying; never accept these as links.
 // eauctionsindia.com is NOT here: its robots.txt allows crawling. If its Cloudflare returns 403 to our server, the
@@ -203,9 +204,14 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
         unchanged = true;
         message = feed.contentHash === scan.hash ? "Unchanged: AI skipped (content unchanged)." : "Duplicate: AI skipped (the same content was already processed by another source).";
       } else {
-        const out = await importRecords(scan.records, `feed:${feed.name}`, "PUBLISHED", check.url);
+        // New listings (and thin existing ones) are read in depth: their own page and notice PDFs, in one more AI call each.
+        const deepener = makeDeepener({ html: text, pageUrl: check.url, siblingTitles: scan.records.map((r) => String(r.title ?? "")), deadline: Date.now() + (trigger === "manual" ? 200_000 : 150_000) });
+        const out = await importRecords(scan.records, `feed:${feed.name}`, "PUBLISHED", check.url, { deepen: deepener, strict: true });
         stats = out;
-        message = `Scanned page (${scan.model}, ${scan.tokens} tokens), found ${scan.records.length} listing(s): ${describe(out)}`;
+        tokens += deepener.stats.tokens;
+        const d = deepener.stats;
+        const deepNote = d.attempted ? ` Deep scan: ${d.attempted} listing(s) read in full, ${d.pdfs} notice PDF(s) read, ${d.tokens} tokens${d.notes.length ? ` (${[...new Set(d.notes)].join("; ")})` : ""}.` : "";
+        message = `Scanned page (${scan.model}, ${scan.tokens} tokens), found ${scan.records.length} listing(s): ${describe(out)}.${deepNote}`;
       }
     }
 

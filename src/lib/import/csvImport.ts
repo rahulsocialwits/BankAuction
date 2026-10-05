@@ -166,6 +166,14 @@ function auctionExtras(rec: ListingRecord) {
  *  - for auctions this same feed created: times (shifted by the old time-zone bug) and the status are corrected too
  *  - an address that still carries a "[Open in Google Maps →](…)" link is cleaned
  */
+/** Existing listing still lacking its main details, and not deep-scanned before. */
+async function isThin(hit: Known): Promise<boolean> {
+  const a = await prisma.auction.findUnique({ where: { id: hit.auctionId }, select: { emd: true, auctionEnd: true } });
+  if (!a || (a.emd && a.auctionEnd)) return false;
+  const done = await prisma.propertyAttribute.findFirst({ where: { propertyId: hit.propertyId, key: "deep_scanned" }, select: { propertyId: true } });
+  return !done;
+}
+
 async function enrichExisting(hit: Known, rec: ListingRecord, statusSource: string): Promise<boolean> {
   const [a, p] = await Promise.all([
     prisma.auction.findUnique({ where: { id: hit.auctionId } }),
@@ -247,12 +255,28 @@ async function enrichExisting(hit: Known, rec: ListingRecord, statusSource: stri
   return changed;
 }
 
+/** A notice (not a property) that an earlier shallow import published as one empty listing. */
+const NOTICE_TITLE = /\b(auction|sale|e-?auction|public) notice\b|notice (for|of) (the )?(sale|e-?auction)/i;
+
+/** Result of a deep scan of one listing (detail page + notice PDFs read by the AI). */
+export interface DeepOutcome {
+  attempted: boolean; // false: the cap/time was reached, nothing was tried
+  records: ListingRecord[]; // the full listing(s); more than one when a notice lists several properties
+}
+export type DeepHook = (rec: ListingRecord, mode: "new" | "backfill") => Promise<DeepOutcome>;
+
 export async function importRecords(
   records: ListingRecord[],
   statusSource: string,
   propertyStatus: PropertyStatus,
   sourceUrl?: string,
-  opts: { enrich?: boolean } = {},
+  opts: {
+    enrich?: boolean;
+    /** Read the listing's own page and notices before it is created (new) or when an existing one is still thin (backfill). */
+    deepen?: DeepHook;
+    /** A listing must state a price or an auction date, and a place; otherwise it is rejected instead of published as "Not Available". */
+    strict?: boolean;
+  } = {},
 ): Promise<ImportResult> {
   let created = 0;
   let skipped = 0;
@@ -284,7 +308,9 @@ export async function importRecords(
   }
   const branchIds = new Map<string, string>();
 
-  for (const rec of records.slice(0, MAX_ROWS)) {
+  const queue = records.slice(0, MAX_ROWS);
+  for (let qi = 0; qi < queue.length; qi++) {
+    const rec = queue[qi];
     const col = (name: string) => String(rec[name] ?? "").trim();
     try {
       const title = col("title");
@@ -318,9 +344,36 @@ export async function importRecords(
         );
       if (hit) {
         if (opts.enrich && (await enrichExisting(hit, rec, statusSource))) updated++;
+        else if (opts.deepen && col("deep_done") !== "1" && (await isThin(hit))) {
+          // Already on the site but still without EMD / end date: read its own page once and fill the gaps.
+          const out = await opts.deepen(rec, "backfill");
+          if (out.attempted) {
+            if (NOTICE_TITLE.test(title)) {
+              // A notice that was imported as one empty "property": its real lots become properties, the notice itself is removed.
+              await prisma.property.update({ where: { id: hit.propertyId }, data: { status: "REMOVED" } });
+              await prisma.propertyChange.create({ data: { propertyId: hit.propertyId, field: "deep_scan", oldValue: "PUBLISHED", newValue: `Removed: this was a notice${out.records.length ? ` listing ${out.records.length} separate properties (added on their own)` : " with no property details"}` } }).catch(() => undefined);
+              queue.splice(qi + 1, 0, ...out.records.slice(0, 25));
+              skipped++;
+              continue;
+            }
+            if (out.records[0] && (await enrichExisting(hit, out.records[0], statusSource))) updated++;
+            await prisma.propertyAttribute.create({ data: { propertyId: hit.propertyId, key: "deep_scanned", value: new Date().toISOString() } }).catch(() => undefined);
+          }
+        }
         skipped++;
         continue;
       }
+
+      // New listing: read its own page and notices first. The result (one or several listings) goes through the same checks again.
+      if (opts.deepen && col("deep_done") !== "1") {
+        const out = await opts.deepen(rec, "new");
+        if (out.attempted && out.records.length > 0) {
+          queue.splice(qi + 1, 0, ...out.records.slice(0, 25));
+          continue;
+        }
+      }
+      if (opts.strict && !(col("reserve_price") || col("auction_start"))) { failed++; continue; }
+      if (opts.strict && !col("location") && !col("legal_schedule")) { failed++; continue; }
 
       const base = slugify(title);
       const slug = (await prisma.property.findUnique({ where: { slug: base } })) ? `${base}-${Date.now()}-${created}` : base;
