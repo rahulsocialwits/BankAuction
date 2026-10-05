@@ -27,6 +27,8 @@ export interface IngestionSummary {
   failures: number;
   errors: { url: string; message: string }[];
   skipped?: boolean;
+  /** Import-all mode: listing pages never read before that are still waiting. */
+  remaining?: number;
 }
 
 export async function ensureSourceRow() {
@@ -55,9 +57,11 @@ function discoverListingUrls(sitemapXml: string): string[] {
  *  - ~70%: URLs we have never stored, newest first (the end of the sitemap)
  *  - ~30%: already-stored records that were checked longest ago (keeps prices/dates fresh)
  */
-async function pickUrls(sourceId: string, all: string[], limit: number): Promise<string[]> {
+async function pickUrls(sourceId: string, all: string[], limit: number, onlyNew = false): Promise<{ urls: string[]; fresh: number }> {
   const stored = new Set((await prisma.sourceRecord.findMany({ where: { sourceId }, select: { sourceUrl: true } })).map((r) => r.sourceUrl));
   const fresh = all.filter((u) => !stored.has(u)).reverse();
+  // Import all: only pages never read before, newest first (no share of re-checks)
+  if (onlyNew) return { urls: fresh.slice(0, limit), fresh: fresh.length };
   const staleWanted = fresh.length >= limit ? Math.floor(limit * 0.3) : limit - fresh.length;
   const picked = fresh.slice(0, limit - staleWanted);
   const stale = await prisma.sourceRecord.findMany({
@@ -66,7 +70,19 @@ async function pickUrls(sourceId: string, all: string[], limit: number): Promise
     take: staleWanted,
     select: { sourceUrl: true },
   });
-  return [...picked, ...stale.map((s) => s.sourceUrl).filter((u) => all.includes(u))];
+  return { urls: [...picked, ...stale.map((s) => s.sourceUrl).filter((u) => all.includes(u))], fresh: fresh.length };
+}
+
+const ALL_MARK = "builtin-all";
+
+/** "Import all" for the built-in crawler is a switch kept as a marker row (hidden from Run History); the latest row wins. */
+export async function builtInImportAll(): Promise<boolean> {
+  const row = await prisma.sourceRunLog.findFirst({ where: { kind: ALL_MARK }, orderBy: { startedAt: "desc" }, select: { message: true } });
+  return row?.message === "on";
+}
+
+export async function setBuiltInImportAll(on: boolean) {
+  await prisma.sourceRunLog.create({ data: { source: "BankAuctions.in", kind: ALL_MARK, trigger: "manual", status: "ok", message: on ? "on" : "off" } });
 }
 
 async function findOrCreateBank(name: string | null) {
@@ -95,8 +111,9 @@ async function uniqueSlug(base: string, fallbackSuffix: string): Promise<string>
   return existing2 ? `${withSuffix}-${Date.now()}` : withSuffix;
 }
 
-export async function runBankAuctionsIngestion(opts: { limit?: number; triggeredBy?: string } = {}): Promise<IngestionSummary> {
-  const limit = opts.limit ?? 250;
+export async function runBankAuctionsIngestion(opts: { limit?: number; triggeredBy?: string; all?: boolean; budgetMs?: number } = {}): Promise<IngestionSummary> {
+  const limit = opts.all ? 5000 : (opts.limit ?? 250);
+  const deadline = opts.budgetMs ? Date.now() + opts.budgetMs : Infinity;
   const runStartedAt = new Date();
   const source = await ensureSourceRow();
   const sourceDef = getSourceDefinition(SOURCE_KEY)!;
@@ -144,10 +161,14 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
     const sitemapRes = await politeFetch(sourceDef, SITEMAP_PATH);
     if (!sitemapRes.ok) throw new Error(`Sitemap fetch failed: HTTP ${sitemapRes.status}`);
     const sitemapXml = await sitemapRes.text();
-    const listingUrls = await pickUrls(source.id, discoverListingUrls(sitemapXml), limit);
+    const picked = await pickUrls(source.id, discoverListingUrls(sitemapXml), limit, !!opts.all);
+    const listingUrls = picked.urls;
+    summary.remaining = picked.fresh;
 
     for (const url of listingUrls) {
+      if (Date.now() > deadline) break; // out of time: the rest continues on the next run
       summary.pagesChecked++;
+      if (opts.all && summary.remaining) summary.remaining--;
       try {
         await ingestOnePage(source.id, sourceDef, url, summary);
       } catch (err) {
@@ -194,7 +215,7 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
     updated: summary.updatedProperties,
     duplicates: summary.duplicatesFound,
     rejected: summary.failures,
-    message: `${summary.pagesChecked} pages checked` + (summary.errors[0] ? ` — first error: ${summary.errors[0].message}` : ""),
+    message: `${opts.all ? "Import all: " : ""}${summary.pagesChecked} pages checked, ${summary.newProperties} new${opts.all && summary.remaining ? `, ${summary.remaining} left` : ""}` + (summary.errors[0] ? ` — first error: ${summary.errors[0].message}` : ""),
     startedAt: runStartedAt,
   });
   return summary;

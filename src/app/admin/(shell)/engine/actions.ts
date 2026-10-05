@@ -5,7 +5,7 @@ import { requireMaster } from "@/lib/auth/adminAuth";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
-import { ensureSourceRow } from "@/data-sources/bankauctions/adapter";
+import { ensureSourceRow, runBankAuctionsIngestion, setBuiltInImportAll } from "@/data-sources/bankauctions/adapter";
 import { isAiFeed, runFeedFull, runWebDiscovery, UNREACHABLE } from "@/data-sources/feeds/run";
 import { webStateOf, withWebState } from "@/data-sources/feeds/siteScan";
 import { fixThinListings } from "@/lib/pipeline/thinFix";
@@ -115,5 +115,21 @@ export async function fixThinNow() {
       await logRun({ source: "Thin listing fix", kind: "feed", trigger: "manual", status: "error", message: e instanceof Error ? e.message : String(e), startedAt });
     }
   });
+  refresh();
+}
+
+/** "Import all" for BankAuctions.in: reads every listing page of the site (2 s apart, as its rules ask), starts now, then every tick carries on until none are left. */
+export async function importAllBuiltIn() {
+  await requireMaster();
+  const row = await ensureSourceRow();
+  if (row.status === "DISABLED") await prisma.source.update({ where: { id: row.id }, data: { status: "HEALTHY" } });
+  await setBuiltInImportAll(true);
+  after(() => runBankAuctionsIngestion({ all: true, budgetMs: 240_000, triggeredBy: "manual" }).catch(() => null));
+  refresh();
+}
+
+export async function pauseBuiltInImportAll() {
+  await requireMaster();
+  await setBuiltInImportAll(false);
   refresh();
 }

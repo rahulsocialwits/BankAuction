@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db/prisma";
 import { getAiConfig } from "@/lib/ai/aiConfig";
 import SubmitButton from "@/components/admin/SubmitButton";
 import EngineTabs from "@/components/admin/EngineTabs";
-import { toggleBuiltIn, toggleFeedSource, deleteFeedSource, importAllNow, importEverythingNow, pauseImportAll, pauseImportingEverything } from "./actions";
+import { toggleBuiltIn, toggleFeedSource, deleteFeedSource, importAllNow, importEverythingNow, pauseImportAll, pauseImportingEverything, importAllBuiltIn, pauseBuiltInImportAll } from "./actions";
+import { builtInImportAll } from "@/data-sources/bankauctions/adapter";
 import { isAiFeed } from "@/data-sources/feeds/run";
 import { webStateOf } from "@/data-sources/feeds/siteScan";
 import { aiScheduleStatus, istLabel } from "@/lib/pipeline/aiSchedule";
@@ -60,6 +61,7 @@ export default async function DataEnginePage() {
   ]);
 
   const builtInPaused = builtIn?.status === "DISABLED";
+  const builtInAll = await builtInImportAll().catch(() => false);
   const liveFeeds = feeds.filter((f) => f.active);
   const liveCount = (builtInPaused ? 0 : 1) + liveFeeds.length;
   const pausedCount = (builtInPaused ? 1 : 0) + feeds.filter((f) => !f.active).length;
@@ -209,6 +211,10 @@ export default async function DataEnginePage() {
             </div>
             <div className="flex items-center gap-2">
               {builtInPaused ? <Badge tone="gray">Paused</Badge> : <Badge tone="green">Live</Badge>}
+              {builtInAll && <Badge tone="amber">Importing all…</Badge>}
+              <form action={builtInAll ? pauseBuiltInImportAll : importAllBuiltIn}>
+                <SubmitButton className={builtInAll ? "text-xs border border-brand-border bg-white font-semibold rounded-lg px-3 py-1.5 hover:bg-brand-bg" : "text-xs bg-gold text-white font-semibold rounded-lg px-3 py-1.5 hover:bg-gold-dark"}>{builtInAll ? "⏸ Pause importing" : "⚡ Import all now"}</SubmitButton>
+              </form>
               <form action={toggleBuiltIn}>
                 <SubmitButton className={builtInPaused ? "text-xs bg-brand text-white rounded-lg px-4 py-1.5 hover:bg-brand-dark" : btn}>{builtInPaused ? "Run" : "Pause"}</SubmitButton>
               </form>

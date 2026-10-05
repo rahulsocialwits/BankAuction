@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { runBankAuctionsIngestion } from "@/data-sources/bankauctions/adapter";
+import { builtInImportAll, runBankAuctionsIngestion, setBuiltInImportAll } from "@/data-sources/bankauctions/adapter";
 import { runAllFeeds } from "@/data-sources/feeds/run";
 import { autoCleanExactDuplicates } from "./duplicates";
 import { logRun } from "./runLog";
@@ -23,7 +23,10 @@ export async function runTick(opts: { limit?: number; trigger?: TickTrigger; via
     // Location checks and AI review are slot-wide jobs: exactly one tick per slot claims them.
     const slotWork = window.open ? await claimAiSlotWork(window.slotStart) : false;
 
-    const summary = await runBankAuctionsIngestion({ limit: opts.limit ?? 100, triggeredBy: "http-cron" });
+    // "Import all" on: read every page of the site that was never read, as many as fit into this tick; switch off when none are left.
+    const importAll = await builtInImportAll().catch(() => false);
+    const summary = await runBankAuctionsIngestion(importAll ? { all: true, budgetMs: 110_000, triggeredBy: "http-cron" } : { limit: opts.limit ?? 100, triggeredBy: "http-cron" });
+    if (importAll && !summary.skipped && summary.errors.length === 0 && !summary.remaining) await setBuiltInImportAll(false).catch(() => undefined);
     const feeds = await runAllFeeds({ aiSlotStart: window.open ? window.slotStart : null });
     const hidden = await autoCleanExactDuplicates();
     const geo = slotWork ? await enrichLocations(96).catch(() => ({ processed: 0, tokens: 0, failed: true })) : { processed: 0, tokens: 0, failed: false };
