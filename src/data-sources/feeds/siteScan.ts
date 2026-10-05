@@ -290,13 +290,15 @@ export async function scanSiteForNew(opts: {
 
   const source = `feed:${opts.feedName}`;
   // BAANKNET public listing pages contain complete auction records in the Next.js Flight payload.
-  // Import them directly instead of opening each React detail route; this makes Import All fast enough to finish in one run.
+  // Import them directly in deterministic batches; Import All carries on from the saved page cursor each scheduler tick.
   if (isBaanknet && baanknetEmbedded.size > 0) {
-    const todo = fresh.map((u) => baanknetEmbedded.get(u)).filter((r): r is ListingRecord => !!r);
+    const todo: { url: string; record: ListingRecord }[] = fresh
+      .map((url) => ({ url, record: baanknetEmbedded.get(url) }))
+      .filter((x): x is { url: string; record: ListingRecord } => !!x.record);
     let cursor = 0;
     while (cursor < todo.length && Date.now() < deadline) {
       const batch = todo.slice(cursor, cursor + 500);
-      const r = await importRecords(batch, source, "PUBLISHED", opts.startUrl, { strict: true });
+      const r = await importRecords(batch.map((x) => x.record), source, "PUBLISHED", opts.startUrl, { strict: true });
       out.import = {
         created: out.import.created + r.created,
         skipped: out.import.skipped + r.skipped,
@@ -307,14 +309,13 @@ export async function scanSiteForNew(opts: {
         stale: (out.import.stale ?? 0) + (r.stale ?? 0),
         rejections: [...(out.import.rejections ?? []), ...(r.rejections ?? [])].slice(0, 300),
       };
-      for (let i = 0; i < batch.length; i++) {
-        const u = fresh[cursor + i];
-        if (u) seen.add(u);
-      }
+      for (const item of batch) seen.add(item.url);
       out.read += batch.length;
       cursor += batch.length;
       say(`  BAANKNET direct import: ${Math.min(cursor, todo.length)} / ${todo.length} records processed`);
     }
+    // A page cursor advances only when that page's embedded records have been handled. If the runtime budget
+    // ended before the batch completed, keep Import All pending so the next 30-minute tick resumes safely.
     out.pending = out.pending || cursor < todo.length || fresh.length > maxNew || !!disc.baanknetNextPage;
     out.seen = [...seen].slice(-20000);
     await deps.close?.();
