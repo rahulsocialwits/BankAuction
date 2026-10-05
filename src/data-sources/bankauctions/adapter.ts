@@ -265,12 +265,7 @@ async function ingestOnePage(
     return;
   }
 
-  // The site shows only listings that name their borrower: a new listing without one is remembered (so it is not fetched again) but not added.
-  if (!existingRecord && !normalized.borrower?.trim()) {
-    await upsertSourceRecord(sourceId, url, contentHash, normalized, "IGNORED", null, null);
-    return;
-  }
-
+  // Missing borrower does not block publication. Store the listing with the source-provided facts and no invented borrower.\n
   const validation = validateAuctionRecord(normalized);
   if (!validation.isValid) {
     await upsertSourceRecord(sourceId, url, contentHash, normalized, "FAILED", null, null);
@@ -339,10 +334,7 @@ async function ingestOnePage(
         // never silently downgrade an already-published one on every refetch —
         // if a change makes it newly ambiguous, that's exactly what admin
         // review + the change log (above) are for.
-        status:
-          existingProperty.status === "PENDING_REVIEW" && !validation.needsReview
-            ? "PUBLISHED"
-            : undefined,
+        status: "PUBLISHED",
       },
     });
     summary.updatedProperties++;
