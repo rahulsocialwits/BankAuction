@@ -143,7 +143,7 @@ export async function runBaanknetImport(feed: FeedSource, trigger: "schedule" | 
   let refused = false; // the site itself refused (401 / 403 / CAPTCHA): automatic continuation is switched OFF, never hammered every tick
   try {
     while (!st.done) {
-      if (Date.now() > deadline - 25_000) { stoppedBy = "budget"; break; } // leave time to import the pages in hand and save the cursor
+      if (Date.now() > deadline - 55_000) { stoppedBy = "budget"; break; } // leave time to import the pages in hand and save the cursor
       const status = STATUSES[st.si];
       // Read up to PARALLEL pages (one request after the other), then import them side by side. Each page has its own records
       // (matched by BAANKNET auction id), so the pages never touch the same property; if one fails, the cursor stays before it and
@@ -170,7 +170,7 @@ export async function runBaanknetImport(feed: FeedSource, trigger: "schedule" | 
         const lastPage = st.totalPages[status] ?? 0;
         if (rows.length === 0 || (lastPage > 0 && page > lastPage)) { ended = true; break; } // the site's real last page of this status
         pages.push({ page, rows });
-        if (Date.now() > deadline - 25_000) break;
+        if (Date.now() > deadline - 55_000) break;
         await sleep(PAUSE_MS);
       }
 

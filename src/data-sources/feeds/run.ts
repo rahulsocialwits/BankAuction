@@ -367,7 +367,7 @@ export async function runAllFeeds(opts: { aiSlotStart?: Date | null; hardEnd?: n
   // per tick so the scheduler never overruns its time; a source skipped now simply goes first next tick.
   // The whole tick must end well inside the 300 s function limit (the scheduler waits for the answer): built-in crawler ~60 s,
   // this scan loop at most 150 s, the rest ~40 s.
-  const scanBudgetEnd = Math.min(Date.now() + 150_000, opts.hardEnd ? opts.hardEnd - 80_000 : Infinity);
+  const scanBudgetEnd = Math.min(Date.now() + 150_000, opts.hardEnd ? opts.hardEnd - 70_000 : Infinity); // a BAANKNET batch can overrun by up to ~55 s (it starts no batch with less than 55 s left), so the window ends before hardEnd
   const web = feeds.filter((f) => isAiFeed(f.url));
   const order = await prisma.feedSource.findMany({ where: { id: { in: web.map((w) => w.id) } }, select: { id: true, sheetState: true } });
   const lastScan = new Map(order.map((o) => [o.id, webStateOf(o.sheetState).lastAt ? Date.parse(webStateOf(o.sheetState).lastAt as string) : 0]));
@@ -380,7 +380,7 @@ export async function runAllFeeds(opts: { aiSlotStart?: Date | null; hardEnd?: n
     if (left < 25_000) break;
     // importing sources share what is left, but each gets a real turn (not the whole window for the first one only)
     const importingLeft = queue.slice(i).filter((q) => isImporting(q.id)).length;
-    const budget = isImporting(f.id) ? Math.min(left, importingLeft > 1 ? Math.max(70_000, Math.floor(left / importingLeft)) : 200_000) : Math.min(left, 60_000);
+    const budget = isImporting(f.id) ? Math.min(left, isBaanknetUrl(f.url) ? 200_000 : importingLeft > 1 ? Math.max(70_000, Math.floor(left / importingLeft)) : 200_000) : Math.min(left, 60_000);
     await runWebDiscovery(f.id, "schedule", { budgetMs: budget }).catch(() => null);
   }
 
