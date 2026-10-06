@@ -75,11 +75,15 @@ export async function claimTick(): Promise<boolean> {
   if (Date.now() - lastCheck < 60_000) return false;
   lastCheck = Date.now();
   try {
+    // While an "Import all" is running (a website source or the built-in crawler) the safety net does not wait 35 minutes: it keeps the
+    // import moving about every 5 minutes, like the GitHub Actions scheduler would. Without one it stays at 35 minutes.
+    const importing = !!(await prisma.feedSource.findFirst({ where: { active: true, sheetState: { contains: '"importAll":true' } }, select: { id: true } }).catch(() => null)) || (await builtInImportAll().catch(() => false));
+    const every = importing ? 5 * 60_000 : TICK_EVERY_MS;
     const recent = await prisma.sourceRunLog.findFirst({
       where: {
         OR: [
-          { kind: "cron", startedAt: { gte: new Date(Date.now() - TICK_EVERY_MS) } },
-          { kind: "claim", startedAt: { gte: new Date(Date.now() - 10 * 60_000) } }, // a tick is still running
+          { kind: "cron", startedAt: { gte: new Date(Date.now() - every) } },
+          { kind: "claim", startedAt: { gte: new Date(Date.now() - 6 * 60_000) } }, // a tick is still running (a run ends within 300 s)
         ],
       },
       select: { id: true },
