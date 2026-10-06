@@ -361,15 +361,23 @@ export async function runAllFeeds(opts: { aiSlotStart?: Date | null } = {}) {
 
   // Whole-site scan of every website source (about once an hour each; the one waiting longest goes first). It is capped
   // per tick so the scheduler never overruns its time; a source skipped now simply goes first next tick.
-  const scanBudgetEnd = Date.now() + 130_000;
+  // The whole tick must end well inside the 300 s function limit (the scheduler waits for the answer): built-in crawler ~60 s,
+  // this scan loop at most 150 s, the rest ~40 s.
+  const scanBudgetEnd = Date.now() + 150_000;
   const web = feeds.filter((f) => isAiFeed(f.url));
   const order = await prisma.feedSource.findMany({ where: { id: { in: web.map((w) => w.id) } }, select: { id: true, sheetState: true } });
   const lastScan = new Map(order.map((o) => [o.id, webStateOf(o.sheetState).lastAt ? Date.parse(webStateOf(o.sheetState).lastAt as string) : 0]));
-  for (const f of [...web].sort((a, b) => (lastScan.get(a.id) ?? 0) - (lastScan.get(b.id) ?? 0))) {
+  const isImporting = (id: string) => !!webStateOf(order.find((o) => o.id === id)?.sheetState).importAll;
+  // Sources that are in the middle of "Import all" go FIRST (BAANKNET before the AI-heavy ones: it needs no AI), then the one waiting longest.
+  const queue = [...web].sort((a, b) => Number(isImporting(b.id)) - Number(isImporting(a.id)) || Number(isBaanknetUrl(b.url)) - Number(isBaanknetUrl(a.url)) || (lastScan.get(a.id) ?? 0) - (lastScan.get(b.id) ?? 0));
+  for (let i = 0; i < queue.length; i++) {
+    const f = queue[i];
     const left = scanBudgetEnd - Date.now();
     if (left < 25_000) break;
-    const importing = webStateOf(order.find((o) => o.id === f.id)?.sheetState).importAll; // "Import all now" feeds get a long turn
-    await runWebDiscovery(f.id, "schedule", { budgetMs: Math.min(left, importing ? 200_000 : 60_000) }).catch(() => null);
+    // importing sources share what is left, but each gets a real turn (not the whole window for the first one only)
+    const importingLeft = queue.slice(i).filter((q) => isImporting(q.id)).length;
+    const budget = isImporting(f.id) ? Math.min(left, importingLeft > 1 ? Math.max(70_000, Math.floor(left / importingLeft)) : 200_000) : Math.min(left, 60_000);
+    await runWebDiscovery(f.id, "schedule", { budgetMs: budget }).catch(() => null);
   }
 
   for (const f of feeds) {
