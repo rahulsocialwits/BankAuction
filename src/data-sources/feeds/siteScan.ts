@@ -263,7 +263,7 @@ export async function scanSiteForNew(opts: {
   const maxNew = opts.maxNew ?? 10;
 
   say(`Scanning ${opts.startUrl} …`);
-  const isBaanknet = /baanknet\\.com$/i.test(new URL(opts.startUrl).hostname);
+  const isBaanknet = /baanknet\.com$/i.test(new URL(opts.startUrl).hostname);
   const discoveryWindow = isBaanknet ? 175_000 : 90_000;
   const disc = await discoverListingUrls(opts.startUrl, deps, { maxPages: opts.maxIndexPages ?? 30, maxDetails: isBaanknet ? 10000 : 500, deadline: Math.min(deadline, Date.now() + discoveryWindow), trusted: opts.trustedShapes, baanknetStartPage: opts.baanknetStartPage });
   const baanknetEmbedded = new Map(Object.entries(disc.baanknetEmbedded ?? {}));
