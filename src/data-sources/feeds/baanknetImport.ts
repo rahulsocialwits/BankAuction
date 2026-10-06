@@ -140,6 +140,7 @@ export async function runBaanknetImport(feed: FeedSource, trigger: "schedule" | 
 
   let message = "";
   let stoppedBy: "budget" | "done" | "error" = "budget";
+  let refused = false; // the site itself refused (401 / 403 / CAPTCHA): automatic continuation is switched OFF, never hammered every tick
   try {
     while (!st.done) {
       if (Date.now() > deadline - 25_000) { stoppedBy = "budget"; break; } // leave time to import the pages in hand and save the cursor
@@ -155,7 +156,8 @@ export async function runBaanknetImport(feed: FeedSource, trigger: "schedule" | 
         const out = await fetchWithRetry(API, { method: "POST", headers: headers({ "Content-Type": "application/json" }), body: JSON.stringify({ search: {}, range: {}, sort: { type: "closest" }, page, limit: PAGE_LIMIT, auctionStatus: status }), signal: AbortSignal.timeout(30_000) }, { onLog: (l) => log(`${status} p${page}: ${l}`), inspectBody: false });
         if (out.status !== "success" || !out.res || !out.res.ok) {
           const why = !out.res ? describeStatus("temporary_error", null) : describeStatus(out.status === "success" ? "temporary_error" : out.status, out.http);
-          st.lastError = `${status} page ${page}: ${why}${isRefusal(out.status) ? " Not retried or worked around." : ""}`;
+          refused = isRefusal(out.status);
+          st.lastError = `${status} page ${page}: ${why}${refused ? " The import is stopped and is not retried or worked around." : ""}`;
           failed = true;
           break;
         }
@@ -211,8 +213,10 @@ export async function runBaanknetImport(feed: FeedSource, trigger: "schedule" | 
     message = `Import all completed: ${n0(st.pagesDone)} page(s), ${n0(st.records)} record(s) read — ${n0(st.created)} new, ${n0(st.updated)} updated, ${n0(st.skipped)} already on the site${st.held ? `, ${n0(st.held)} held (no borrower name)` : ""}, ${n0(st.rejected)} rejected.${rej} Checked again automatically every 6 hours.`;
     await save(feed.id, st, message, { status: "ok", importAll: false });
   } else if (stoppedBy === "error") {
-    message = `BAANKNET import stopped with an error — ${st.lastError}. Saved cursor: ${progressLine(st)}. It retries from this page on the next scheduler tick (nothing is restarted from page 1).`;
-    await save(feed.id, st, message, { status: "error", importAll: true });
+    message = refused
+      ? `BAANKNET refused the request — ${st.lastError} Saved cursor: ${progressLine(st)}. Automatic continuation is OFF; press Import all again only if you know the site allows access.`
+      : `BAANKNET import stopped with an error — ${st.lastError}. Saved cursor: ${progressLine(st)}. It retries from this page on the next scheduler tick (nothing is restarted from page 1).`;
+    await save(feed.id, st, message, { status: "error", importAll: !refused });
   } else {
     message = `BAANKNET import in progress: ${progressLine(st)}. Continues automatically on the next scheduler tick.${rej}`;
     await save(feed.id, st, message, { status: "ok", importAll: true });

@@ -27,12 +27,15 @@ export async function runTick(opts: { limit?: number; trigger?: TickTrigger; via
     const importAll = await builtInImportAll().catch(() => false);
     const summary = await runBankAuctionsIngestion(importAll ? { all: true, budgetMs: 110_000, triggeredBy: "http-cron" } : { limit: opts.limit ?? 100, budgetMs: 60_000, triggeredBy: "http-cron" });
     if (importAll && !summary.skipped && summary.errors.length === 0 && !summary.remaining) await setBuiltInImportAll(false).catch(() => undefined);
-    const feeds = await runAllFeeds({ aiSlotStart: window.open ? window.slotStart : null });
+    // the whole tick must be over before the 300 s function limit (a cut-off tick writes no log row and skips its clean-up)
+    const hardEnd = startedAt.getTime() + 262_000;
+    const feeds = await runAllFeeds({ aiSlotStart: window.open ? window.slotStart : null, hardEnd });
     const hidden = await autoCleanExactDuplicates();
-    const geo = slotWork ? await enrichLocations(96).catch(() => ({ processed: 0, tokens: 0, failed: true })) : { processed: 0, tokens: 0, failed: false };
+    const timeLeft = hardEnd - Date.now();
+    const geo = slotWork && timeLeft > 60_000 ? await enrichLocations(96).catch(() => ({ processed: 0, tokens: 0, failed: true })) : { processed: 0, tokens: 0, failed: false };
     const places = geo.processed;
     // Listings the importer was unsure about are reviewed automatically (rules every tick, AI only in the AI slot).
-    const review = await autoReviewPending(slotWork ? 100 : 60, { useAi: slotWork }).catch(() => ({ published: 0, removed: 0, stillPending: 0, tokens: 0 }));
+    const review = await autoReviewPending(slotWork && timeLeft > 60_000 ? 100 : 60, { useAi: slotWork && timeLeft > 60_000 }).catch(() => ({ published: 0, removed: 0, stillPending: 0, tokens: 0 }));
     const aiNote = slotWork
       ? `AI slot ${istLabel(window.slotStart)}: ran`
       : window.open

@@ -354,7 +354,11 @@ export async function runFeedFull(id: string) {
  *  - Sheet / CSV sources keep their hourly throttle.
  * `deferred` counts AI sources that are waiting for the next AI slot.
  */
-export async function runAllFeeds(opts: { aiSlotStart?: Date | null } = {}) {
+/**
+ * `hardEnd` = the moment by which this call must be finished (the scheduler's whole tick has to end inside the 300 s function limit;
+ * a tick that is cut off writes no log row and skips its clean-up steps). Nothing new is started when too little time is left.
+ */
+export async function runAllFeeds(opts: { aiSlotStart?: Date | null; hardEnd?: number } = {}) {
   const feeds = await prisma.feedSource.findMany({ where: { active: true }, select: { id: true, url: true, lastRunAt: true, lastMessage: true, lastStatus: true, createdAt: true } });
   const results = [];
   let deferred = 0;
@@ -363,7 +367,7 @@ export async function runAllFeeds(opts: { aiSlotStart?: Date | null } = {}) {
   // per tick so the scheduler never overruns its time; a source skipped now simply goes first next tick.
   // The whole tick must end well inside the 300 s function limit (the scheduler waits for the answer): built-in crawler ~60 s,
   // this scan loop at most 150 s, the rest ~40 s.
-  const scanBudgetEnd = Date.now() + 150_000;
+  const scanBudgetEnd = Math.min(Date.now() + 150_000, opts.hardEnd ? opts.hardEnd - 80_000 : Infinity);
   const web = feeds.filter((f) => isAiFeed(f.url));
   const order = await prisma.feedSource.findMany({ where: { id: { in: web.map((w) => w.id) } }, select: { id: true, sheetState: true } });
   const lastScan = new Map(order.map((o) => [o.id, webStateOf(o.sheetState).lastAt ? Date.parse(webStateOf(o.sheetState).lastAt as string) : 0]));
@@ -386,8 +390,11 @@ export async function runAllFeeds(opts: { aiSlotStart?: Date | null } = {}) {
     // A source whose first import is not finished keeps going on every tick (AI sources only during their first day).
     const unfinished = !!f.lastMessage?.includes(MORE_PENDING) && f.lastStatus === "ok" && (!f.lastRunAt || Date.now() - f.lastRunAt.getTime() >= CATCH_UP_GAP_MS);
     const catchUp = unfinished && (!isAiFeed(f.url) || Date.now() - f.createdAt.getTime() < CATCH_UP_WINDOW_MS);
+    const room = opts.hardEnd ? opts.hardEnd - Date.now() : Infinity;
+    const deepBudgetMs = Math.min(90_000, Math.max(15_000, room - 30_000));
     if (catchUp) {
-      results.push(await runFeedSource(f.id, "schedule"));
+      if (room < 45_000) { deferred++; continue; }
+      results.push(await runFeedSource(f.id, "schedule", { deepBudgetMs }));
       continue;
     }
     if (isAiFeed(f.url)) {
@@ -397,7 +404,8 @@ export async function runAllFeeds(opts: { aiSlotStart?: Date | null } = {}) {
         continue;
       }
     } else if (f.lastRunAt && Date.now() - f.lastRunAt.getTime() < MIN_INTERVAL_MS) continue;
-    results.push(await runFeedSource(f.id, "schedule"));
+    if (room < 45_000) { deferred++; continue; } // not enough time left in this tick: it goes first on the next one
+    results.push(await runFeedSource(f.id, "schedule", { deepBudgetMs }));
   }
   return Object.assign(results, { deferred });
 }
