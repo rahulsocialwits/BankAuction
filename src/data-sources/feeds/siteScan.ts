@@ -138,21 +138,32 @@ async function discoverCore(
     // BAANKNET publishes the real auction records (including image URLs) in the Next.js Flight payload.
     // Follow its numbered listing pages directly instead of opening every React detail route.
     if (siteOf(new URL(url).hostname) === "baanknet.com") {
-      for (const rec of extractBaanknetEmbeddedAuctions(page.html, url)) {
+      const embedded = extractBaanknetEmbeddedAuctions(page.html, url);
+      let addedOnThisPage = 0;
+      for (const rec of embedded) {
         if (rec.source_url) {
           directDetails.add(rec.source_url);
+          if (!baanknetEmbedded.has(rec.source_url)) addedOnThisPage++;
           baanknetEmbedded.set(rec.source_url, rec);
           if (!via.has(rec.source_url)) via.set(rec.source_url, url);
         }
       }
       // Next.js Flight payloads can contain escaped quotes; normalize those before reading pagination metadata.
       const metaHtml = page.html.replace(/\\\"/g, '"');
-      const pageNumber = (name: string) => Number((metaHtml.match(new RegExp('"' + name + '"\\s*:\\s*(\\d+)')) ?? [])[1] ?? "1");
-      const current = pageNumber("currentPage");
+      const pageNumber = (name: string) => Number((metaHtml.match(new RegExp('"' + name + '"\\s*:\\s*(\\d+)')) ?? [])[1] ?? "0");
+      const currentFromMeta = pageNumber("currentPage");
       const total = pageNumber("totalPages");
+      const currentFromUrl = Number(new URL(url).searchParams.get("page") ?? "1");
+      const current = currentFromMeta || currentFromUrl;
       if (current > baanknetLastPage) baanknetLastPage = current;
       if (total > baanknetTotalPages) baanknetTotalPages = total;
-      if (current >= 1 && total > current) {
+
+      // Prefer the site's own totalPages metadata. If that metadata is absent from the
+      // Flight payload, keep walking numbered pages until a page is empty or repeats
+      // entirely. This removes the old accidental "first 12 properties only" ceiling.
+      const shouldContinue = total > current
+        || (!total && embedded.length > 0 && addedOnThisPage > 0);
+      if (shouldContinue && current >= 1) {
         const next = current + 1;
         const nu = new URL(url);
         nu.searchParams.set("page", String(next));
