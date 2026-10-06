@@ -8,6 +8,7 @@ import { importTabular, type TabState } from "@/lib/import/tabular";
 import { fetchTabCsv, listSheetTabs, sheetIdFromUrl } from "./sheets";
 import { acquireAiLock, aiWindow, releaseAiLock } from "@/lib/pipeline/aiSchedule";
 import { checkSourceUrl, type SourceUrlCheck } from "./blockedHosts";
+import { isBaanknetUrl, runBaanknetImport } from "./baanknetImport";
 import { DEEP_MAX_LISTINGS, makeDeepener } from "./deepScan";
 import { scanSiteForNew, webStateOf, withWebState } from "./siteScan";
 
@@ -123,6 +124,8 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
   try {
     const check = validateFeedUrl(feed.url);
     if (!check.ok) throw check.status === "internal_policy_block" ? new PolicyError(check.reason) : new Error(check.reason);
+    // BAANKNET has its own importer (baanknetImport.ts: the site's public listing data, resumable, no AI): its home page is not AI-scanned.
+    if (isBaanknetUrl(check.url)) return { name: feed.name, message: "BAANKNET is imported by its dedicated importer (see Site scan)." };
     const isSheet = check.url.startsWith("https://docs.google.com/spreadsheets/");
     const target = toCsvUrl(check.url);
 
@@ -291,6 +294,13 @@ export async function runWebDiscovery(feedId: string, trigger: "schedule" | "man
   const lock = await acquireAiLock(feed.name);
   if (!lock) return null;
   const startedAt = new Date();
+  if (isBaanknetUrl(check.url)) {
+    try {
+      return await runBaanknetImport(feed, trigger, { budgetMs: opts.budgetMs ?? (all ? 230_000 : trigger === "manual" ? 180_000 : 100_000), force: !!opts.all });
+    } finally {
+      await releaseAiLock(lock);
+    }
+  }
   // the serverless function ends at 300 s: leave room to save the result (a run that is cut off saves nothing)
   const budgetMs = opts.budgetMs ?? (all ? 230_000 : trigger === "manual" ? 180_000 : 70_000);
   try {

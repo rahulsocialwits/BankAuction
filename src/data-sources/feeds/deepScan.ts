@@ -255,6 +255,11 @@ export function extractBaanknetEmbeddedAuctions(html: string, pageUrl: string): 
     } catch { /* unrelated Next.js Flight payload */ }
   }
 
+  return baanknetRecordsFromSources(sources);
+}
+
+/** Maps BAANKNET's own auction records (the `_source` objects of its public listing data) onto the importer's listing format. */
+export function baanknetRecordsFromSources(sources: Raw[]): ListingRecord[] {
   const utcIst = (v: unknown): string => {
     const s = str(v, 40);
     if (!s) return "";

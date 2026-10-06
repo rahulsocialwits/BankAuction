@@ -46,7 +46,7 @@ export async function claimAiSlotWork(slotStart: Date): Promise<boolean> {
 // Per-source run lock: one AI scan per source at a time.
 // ---------------------------------------------------------------------------------------------------------------------
 
-const LOCK_STALE_MS = 10 * 60_000;
+const LOCK_STALE_MS = 6 * 60_000; // a run ends within 300 s; a lock older than this belongs to a run that was cut off
 
 /** Returns a lock id, or null when an AI scan of this source is already running. */
 export async function acquireAiLock(source: string): Promise<string | null> {

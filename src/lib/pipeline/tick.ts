@@ -25,7 +25,7 @@ export async function runTick(opts: { limit?: number; trigger?: TickTrigger; via
 
     // "Import all" on: read every page of the site that was never read, as many as fit into this tick; switch off when none are left.
     const importAll = await builtInImportAll().catch(() => false);
-    const summary = await runBankAuctionsIngestion(importAll ? { all: true, budgetMs: 110_000, triggeredBy: "http-cron" } : { limit: opts.limit ?? 100, triggeredBy: "http-cron" });
+    const summary = await runBankAuctionsIngestion(importAll ? { all: true, budgetMs: 110_000, triggeredBy: "http-cron" } : { limit: opts.limit ?? 100, budgetMs: 60_000, triggeredBy: "http-cron" });
     if (importAll && !summary.skipped && summary.errors.length === 0 && !summary.remaining) await setBuiltInImportAll(false).catch(() => undefined);
     const feeds = await runAllFeeds({ aiSlotStart: window.open ? window.slotStart : null });
     const hidden = await autoCleanExactDuplicates();
