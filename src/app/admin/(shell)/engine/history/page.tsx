@@ -33,7 +33,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
   const logs = filter === "problems"
     ? rawLogs.filter((l) => {
         const dataStatus = parseMetricsMessage(l.message)?.dataStatus;
-        return ["error", "blocked", "policy_block"].includes(l.status) ||
+        return ["error", "blocked", "policy_block", "exhausted", "failed_attempt"].includes(l.status) ||
           isYieldProblem(parseYieldMarker(l.message)?.verdict) ||
           ["WARNING", "INCOMPLETE", "CRITICAL", "BLOCKED", "FAILED", "NO_DATA"].includes(dataStatus ?? "");
       })
