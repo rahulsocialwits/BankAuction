@@ -24,6 +24,11 @@ export interface SourceDefinition {
   authorization?: SourceAuthorization;
   /** Required when authorization is CONFIRMED. */
   authorizationEvidence?: string;
+  /**
+   * A business decision by the project owner that is NOT written permission from the source. It does not change `authorization`.
+   * Recorded so the position is honest: the owner chose to proceed; the source's consent is still unconfirmed.
+   */
+  ownerDecision?: string;
 }
 
 export const SOURCE_REGISTRY: SourceDefinition[] = [
@@ -85,6 +90,9 @@ export const SOURCE_REGISTRY: SourceDefinition[] = [
       "A dedicated importer exists (src/data-sources/feeds/baanknetImport.ts) and calls BAANKNET's own public listing API; this note previously said 'not built', which is no longer true. " +
       "No written consent from PSB Alliance is recorded anywhere in this repository. " +
       "BAANKNET ACCESS AUTHORIZATION: UNKNOWN / REQUIRES BUSINESS CONFIRMATION. Do not represent this source as legally cleared and do not expand its use until the owner confirms and records the authorization here.",
+    ownerDecision:
+      "2026-10-08: project owner (Mayur) stated in writing in the engineering chat that BAANKNET use continues WITHOUT written permission from BAANKNET / PSB Alliance. " +
+      "This is an owner decision, not source authorization. Status stays UNKNOWN_REQUIRES_BUSINESS_CONFIRMATION; the importer must not be expanded, and the source must not be described as legally cleared.",
     authorization: "UNKNOWN_REQUIRES_BUSINESS_CONFIRMATION",
   },
   {

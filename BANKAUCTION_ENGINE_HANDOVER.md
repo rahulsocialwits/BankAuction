@@ -376,3 +376,8 @@ npx tsx scripts/diagnose-source.ts https://example-bank.example/auctions   # rea
 - The reference is the last healthy full pass, not a rolling window, so a collapse that persists never becomes the new normal.
 - A normal incremental run still returns RECOVERING (no verdict). Protection set by an index collapse clears only after a later healthy full pass ("Import all"). This errs on the side of protecting data.
 - The sitemap index (wp-sitemap.xml) was checked on 2026-10-08 and lists a single auctions file, so reading only `wp-sitemap-auctions-1.xml` is not a current gap. WordPress caps a file at 2,000 URLs: if the run message shows the cap warning, check for a `-2` file.
+
+## BAANKNET owner decision (2026-10-08)
+
+The project owner confirmed that BAANKNET use continues **without written permission** from BAANKNET / PSB Alliance. Recorded in `registry.ts` (`ownerDecision`) and `docs/BAANKNET.md`. Authorization status remains UNKNOWN / REQUIRES BUSINESS CONFIRMATION. Standing conditions: no importer expansion, no bypassing of access controls, stop on any refusal or request from BAANKNET, never describe the data as legally cleared. The risk (terms-of-use / access block) is the owner's to carry; it is not mitigated by this note.
+

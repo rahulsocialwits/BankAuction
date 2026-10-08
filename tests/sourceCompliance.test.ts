@@ -19,3 +19,11 @@ test("no source may be marked authorization CONFIRMED without recorded evidence"
     }
   }
 });
+
+test("BAANKNET owner decision is recorded as a decision, not as authorization", () => {
+  const b = getSourceDefinition("baanknet");
+  assert.ok(b?.ownerDecision);
+  assert.match(b.ownerDecision, /WITHOUT written permission/);
+  assert.match(b.ownerDecision, /not source authorization/);
+  assert.equal(b.authorization, "UNKNOWN_REQUIRES_BUSINESS_CONFIRMATION");
+});
