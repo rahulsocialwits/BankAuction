@@ -2,6 +2,8 @@ import { PropertyCategory, PropertyStatus, type DocumentType } from "@prisma/cli
 import { prisma } from "@/lib/db/prisma";
 import { slugify } from "@/lib/normalization/parsers";
 import { deriveAuctionStatusFromDates } from "@/lib/domain/deriveAuctionStatus";
+import { auctionDateChanged, detectExplicitStatus, resolveAuctionStatus } from "@/lib/domain/resolveAuctionStatus";
+import { recordAuctionStatusChange } from "@/lib/pipeline/auctionEvents";
 import { canonicalBankKey, canonicalBankName, normalizeListing } from "./normalize";
 import { removeListingFromSource } from "@/lib/pipeline/sourceRemoval";
 
@@ -264,8 +266,16 @@ export async function enrichExisting(hit: Known, rec: ListingRecord, statusSourc
     // a date more than 36 h away is another auction round (handled by addReauctionRound), not a correction of this one
     if (start && !same(a.auctionStart, start) && (!a.auctionStart || Math.abs(start.getTime() - a.auctionStart.getTime()) < ROUND_GAP_MS)) data.auctionStart = start;
     if (x.auctionEnd && !same(a.auctionEnd, x.auctionEnd)) data.auctionEnd = x.auctionEnd;
-    const status = deriveAuctionStatusFromDates(start ?? a.auctionStart, x.auctionEnd ?? a.auctionEnd);
-    if (status !== a.status) data.status = status;
+    const status = resolveAuctionStatus({
+      current: a.status,
+      derived: deriveAuctionStatusFromDates(start ?? a.auctionStart, x.auctionEnd ?? a.auctionEnd),
+      explicit: detectExplicitStatus(rec.auction_status), // only a deliberate status field; free text is never scanned
+      dateChanged: auctionDateChanged(a.auctionStart, start),
+    });
+    if (status !== a.status) {
+      data.status = status;
+      await recordAuctionStatusChange(a.id, a.status, status, "Source re-read: status updated");
+    }
   } else if (!a.auctionStart) {
     const start = parseListingDate(rec.auction_start);
     if (start) data.auctionStart = start;
@@ -325,7 +335,7 @@ async function addReauctionRound(hit: Known, rec: ListingRecord, titleTokens: Se
   // "100% the same property": a near-identical title, or the same price with a clearly overlapping title
   const same = similar(titleTokens, hit.tokens) || (reserve === hit.reserve && overlap(titleTokens, hit.tokens) >= 0.6);
   if (!same) return false;
-  const rounds = await prisma.auction.findMany({ where: { propertyId: hit.propertyId }, select: { id: true, auctionStart: true, auctionEnd: true, externalAuctionId: true, reservePrice: true, emd: true } });
+  const rounds = await prisma.auction.findMany({ where: { propertyId: hit.propertyId }, select: { id: true, status: true, auctionStart: true, auctionEnd: true, externalAuctionId: true, reservePrice: true, emd: true } });
   if (!rounds.length) return false;
   if (rec.external_id && rounds.some((r) => r.externalAuctionId === rec.external_id)) return false;
   if (rounds.some((r) => r.auctionStart && Math.abs(r.auctionStart.getTime() - start.getTime()) < ROUND_GAP_MS)) return false;
@@ -356,7 +366,9 @@ async function addReauctionRound(hit: Known, rec: ListingRecord, titleTokens: Se
   });
   // the earlier round is over: its status follows its own dates (completed / expired), the new round is the live one
   const prev = rounds.find((r) => r.id === latest.id)!;
-  await prisma.auction.update({ where: { id: prev.id }, data: { status: deriveAuctionStatusFromDates(prev.auctionStart, prev.auctionEnd) } }).catch(() => undefined);
+  const prevStatus = resolveAuctionStatus({ current: prev.status, derived: deriveAuctionStatusFromDates(prev.auctionStart, prev.auctionEnd) });
+  await recordAuctionStatusChange(prev.id, prev.status, prevStatus, "Superseded by a new auction round");
+  await prisma.auction.update({ where: { id: prev.id }, data: { status: prevStatus } }).catch(() => undefined);
   const d = (v: Date | null) => (v ? v.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" }) : "—");
   await prisma.propertyChange.create({ data: { propertyId: hit.propertyId, field: "re_auction", oldValue: `${d(latest.auctionStart)} · ₹${latest.reservePrice ? Number(latest.reservePrice).toLocaleString("en-IN") : "—"}`, newValue: `New auction round ${d(start)} · ₹${reserve.toLocaleString("en-IN")}${col("emd") ? ` · EMD ₹${(money(col("emd")) ?? 0).toLocaleString("en-IN")}` : ""}` } }).catch(() => undefined);
   await attachDocuments(hit.propertyId, docsOf(rec)).catch(() => false);

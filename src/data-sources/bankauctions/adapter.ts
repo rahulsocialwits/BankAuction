@@ -8,6 +8,8 @@ import { normalizeBankAuctionsRecord } from "./normalize";
 import { validateAuctionRecord } from "@/lib/validation/validateAuctionRecord";
 import { sha256 } from "@/lib/hash";
 import { deriveAuctionStatusFromDates } from "@/lib/domain/deriveAuctionStatus";
+import { auctionDateChanged, isHeldStatus, resolveAuctionStatus } from "@/lib/domain/resolveAuctionStatus";
+import { recordAuctionStatusChange } from "@/lib/pipeline/auctionEvents";
 import { findDuplicatePropertyViaAI } from "@/lib/deduplication/aiDuplicateCheck";
 
 const SOURCE_KEY = "bankauctions";
@@ -325,6 +327,14 @@ async function ingestOnePage(
 
     await logFieldChanges(existingAuction, normalized, propertyId, auctionId);
 
+    // A postponed / cancelled auction keeps that status until its date changes; plain date derivation would reset it to UPCOMING.
+    const resolvedStatus = resolveAuctionStatus({
+      current: existingAuction.status,
+      derived: derivedStatus,
+      dateChanged: auctionDateChanged(existingAuction.auctionStart, normalized.auctionStart),
+    });
+    const statusHeld = isHeldStatus(resolvedStatus) && resolvedStatus === existingAuction.status;
+
     await prisma.auction.update({
       where: { id: auctionId },
       data: {
@@ -347,11 +357,12 @@ async function ingestOnePage(
         autoExtension: normalized.autoExtension,
         extensionDurationMins: normalized.extensionDurationMins,
         extensionTrigger: normalized.extensionTrigger,
-        status: derivedStatus,
-        statusSource: "date_derived",
+        status: resolvedStatus,
+        ...(statusHeld ? {} : { statusSource: "date_derived" }),
         sourceUrl: url,
       },
     });
+    await recordAuctionStatusChange(auctionId, existingAuction.status, resolvedStatus, "Source re-read: status follows the auction dates");
     const existingProperty = existingAuction.property;
     await prisma.property.update({
       where: { id: propertyId },

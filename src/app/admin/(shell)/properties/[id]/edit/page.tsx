@@ -127,6 +127,15 @@ export default async function EditPropertyPage({ params, searchParams }: { param
                 </div>
               </div>
               <div>
+                <label className={label}>Auction status</label>
+                <select name="auctionStatus" defaultValue={a.status === "POSTPONED" || a.status === "CANCELLED" ? a.status : "AUTO"} className={input}>
+                  <option value="AUTO">Automatic (follows the auction dates)</option>
+                  <option value="POSTPONED">Postponed</option>
+                  <option value="CANCELLED">Cancelled</option>
+                </select>
+                <p className="mt-1 text-xs text-slate-500">Postponed / Cancelled stay until you change them, or until the auction date changes.</p>
+              </div>
+              <div>
                 <label className={label}>Possession status</label>
                 <input name="possessionStatus" defaultValue={a.possessionStatus ?? ""} className={input} />
               </div>
