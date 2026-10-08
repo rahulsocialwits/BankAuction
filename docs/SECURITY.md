@@ -30,7 +30,7 @@ Held only in Vercel environment variables, GitHub repository secrets and the dev
 1. `robots.txt` is read before any page or data request (`RobotsGate`, `robotsCheck`, `politeFetch`) and obeyed (wildcards, `$`, longest rule, Crawl-delay). A disallowed address is never requested.
 2. Honest user agent `BankAuctionBot/1.0 (+https://auction.bizsocio.com)`. No user-agent rotation, no proxies, no stealth.
 3. HTTP **401 / 403, CAPTCHA, login walls and anti-bot pages are never bypassed or retried**; the page/source stops and is reported as such. Only 429/503 get **one** retry after `Retry-After` (max 20 s).
-4. `src/data-sources/feeds/blockedHosts.ts` lists hosts that must never be fetched (`auctionbazaar.com`, `bankauction.co`); it is a policy list owned by the project owner — do not edit it without their decision. The message for a match says "Source disabled by project configuration" (it is not a website refusal).
+4. `src/data-sources/feeds/blockedHosts.ts` lists hosts that must never be fetched (`auctionbazaar.com`, `bankauction.co`, `findauction.in`); it is a policy list owned by the project owner — do not edit it without their decision. The message for a match says "Source disabled by project configuration" (it is not a website refusal).
 5. Browser rendering only executes the JavaScript of a public page that the plain crawler was already allowed to fetch; data requests made by the page are robots-checked and limited to the same site family; downloads/service workers are blocked.
 6. BAANKNET: only the public listing data the site's own pages request; stops on any refusal.
 7. Vehicles/movables are never imported; borrower and documents are not exposed through the public API.
