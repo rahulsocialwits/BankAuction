@@ -529,3 +529,21 @@ Lifecycle: HEALTHY -> COLLAPSED -> PROTECTED -> RECOVERY QUEUED -> FULL HEALTHY 
 - **Records:** `lotsToListingRecords()` maps only COMPLETE lots to import records with id `src:<host>:pdf-<hash of document url>-lot<n>`; incomplete lots never become records. Nothing calls it yet.
 - **Fixtures:** `tests/fixtures/pdf-notices/*.txt` are SYNTHETIC text in typical bank-notice layouts (12-lot, scrambled order, missing fields, inconsistent formatting, table, scanned, ambiguous). They are NOT copies of real notices (the sandbox cannot download any). Before wiring this in, add extracted text from real notices of the banks in question and fix what they expose.
 - **To wire it later (separate PR):** in `deepScan.ts` after `pdfToText`, call `extractPdfLots`; for complete lots call `importRecords(lotsToListingRecords(...), ..., { strict: true, method: "pdf" })`; report PARTIAL / NEEDS_OCR / AMBIGUOUS in the run note. Rollback of this PR: revert; nothing else depends on it.
+
+## Source lifecycle status mapping (Phase 3, PR 9; added 2026-10-08)
+
+Where a source or CSV/sheet **explicitly** supplies a status in the `auction_status` field, `detectExplicitStatus` (`resolveAuctionStatus.ts`) maps it to a status the domain ALREADY has. No status was added (a test pins the enum).
+
+| Source wording | Becomes | Behaviour |
+|---|---|---|
+| postponed, adjourned, deferred, put on hold | POSTPONED | sticky: kept until the auction date changes |
+| cancelled / canceled, cancellation, called off, **withdrawn** | CANCELLED | sticky: kept until the auction date changes |
+| **sold**, completed, concluded | COMPLETED | applied when the source says it; NOT sticky (normal date lifecycle otherwise) |
+| anything else: upcoming, live, open, active, expired, closed, empty, long text | no signal | status follows the dates |
+
+- **Guards:** negations ("not cancelled", "no cancellation", "unsold", "not sold") and wording that points two ways ("cancelled / sold") give no signal; a value longer than 60 characters is a description, never a status (boilerplate such as "auction may be cancelled" cannot cancel anything).
+- **New listings** now honour an explicit status too (before, only re-reads of an existing listing did): a listing that arrives as "Cancelled" is created CANCELLED, not UPCOMING. Applies to the new-listing, new-round and new-property creation paths in `csvImport.ts`.
+- **Per source today:** CSV / Google-sheet imports: yes, via an `auction_status` column. BAANKNET: no; its API "upcoming" / "live" are list filters, not a per-record status, and its records carry no `auction_status` (test). BankAuctions.in: no; no verified status field exists, and free page text is never scanned (test). AI/web-scan feeds: no.
+- **Disappearance flags NEVER become a status.** `lastSeen.ts` / `lastSeenStore.ts` cannot write or resolve an auction status (test greps for it); a flag stays a flag for an admin to review.
+- **Fixtures:** `tests/fixtures/source-status-labels.json` (wording per channel and the expected result). Written for the tests; add real labels when a source is seen using one.
+- **Not done:** no stored-status backfill; no change to read-time `auctionLifecycle.ts`; WITHDRAWN/SOLD are mapped, not stored as their own values. Rollback: revert the PR.

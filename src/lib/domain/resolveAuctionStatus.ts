@@ -15,16 +15,34 @@ import type { AuctionStatus } from "@prisma/client";
  * boilerplate such as "EMD is refunded if the auction is cancelled" would cause false cancellations.
  */
 
-export type ExplicitAuctionStatus = "POSTPONED" | "CANCELLED";
+/**
+ * What a source can state outright. Only statuses the domain model already has are used (no new status was added):
+ *   postponed / adjourned / deferred / on hold          -> POSTPONED   (held until the date changes)
+ *   cancelled / called off / WITHDRAWN                  -> CANCELLED   (held until the date changes)
+ *   sold / SOLD / completed / concluded                 -> COMPLETED   (applied when the source says it; not held)
+ * "Withdrawn" is the bank pulling the auction, which for a bidder is a cancellation; "sold" is a finished auction.
+ */
+export type ExplicitAuctionStatus = "POSTPONED" | "CANCELLED" | "COMPLETED";
 const HELD: ReadonlySet<AuctionStatus> = new Set<AuctionStatus>(["POSTPONED", "CANCELLED"]);
 
-/** Reads a status value a source or admin provided ("Postponed", "CANCELLED", "auction cancelled", "withdrawn"). Anything else gives null. */
+const NEGATED = /\b(?:not|no|never|without|isn'?t|wasn'?t|un)\s*[-\s]?(?:been\s+)?(?:cancel+ed|cancellation|postponed|adjourned|deferred|withdrawn|sold|completed|concluded)/;
+const WORDS: [ExplicitAuctionStatus, RegExp][] = [
+  ["CANCELLED", /\b(?:cancel+ed|cancellation|withdrawn|called off)\b/],
+  ["POSTPONED", /\b(?:postponed|adjourned|deferred|put on hold)\b/],
+  ["COMPLETED", /\b(?:sold|completed|concluded)\b/],
+];
+
+/**
+ * Reads a status value a source or admin provided ("Postponed", "CANCELLED", "withdrawn", "Sold"). Anything else gives null:
+ * an empty or long value, a negation ("not cancelled", "unsold"), or wording that points two ways ("cancelled / sold").
+ * Ordinary list words ("upcoming", "live", "open") are not signals: the status then follows the dates.
+ */
 export function detectExplicitStatus(value: string | null | undefined): ExplicitAuctionStatus | null {
   const v = (value ?? "").trim().toLowerCase();
   if (!v || v.length > 60) return null; // a status field is short; long text is a description, not a status
-  if (/\b(cancel+ed|cancellation|withdrawn|called off)\b/.test(v)) return "CANCELLED";
-  if (/\b(postponed|adjourned|deferred|put on hold)\b/.test(v)) return "POSTPONED";
-  return null;
+  if (NEGATED.test(v) || /\bunsold\b/.test(v)) return null;
+  const hits = WORDS.filter(([, re]) => re.test(v)).map(([status]) => status);
+  return hits.length === 1 ? hits[0] : null;
 }
 
 const sameInstant = (a: Date | null | undefined, b: Date | null | undefined) => (a ? a.getTime() : null) === (b ? b.getTime() : null);

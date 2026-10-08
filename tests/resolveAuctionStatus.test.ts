@@ -91,3 +91,67 @@ test("WIRING: admin can set Postponed / Cancelled and the form offers it", () =>
 test("the pure resolver has no database or Prisma runtime import", () => {
   assert.doesNotMatch(read("src/lib/domain/resolveAuctionStatus.ts"), /import (?!type)[^;]*(prisma|@prisma\/client)/);
 });
+
+/* ---------- Phase 3 PR 9: source lifecycle status mapping ---------- */
+
+import { ExplicitAuctionStatus } from "../src/lib/domain/resolveAuctionStatus";
+
+const labels = JSON.parse(read("tests/fixtures/source-status-labels.json")) as Record<string, { raw: string; expected: ExplicitAuctionStatus | null }[] | string>;
+
+for (const [source, rows] of Object.entries(labels)) {
+  if (!Array.isArray(rows)) continue;
+  test(`status labels (${source}): each wording maps to the safe status or to nothing`, () => {
+    for (const r of rows) assert.equal(detectExplicitStatus(r.raw), r.expected, JSON.stringify(r.raw));
+  });
+}
+
+test("mapping uses only statuses the domain already has: nothing is invented", () => {
+  const schema = read("prisma/schema.prisma");
+  const body = /enum AuctionStatus \{([^}]*)\}/.exec(schema)![1].split(/\s+/).filter(Boolean);
+  assert.deepEqual(body.sort(), ["AUCTION_TODAY", "CANCELLED", "COMPLETED", "EXPIRED", "LIVE", "POSTPONED", "UPCOMING"]);
+  const all = new Set(Object.values(labels).flatMap((r) => (Array.isArray(r) ? r.map((x) => x.expected) : [])).filter(Boolean));
+  for (const s of all) assert.ok(body.includes(s as string), String(s));
+});
+
+test("an explicit COMPLETED (sold / completed) is applied, and wins over a future-dated derivation", () => {
+  assert.equal(resolveAuctionStatus({ current: "UPCOMING", derived: "UPCOMING", explicit: "COMPLETED" }), "COMPLETED");
+  assert.equal(resolveAuctionStatus({ current: "POSTPONED", derived: "UPCOMING", explicit: "COMPLETED" }), "COMPLETED");
+});
+
+test("COMPLETED is not sticky: without the signal the normal date lifecycle applies (only POSTPONED / CANCELLED are held)", () => {
+  assert.equal(isHeldStatus("COMPLETED"), false);
+  assert.equal(resolveAuctionStatus({ current: "COMPLETED", derived: "UPCOMING", dateChanged: false }), "UPCOMING");
+});
+
+test("sticky POSTPONED / CANCELLED are unchanged by the new mapping", () => {
+  assert.equal(resolveAuctionStatus({ current: "POSTPONED", derived: "UPCOMING", dateChanged: false }), "POSTPONED");
+  assert.equal(resolveAuctionStatus({ current: "CANCELLED", derived: "UPCOMING", dateChanged: false }), "CANCELLED");
+  assert.equal(resolveAuctionStatus({ current: "CANCELLED", derived: "UPCOMING", dateChanged: true }), "UPCOMING");
+});
+
+test("a new listing that arrives with an explicit status is created with it (all three creation sites)", () => {
+  const csv = read("src/lib/import/csvImport.ts");
+  const sites = csv.match(/explicit: detectExplicitStatus\(rec\.auction_status\)/g) ?? [];
+  assert.ok(sites.length >= 4, `update path + 3 creation sites, found ${sites.length}`);
+  assert.doesNotMatch(csv, /status: deriveAuctionStatusFromDates\(start, x\.auctionEnd\),/, "new round must honour an explicit status");
+});
+
+test("DISAPPEARANCE FLAGS NEVER BECOME A STATUS: last-seen code cannot write or resolve an auction status", () => {
+  for (const f of ["src/lib/pipeline/lastSeen.ts", "src/lib/pipeline/lastSeenStore.ts"]) {
+    const s = read(f);
+    assert.doesNotMatch(s, /CANCELLED|POSTPONED|resolveAuctionStatus|recordAuctionStatusChange|auction\.update|property\.update/, f);
+  }
+  // and the other direction: the status code knows nothing about flags
+  assert.doesNotMatch(read("src/lib/domain/resolveAuctionStatus.ts"), /disappear|missing:|lastSeen/i);
+});
+
+test("source-specific: BAANKNET's list filter (upcoming / live) is never read as a status, and its records carry no auction_status", () => {
+  assert.doesNotMatch(read("src/data-sources/feeds/renderedParser.ts"), /auction_status/);
+  assert.doesNotMatch(read("src/data-sources/feeds/baanknetImport.ts"), /auction_status|detectExplicitStatus/);
+});
+
+test("source-specific: BankAuctions.in passes no explicit status (no verified status field; free text is never scanned)", () => {
+  const adapter = read("src/data-sources/bankauctions/adapter.ts");
+  const call = adapter.slice(adapter.indexOf("resolveAuctionStatus({"), adapter.indexOf("resolveAuctionStatus({") + 260);
+  assert.doesNotMatch(call, /explicit/);
+});
