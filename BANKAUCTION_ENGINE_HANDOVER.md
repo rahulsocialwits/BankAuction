@@ -389,3 +389,23 @@ The project owner confirmed that BAANKNET use continues **without written permis
 - **Not done:** no source currently supplies an explicit status automatically. BankAuctions.in pages and the BAANKNET listing API were not changed (BAANKNET importer stays as is, see the compliance notes). Adding automatic detection needs a verified source field first.
 - `AuctionEvent` now has a writer: every status change in these paths writes a row (`src/lib/pipeline/auctionEvents.ts`, never throws).
 
+
+## Phase 3C: coverage intelligence and zero-yield detection (added 2026-10-08)
+
+No new source was added and no database schema changed.
+
+**Coverage numbers** (`src/lib/pipeline/coverage.ts`, pure; page Admin → Engine → Coverage, read-only):
+- Headline: **current unique actionable auctions** = not duplicate, not removed, published, current (open and date not passed by more than 24 h, or POSTPONED), with reserve price, auction date and an address.
+- Also shown: total, duplicate, removed, unique, published, current, stale (marked open but date passed), and a per-source table.
+- "Found by" attribution = the source that **created** the auction (host of its `src:<host>:<id>` id, else of its URL). `SourceRecord` is written only by the BankAuctions.in crawler, so there is no first-seen row for feed sources; later enrichment by another source is not credited (no field-level provenance yet).
+- Overlap table (last 30 days, from `SourceRunLog.created / duplicates / rejected`): share of valid listings that were new vs already held. Caveat: sources are re-read, so over long windows repeat reads inflate overlap; it is most meaningful for a first full pass.
+- The page loads up to 100,000 auctions in one query (fine today; revisit with a SQL aggregate if it ever approaches that).
+
+**Zero-yield detection** (`src/lib/pipeline/zeroYield.ts` pure, `yieldMonitor.ts` DB edge, wired in `feeds/run.ts`):
+- Covers generic sources only: Google Sheets / CSV, AI list-page reads, whole-site scans. **Not** the BankAuctions.in crawler (it has the completeness engine) and **not** the BAANKNET importer (deliberately untouched).
+- Per channel (`list`, `site`, `sheet`) the run's `discovered` count drives a verdict: PRODUCTIVE, EMPTY (watching), **ZERO_YIELD** (≥3 empty runs over ≥6 h and never produced anything), **DROPPED** (produced before, now nothing), **ALL_REJECTED** (≥3 runs where every listing is rejected). A source is PRODUCTIVE if any channel recently found listings.
+- "Found listings that are all already known" is PRODUCTIVE: nothing new is not a failure.
+- State is stored in `FeedSource.sheetState` under key `yield` (not in run-log rows, because quiet hourly runs are deliberately not logged). Writers that replace the whole field use `keepYieldState`.
+- Run-log rows carry a `[YIELD_V1] {json}` first line (history page shows ZERO_YIELD / DROPPED / ALL_REJECTED badges and the "Problems only" filter includes them).
+- It is an **alert only**: it never pauses a source, removes a listing, or changes protection. Pausing a dead source stays a human decision.
+- Tests: `tests/zeroYield.test.ts`, `tests/coverage.test.ts`, `tests/yieldWiring.test.ts` (source-level guards, including that the BAANKNET importer is untouched and the coverage page never writes).

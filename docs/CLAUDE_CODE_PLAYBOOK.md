@@ -49,6 +49,8 @@ Merged into `main`:
 - **PR #5 — BAANKNET owner decision** recorded (status stays UNKNOWN).
 - **PR #6 — POSTPONED/CANCELLED:** these statuses now stick across re-imports until the auction date changes; admin "Auction status" select; `auction_status` CSV field; `AuctionEvent` writer.
 
+- **PR (Phase 3C) — coverage intelligence + zero-yield detection:** Admin → Engine → Coverage (current unique actionable auctions, funnel, who found what, overlap) and an alert when a generic source returns "ok" with no listings. See the handover, "Phase 3C". No new source, no schema change.
+
 Pending owner tasks: run "Import all" once for BankAuctions.in so the engine has a healthy full-pass reference; check Admin → Engine → History daily at first; set one auction to Postponed in the admin and confirm the badge on its public page.
 
 Decision recorded: Phase 2 hardening is SAFE TO MERGE (Vercel build + CI green). **Phase 3 source onboarding may begin** only through the playbook in §9.
@@ -143,12 +145,13 @@ Do these in order; each source gets its own branch and PR.
 1. **Automatic POSTPONED/CANCELLED detection** from a verified source field (BankAuctions.in: inspect a real postponed auction page; do not scan free text). Today status is set by hand or via CSV `auction_status`.
 2. **Baseline drift / recovery:** protection set by an index collapse clears only after a healthy full pass; consider an automatic full-pass schedule so protection cannot stay stuck.
 3. **BAANKNET run refused at the start logs no metrics** — log a BLOCKED metric so protection reflects it.
-4. **Generic feeds are always evaluation-eligible** (likely noisy verdicts): review per-feed eligibility.
+4. **Generic feeds are always evaluation-eligible** (likely noisy verdicts): review per-feed eligibility. (Zero-yield detection from Phase 3C now covers the "ok but found nothing" case; this item is about the completeness verdict itself.)
 5. **`autoCleanExactDuplicates`** uses a 0.4 Jaccard rule; review for false merges before widening.
 6. **Disappearance sweeper** ("listing no longer on the source"): does not exist. If ever built it must use `allowsDisappearanceAction` and require two consecutive HEALTHY full passes.
 7. **ESLint:** fix the 2 known pre-existing findings in a tiny separate PR.
 8. **Sitemap cap:** WordPress sitemaps hold at most 2,000 URLs per file. If a run message shows the cap warning, check for `wp-sitemap-auctions-2.xml` and read it too.
-9. **Phase 3 sources** (new banks/portals) via §9, one per PR.
+9. **Per-source first-seen provenance for feed sources** (`SourceRecord` is written only by the BankAuctions.in crawler): needed if "found by" attribution on the Coverage page proves too coarse. Needs an owner-approved schema change.
+10. **Phase 3 sources** (new banks/portals) via §9, one per PR.
 
 Do not start a backlog item the owner has not asked for. Propose it, explain the business impact in one or two lines, wait for "go".
 

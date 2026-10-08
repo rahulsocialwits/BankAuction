@@ -9,6 +9,7 @@ import {
   type SourceRunMetrics,
 } from "./completeness";
 import { protectionFromRuns, unreadableProtection, type SourceProtection } from "./sourceProtection";
+import { formatYieldMarker, type YieldMarker } from "./zeroYield";
 
 export interface RunLogInput {
   source: string;
@@ -24,6 +25,8 @@ export interface RunLogInput {
   startedAt?: Date;
   /** Optional source inventory/run metrics. Stored in the existing message column; no schema migration required. */
   metrics?: SourceRunMetrics;
+  /** Zero-yield verdict of a generic source (see zeroYield.ts). Written as a marker line at the start of the human text. */
+  yield?: YieldMarker;
 }
 
 /** Recent runs of one source (last 30 days, newest first) that carry a data-engine verdict. Throws if the database cannot be read. */
@@ -89,12 +92,14 @@ export async function logRun(input: RunLogInput) {
   const startedAt = input.startedAt ?? new Date();
   try {
     let message = input.message?.slice(0, 2000);
+    // The marker goes FIRST so truncation never cuts it; the admin strips it before showing the text.
+    if (input.yield) message = `${formatYieldMarker(input.yield)}\n${(input.message ?? "").slice(0, 1600)}`;
     if (input.metrics) {
       const historical = await loadHistoricalRuns(input.source);
 
       const baseline = buildSourceBaseline(historical, startedAt);
       const result = evaluateCompleteness(input.metrics, baseline);
-      message = formatMetricsMessage(input.metrics, result, input.message);
+      message = formatMetricsMessage(input.metrics, result, input.yield ? message : input.message);
     }
 
     await prisma.sourceRunLog.create({

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import EngineTabs from "@/components/admin/EngineTabs";
 import { parseMetricsMessage, type DataHealthStatus } from "@/lib/pipeline/completeness";
+import { isYieldProblem, parseYieldMarker, stripYieldMarker } from "@/lib/pipeline/zeroYield";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
     ? rawLogs.filter((l) => {
         const dataStatus = parseMetricsMessage(l.message)?.dataStatus;
         return ["error", "blocked", "policy_block"].includes(l.status) ||
+          isYieldProblem(parseYieldMarker(l.message)?.verdict) ||
           ["WARNING", "INCOMPLETE", "CRITICAL", "BLOCKED", "FAILED", "NO_DATA"].includes(dataStatus ?? "");
       })
     : rawLogs;
@@ -86,7 +88,15 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
                 <td className="px-3 py-2">
                   {(() => {
                     const dataStatus = parseMetricsMessage(l.message)?.dataStatus;
-                    return dataStatus ? <span className={`px-2 py-0.5 rounded font-semibold ${DATA_STATUS[dataStatus]}`}>{dataStatus}</span> : "—";
+                    const y = parseYieldMarker(l.message);
+                    const yieldBadge = y && isYieldProblem(y.verdict) ? <span className="px-2 py-0.5 rounded font-semibold bg-red-50 text-red-700">{y.verdict}</span> : null;
+                    if (!dataStatus && !yieldBadge) return "—";
+                    return (
+                      <span className="flex flex-wrap gap-1">
+                        {dataStatus && <span className={`px-2 py-0.5 rounded font-semibold ${DATA_STATUS[dataStatus]}`}>{dataStatus}</span>}
+                        {yieldBadge}
+                      </span>
+                    );
                   })()}
                 </td>
                 <td className="px-3 py-2 text-right">{l.created}</td>
@@ -94,7 +104,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
                 <td className="px-3 py-2 text-right">{l.rejected}</td>
                 <td className="px-3 py-2 text-right">{l.aiTokens || "—"}</td>
                 <td className="px-3 py-2 text-brand-muted max-w-xs break-words">
-                  {l.message?.replace(/^\[DATA_ENGINE_V1\] \{.*\}\n/, "") ?? ""}
+                  {stripYieldMarker(l.message?.replace(/^\[DATA_ENGINE_V1\] \{.*\}\n/, ""))}
                 </td>
               </tr>
             ))}

@@ -11,6 +11,8 @@ import { checkSourceUrl, type SourceUrlCheck } from "./blockedHosts";
 import { isBaanknetUrl, runBaanknetImport } from "./baanknetImport";
 import { DEEP_MAX_LISTINGS, makeDeepener } from "./deepScan";
 import { scanSiteForNew, webStateOf, withWebState } from "./siteScan";
+import { recordYield } from "@/lib/pipeline/yieldMonitor";
+import { keepYieldState, type YieldRun } from "@/lib/pipeline/zeroYield";
 
 /** Saved in a feed's last message while its first import is not finished; the scheduler keeps it going on every tick. */
 export const MORE_PENDING = "Continues automatically.";
@@ -121,6 +123,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
   let aiFeed = false; // a web page read through the AI (these are logged even when nothing changed: at most 4 a day)
   let newHash: string | undefined;
   let sheetStateOut: string | undefined;
+  let yieldRun: YieldRun | undefined; // what a CSV / web-page run presented, for the zero-yield check
   try {
     const check = validateFeedUrl(feed.url);
     if (!check.ok) throw check.status === "internal_policy_block" ? new PolicyError(check.reason) : new Error(check.reason);
@@ -138,12 +141,14 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
       const message = sheet.message;
       await prisma.feedSource.update({
         where: { id },
-        data: { lastRunAt: new Date(), lastStatus: "ok", lastMessage: message, sheetState: sheet.stateJson },
+        data: { lastRunAt: new Date(), lastStatus: "ok", lastMessage: message, sheetState: keepYieldState(feed.sheetState, sheet.stateJson) },
       });
       if (stats.created > 0 && (trigger === "manual" || aiWindow().open)) {
         const geo = await enrichLocations(60).catch(() => null);
         tokens += geo?.tokens ?? 0;
       }
+      // Zero-yield check (generic sources): a sheet that was read but presented no property rows is not "healthy" just because it did not fail.
+      const sheetYield = unchanged ? undefined : await recordYield(id, "sheet", { discovered: stats.created + stats.skipped + stats.failed, created: stats.created, duplicates: stats.skipped, rejected: stats.failed });
       if (!unchanged) await logRun({
         source: feed.name,
         kind: "feed",
@@ -155,6 +160,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
         aiTokens: tokens,
         message,
         startedAt,
+        yield: sheetYield,
         metrics: {
           inventoryCount: stats.created + stats.skipped + stats.failed,
           publishedCount: stats.created,
@@ -206,7 +212,8 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
       } else {
         message = out.skippedReason ? `Skipped: ${out.skippedReason}` : `${describe(out)}${out.usedAi ? ` (columns mapped by AI, ${out.tokens} tokens)` : ""}`;
       }
-      sheetStateOut = JSON.stringify({ tabs: { csv: out.state } });
+      sheetStateOut = keepYieldState(feed.sheetState, JSON.stringify({ tabs: { csv: out.state } }));
+      if (!out.unchanged) yieldRun = { discovered: out.created + out.skipped + out.failed, created: out.created, duplicates: out.skipped, rejected: out.failed };
     } else {
       // Scheduled runs skip the AI when the page text is identical to last time, or identical to a page another source
       // already processed; "Run now" always re-reads. Only one AI scan of a source runs at a time.
@@ -243,6 +250,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
           await deepener.deps.close?.(); // the browser (if the render fallback started one) is released
         }
         stats = out;
+        yieldRun = { discovered: scan.records.length, created: out.created, duplicates: out.skipped, rejected: out.failed };
         tokens += deepener.stats.tokens;
         const d = deepener.stats;
         const deepNote = d.attempted ? ` Deep scan: ${d.attempted} listing(s) read in full, ${d.pdfs} notice PDF(s) read, ${d.tokens} tokens${d.notes.length ? ` (${[...new Set(d.notes)].join("; ")})` : ""}.` : "";
@@ -259,6 +267,8 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
       const geo = await enrichLocations(30).catch(() => null);
       tokens += geo?.tokens ?? 0;
     }
+    // Zero-yield check: written after the update above so it merges into the latest sheetState.
+    const yieldMark = yieldRun ? await recordYield(id, aiFeed ? "list" : "sheet", yieldRun) : undefined;
     // Hourly "nothing changed" checks of CSV/Sheet links are not worth a history row each; they would bury the real runs.
     // AI page scans run at most 4 times a day, so even an unchanged one is recorded (status skipped, AI not called).
     if (!unchanged) await logRun({
@@ -272,6 +282,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
         aiTokens: tokens,
         message,
         startedAt,
+        yield: yieldMark,
         metrics: {
           inventoryCount: stats.created + stats.skipped + stats.failed,
           publishedCount: stats.created,
@@ -361,8 +372,10 @@ export async function runWebDiscovery(feedId: string, trigger: "schedule" | "man
       where: { id: feedId },
       data: { sheetState: withWebState(fresh?.sheetState, { seen: res.seen, lastAt: new Date().toISOString(), importAll: all ? res.pending : false, baanknetPage: nextBaanknetPage, baanknetTotalPages: res.baanknetTotalPages ?? state.baanknetTotalPages, verified: [...new Set([...(state.verified ?? []), ...res.verifiedShapes])] }), lastMessage: `${keep} | ${note}`.slice(0, 1800) },
     });
+    // Zero-yield check: "ok" with 0 listing pages found is not healthy (JavaScript-only site, changed layout, block page).
+    const siteYield = await recordYield(feedId, "site", { discovered: res.discovered, created: res.import.created, duplicates: res.import.skipped, rejected: res.import.failed });
     // An hour in which nothing new appeared is not worth a history row.
-    if (res.read > 0 || res.import.created > 0 || res.discovered === 0) await logRun({ source: feed.name, kind: "feed", trigger, status: "ok", created: res.import.created, duplicates: res.import.skipped, rejected: res.import.failed, aiTokens: res.tokens, message: note, startedAt });
+    if (res.read > 0 || res.import.created > 0 || res.discovered === 0) await logRun({ source: feed.name, kind: "feed", trigger, status: "ok", created: res.import.created, duplicates: res.import.skipped, rejected: res.import.failed, aiTokens: res.tokens, message: note, startedAt, yield: siteYield });
     if (res.import.created > 0 && (trigger === "manual" || aiWindow().open)) await enrichLocations(30).catch(() => null);
     return note;
   } catch (e) {

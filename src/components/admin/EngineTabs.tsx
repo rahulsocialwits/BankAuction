@@ -8,6 +8,7 @@ const TABS = [
   { href: "/admin/feeds", label: "Link Sources" },
   { href: "/admin/properties/import", label: "Bulk Import" },
   { href: "/admin/engine/history", label: "Run History" },
+  { href: "/admin/engine/coverage", label: "Coverage" },
   { href: "/admin/engine/duplicates", label: "Duplicates" },
 ];
 
