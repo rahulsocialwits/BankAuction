@@ -4,6 +4,8 @@ import { slugify } from "@/lib/normalization/parsers";
 import { deriveAuctionStatusFromDates } from "@/lib/domain/deriveAuctionStatus";
 import { auctionDateChanged, detectExplicitStatus, resolveAuctionStatus } from "@/lib/domain/resolveAuctionStatus";
 import { recordAuctionStatusChange } from "@/lib/pipeline/auctionEvents";
+import { decideSameProperty, formatMergeNote, titleOverlap, titleTokens, titlesSimilar, type MatchDecision } from "@/lib/pipeline/propertyIdentity";
+import { recordMerge } from "@/lib/pipeline/mergeLog";
 import { canonicalBankKey, canonicalBankName, normalizeListing } from "./normalize";
 import { removeListingFromSource } from "@/lib/pipeline/sourceRemoval";
 import { isBlockedRecord } from "@/data-sources/feeds/blockedHosts";
@@ -70,33 +72,11 @@ export async function importCsvText(text: string, statusSource: string): Promise
   return importRecords(records, statusSource, "PUBLISHED");
 }
 
-const STOP = new Set(["the", "a", "an", "of", "in", "at", "and", "for", "on", "to", "no", "near", "flat", "property", "situated", "bearing"]);
+const tokens = titleTokens;
+const similar = titlesSimilar;
+const overlap = titleOverlap;
 
-function tokens(title: string): Set<string> {
-  return new Set(
-    title.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((t) => t && !STOP.has(t)),
-  );
-}
-
-function similar(a: Set<string>, b: Set<string>): boolean {
-  if (!a.size || !b.size) return false;
-  let inter = 0;
-  for (const t of a) if (b.has(t)) inter++;
-  return inter / (a.size + b.size - inter) >= 0.8;
-}
-
-function overlap(a: Set<string>, b: Set<string>): number {
-  if (!a.size || !b.size) return 0;
-  let inter = 0;
-  for (const t of a) if (b.has(t)) inter++;
-  return inter / (a.size + b.size - inter);
-}
-
-function sameDay(a: Date, b: Date) {
-  return a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
-}
-
-export interface Known { tokens: Set<string>; reserve: number | null; start: Date | null; auctionId: string; propertyId: string; ext: string | null }
+export interface Known { tokens: Set<string>; reserve: number | null; start: Date | null; auctionId: string; propertyId: string; ext: string | null; address?: string | null }
 
 /** Source times are Indian Standard Time. A time written without an offset is IST, never "whatever the server's zone is". */
 export function parseListingDate(s: string | undefined): Date | null {
@@ -422,7 +402,7 @@ export async function importRecords(
     if (!list) {
       const rows = await prisma.auction.findMany({
         where: { bankId },
-        select: { id: true, propertyId: true, externalAuctionId: true, reservePrice: true, auctionStart: true, property: { select: { title: true } } },
+        select: { id: true, propertyId: true, externalAuctionId: true, reservePrice: true, auctionStart: true, property: { select: { title: true, addressText: true } } },
         take: 20000,
       });
       list = rows.map((r) => ({
@@ -432,6 +412,7 @@ export async function importRecords(
         auctionId: r.id,
         propertyId: r.propertyId,
         ext: r.externalAuctionId,
+        address: r.property.addressText,
       }));
       knownByBank.set(key, list);
     }
@@ -486,18 +467,20 @@ export async function importRecords(
       // A source-qualified id ("src:<site>:<id>", set by the site readers) identifies the SAME listing on every visit: it is updated, never duplicated.
       const sourceQualified = col("external_id").startsWith("src:");
       const sameId = (opts.enrich || sourceQualified) && col("external_id") ? list.find((k) => k.ext === col("external_id")) : undefined;
+      const matched: { d?: MatchDecision } = {}; // why the listing was matched (for the merge log)
       const hit =
         sameId ??
-        list.find(
-          (k) =>
-            similar(titleTokens, k.tokens) ||
-            // Same bank, same reserve price, same auction day = same property even if titled differently.
-            (reservePrice > 0 && k.reserve === reservePrice && !!validStart && !!k.start && sameDay(validStart, k.start)) ||
-            // Same bank and the very same reserve price with a clearly overlapping title: the AI sometimes words a
-            // title differently from one run to the next, and many pages carry no auction date to compare.
-            (reservePrice > 0 && k.reserve === reservePrice && overlap(titleTokens, k.tokens) >= 0.4),
-        );
+        list.find((k) => {
+          const d = decideSameProperty(
+            { tokens: titleTokens, reserve: reservePrice, start: validStart, address: col("location") || null, externalId: col("external_id") || null },
+            { tokens: k.tokens, reserve: k.reserve, start: k.start, address: k.address, externalId: k.ext },
+          );
+          if (d.match) matched.d = d;
+          return d.match;
+        });
       if (hit) {
+        // A match made by evidence other than the source's own id is written to the property's history (rule, source, time).
+        if (hit !== sameId && matched.d?.match && matched.d.rule !== "same_source_id") await recordMerge(hit.propertyId, "listing matched", formatMergeNote(matched.d.rule!, statusSource, `\"${title.slice(0, 120)}\" matched this property: ${matched.d.reason}`));
         // Same property listed again for a later date (it did not sell): add a new auction round instead of skipping or overwriting the old one.
         if (await addReauctionRound(hit, rec, titleTokens, bank?.id ?? null, statusSource, sourceUrl)) {
           reauctions++;
@@ -552,16 +535,25 @@ export async function importRecords(
       }
       // Missing borrower never blocks publication. Keep the source facts as-is; do not invent a borrower.\n
       // Last look straight at the database (another source or a parallel run may have just added this property, under any
-      // bank spelling): the same reserve price AND a matching title (or the same auction day) is the same property.
+      // bank spelling). The same decision as above applies: the same reserve price alone is not evidence, so this only skips a
+      // listing that carries the same address (or a distinctive identical title) as a stored one.
       if (reservePrice > 0) {
         const t = tokens(title);
-        const near = await prisma.auction.findMany({ where: { reservePrice }, select: { id: true, bankId: true, auctionStart: true, externalAuctionId: true, property: { select: { title: true } } }, take: 60 });
-        const dup = near.find((n) => {
-          if (col("external_id") && n.externalAuctionId && n.externalAuctionId !== col("external_id")) return false; // a different round
-          const nt = tokens(n.property.title);
-          return similar(t, nt) || (overlap(t, nt) >= 0.4 && ((n.bankId && n.bankId === bank?.id) || (!!validStart && !!n.auctionStart && sameDay(validStart, n.auctionStart))));
-        });
-        if (dup) { skipped++; continue; }
+        const near = await prisma.auction.findMany({ where: { reservePrice }, select: { id: true, propertyId: true, bankId: true, auctionStart: true, externalAuctionId: true, property: { select: { title: true, addressText: true } } }, take: 60 });
+        let dupOf: { propertyId: string; d: MatchDecision } | null = null;
+        for (const n of near) {
+          if (col("external_id") && n.externalAuctionId && n.externalAuctionId !== col("external_id")) continue; // a different round
+          const d = decideSameProperty(
+            { tokens: t, reserve: reservePrice, start: validStart, address: col("location") || null, externalId: col("external_id") || null },
+            { tokens: tokens(n.property.title), reserve: reservePrice, start: n.auctionStart, address: n.property.addressText, externalId: n.externalAuctionId },
+          );
+          if (d.match) { dupOf = { propertyId: n.propertyId, d }; break; }
+        }
+        if (dupOf) {
+          if (dupOf.d.rule !== "same_source_id") await recordMerge(dupOf.propertyId, "listing matched", formatMergeNote(dupOf.d.rule!, statusSource, `\"${title.slice(0, 120)}\" matched this property: ${dupOf.d.reason}`));
+          skipped++;
+          continue;
+        }
       }
 
       const base = slugify(title);

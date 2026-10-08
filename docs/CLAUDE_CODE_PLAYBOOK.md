@@ -53,6 +53,8 @@ Merged into `main`:
 
 - **PR (stale auctions):** ended auctions are shown as ended everywhere (read-side, no data written). See the handover, "Ended auctions shown as upcoming".
 
+- **PR (Phase 3, dedup hardening):** a title/price/date match is no longer enough to merge or hide listings; `propertyIdentity.ts` requires an id, an address match or a distinctive title; merges are logged in `PropertyChange` (`dedup_merge`). See the handover, "Deduplication hardening".
+
 Pending owner tasks: run "Import all" once for BankAuctions.in so the engine has a healthy full-pass reference; check Admin → Engine → History daily at first; set one auction to Postponed in the admin and confirm the badge on its public page.
 
 Decision recorded: Phase 2 hardening is SAFE TO MERGE (Vercel build + CI green). **Phase 3 source onboarding may begin** only through the playbook in §9.
@@ -136,7 +138,7 @@ Do these in order; each source gets its own branch and PR.
 2. **Verify structure by reading one or two public pages** (not by crawling). Write down the exact fields available, including any explicit status field (Postponed/Cancelled) and a stable external auction ID.
 3. **Build the adapter** following `bankauctions/` or the feed pattern; honest user agent; polite delays; stop on 401/403/CAPTCHA; no AI unless needed.
 4. **Emit run metrics** (`SourceRunMetrics`): `inventoryCount` for full passes, `evaluationEligible` only for full-inventory runs, `pageCountComparable: false` when pages per run depend on a time budget, plus `sitemapReferenceCount` if the source has a cheap index to watch.
-5. **Dedup and separation:** match by external auction ID first; Property vs Auction separation; a new auction date beyond the round gap creates a new Auction round.
+5. **Dedup and separation:** match by external auction ID first (use a source-qualified `src:<host>:<id>` id); give every record an address (the identity rule needs an id or an address); Property vs Auction separation; a new auction date beyond the round gap creates a new Auction round.
 6. **Removals only via `removeListingFromSource`.** Status writes only via `resolveAuctionStatus`.
 7. **Tests:** fixtures in `tests/fixtures/`, parser tests, a completeness scenario for the source, a compliance entry.
 8. **Soft launch:** merge, owner runs one full pass, check History for two HEALTHY full passes before calling the source live. Document the source in the handover file.
@@ -149,7 +151,7 @@ Do these in order; each source gets its own branch and PR.
 2. **Baseline drift / recovery:** protection set by an index collapse clears only after a healthy full pass; consider an automatic full-pass schedule so protection cannot stay stuck.
 3. **BAANKNET run refused at the start logs no metrics** — log a BLOCKED metric so protection reflects it.
 4. **Generic feeds are always evaluation-eligible** (likely noisy verdicts): review per-feed eligibility. (Zero-yield detection from Phase 3C now covers the "ok but found nothing" case; this item is about the completeness verdict itself.)
-5. **`autoCleanExactDuplicates`** uses a 0.4 Jaccard rule; review for false merges before widening.
+5. ~~`autoCleanExactDuplicates` 0.4 rule~~ replaced by the evidence-based decision in `propertyIdentity.ts` (Phase 3 PR 1).
 6. **Disappearance sweeper** ("listing no longer on the source"): does not exist. If ever built it must use `allowsDisappearanceAction` and require two consecutive HEALTHY full passes.
 7. **ESLint:** fix the 2 known pre-existing findings in a tiny separate PR.
 8. **Sitemap cap:** WordPress sitemaps hold at most 2,000 URLs per file. If a run message shows the cap warning, check for `wp-sitemap-auctions-2.xml` and read it too.

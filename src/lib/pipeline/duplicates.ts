@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
+import { decideSameProperty, exactTitleMergeAllowed, formatMergeNote, titleTokens, type IdentityFacts, type MatchDecision, type MatchRule } from "./propertyIdentity";
+import { recordMerge } from "./mergeLog";
 
 export interface DupMember {
   id: string;
@@ -79,9 +81,11 @@ export async function findDuplicateGroups(): Promise<DupGroup[]> {
 }
 
 /**
- * Automatic rule run after every scheduled tick: same bank + same reserve price + same auction day
- * AND identical title => the later copies are hidden as DUPLICATE (oldest kept). Reversible from
- * Admin → Properties → Duplicates → Restore. Returns how many listings were hidden.
+ * Automatic clean-up run after every scheduled tick. Hides (never deletes) the later copy of a listing that is provably the same
+ * property. Hiding needs evidence beyond a look-alike title and price (see propertyIdentity.ts): the same address, or an exact and
+ * SPECIFIC title with no contradicting address. Every hide is written to the property's history (PropertyChange "dedup_merge",
+ * with the status it had, the keeper and the rule), so it can be traced and restored from Admin → Engine → Duplicates.
+ * Returns how many listings were hidden.
  */
 export async function autoCleanExactDuplicates(): Promise<number> {
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -90,35 +94,45 @@ export async function autoCleanExactDuplicates(): Promise<number> {
     select: {
       id: true,
       title: true,
+      status: true,
+      addressText: true,
       createdAt: true,
       auctions: { select: { bankId: true, reservePrice: true, auctionStart: true }, orderBy: { createdAt: "desc" }, take: 1 },
     },
     orderBy: { createdAt: "asc" },
     take: 20_000,
   });
+  type P = (typeof props)[number];
+  const factsOf = (p: P): IdentityFacts => ({ tokens: titleTokens(p.title), reserve: p.auctions[0]?.reservePrice ? Number(p.auctions[0].reservePrice) : null, start: p.auctions[0]?.auctionStart ?? null, address: p.addressText });
+  // keep the listing with the latest auction date (the live one); on a tie keep the oldest record
+  const byLive = (x: P, y: P) => (y.auctions[0].auctionStart?.getTime() ?? 0) - (x.auctions[0].auctionStart?.getTime() ?? 0) || x.createdAt.getTime() - y.createdAt.getTime();
 
-  // 100% match = same bank + the same title (ignoring case and punctuation) + the same reserve price.
-  // The auction date may differ: that is the same property put up for auction again, and one listing is enough.
-  // (Same title but a different price is a different flat in the same building, so it is kept.)
-  const groups = new Map<string, typeof props>();
+  const hide: { p: P; keeper: P; rule: MatchRule | "exact_title"; detail: string }[] = [];
+  const hidden = new Set<string>();
+
+  // Pass 1: same bank + the same title (ignoring case and punctuation) + the same reserve price. The auction date may differ: that is
+  // the same property put up again. Not enough on its own when the title is generic ("Shops", "Individual House": different units)
+  // or when the two addresses contradict each other.
+  const groups = new Map<string, P[]>();
   for (const p of props) {
     const a = p.auctions[0];
     if (!a?.bankId || !a.reservePrice) continue;
     const key = `${norm(p.title)}|${a.bankId}|${a.reservePrice.toString()}`;
     groups.set(key, [...(groups.get(key) ?? []), p]);
   }
-
-  const hide: string[] = [];
   for (const list of groups.values()) {
     if (list.length < 2) continue;
-    // keep the listing with the latest auction date (the live one); on a tie keep the oldest record
-    const keep = [...list].sort((x, y) => (y.auctions[0].auctionStart?.getTime() ?? 0) - (x.auctions[0].auctionStart?.getTime() ?? 0) || x.createdAt.getTime() - y.createdAt.getTime())[0];
-    for (const p of list) if (p.id !== keep.id) hide.push(p.id);
+    const keeper = [...list].sort(byLive)[0];
+    for (const p of list) {
+      if (p.id === keeper.id || !exactTitleMergeAllowed(factsOf(p), factsOf(keeper))) continue;
+      hide.push({ p, keeper, rule: "exact_title", detail: "same bank, same title, same reserve price, addresses do not contradict" });
+      hidden.add(p.id);
+    }
   }
-  // Second pass: same bank and the very same reserve price, with clearly overlapping titles (a source that words the
-  // same listing differently from run to run). Greedy: the keeper is chosen first, later look-alikes are hidden.
-  const hidden = new Set(hide);
-  const byPrice = new Map<string, typeof props>();
+
+  // Pass 2: same bank and the very same reserve price, worded differently: only when the shared decision proves it is one property
+  // (same address, or a distinctive identical title). A similar title and price alone no longer qualifies.
+  const byPrice = new Map<string, P[]>();
   for (const p of props) {
     const a = p.auctions[0];
     if (hidden.has(p.id) || !a?.bankId || !a.reservePrice) continue;
@@ -127,16 +141,23 @@ export async function autoCleanExactDuplicates(): Promise<number> {
   }
   for (const list of byPrice.values()) {
     if (list.length < 2) continue;
-    const ordered = [...list].sort((x, y) => (y.auctions[0].auctionStart?.getTime() ?? 0) - (x.auctions[0].auctionStart?.getTime() ?? 0) || x.createdAt.getTime() - y.createdAt.getTime());
-    const kept: { id: string; tokens: Set<string> }[] = [];
-    for (const p of ordered) {
-      const t = tokens(p.title);
-      if (kept.some((k) => jaccard(t, k.tokens) >= 0.4)) {
-        hide.push(p.id);
+    const kept: P[] = [];
+    for (const p of [...list].sort(byLive)) {
+      let found: { keeper: P; d: MatchDecision } | null = null;
+      for (const k of kept) {
+        const d = decideSameProperty(factsOf(p), factsOf(k));
+        if (d.match) { found = { keeper: k, d }; break; }
+      }
+      if (found) {
+        hide.push({ p, keeper: found.keeper, rule: found.d.rule ?? "same_address", detail: found.d.reason });
         hidden.add(p.id);
-      } else kept.push({ id: p.id, tokens: t });
+      } else kept.push(p);
     }
   }
-  if (hide.length) await prisma.property.updateMany({ where: { id: { in: hide } }, data: { status: "DUPLICATE" } });
+
+  if (hide.length) {
+    await prisma.property.updateMany({ where: { id: { in: hide.map((h) => h.p.id) } }, data: { status: "DUPLICATE" } });
+    for (const h of hide) await recordMerge(h.p.id, h.p.status, formatMergeNote(h.rule, "scheduler clean-up", `hidden as a duplicate of ${h.keeper.id}: ${h.detail}`));
+  }
   return hide.length;
 }
