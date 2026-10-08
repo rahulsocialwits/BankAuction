@@ -1,3 +1,5 @@
+import { latestEvaluatedRun, PROTECTIVE_STATUSES, protectionFromRuns } from "./sourceProtection";
+
 export type DataHealthStatus =
   | "HEALTHY"
   | "WARNING"
@@ -45,6 +47,10 @@ export interface SourceRunMetrics {
   blocked?: boolean;
   structureChanged?: boolean;
   error?: string;
+  /** Set only by the admin "accept new baseline" action: this run is the new reference size; older runs no longer count. */
+  baselineAccepted?: boolean;
+  /** The verdict the accepted run had before an administrator accepted it (audit trail). */
+  acceptedFromStatus?: DataHealthStatus;
 }
 
 /**
@@ -70,6 +76,10 @@ export interface SourceBaseline {
   pageMedian30d: number | null;
   pageSampleCount7d: number;
   pageSampleCount30d: number;
+  /** An anomaly (protective verdict) is unresolved: no healthy full pass and no accepted baseline has followed it. */
+  anomalyOpen: boolean;
+  /** When an administrator last accepted a new baseline (older runs are ignored from that point), or null. */
+  acceptedAt: string | null;
 }
 
 export interface CompletenessResult {
@@ -95,6 +105,9 @@ export interface HistoricalRun {
   dataStatus?: DataHealthStatus;
   /** Stored by newer runs; older rows only carry dataStatus. */
   protectExistingData?: boolean;
+  /** Stored by newer runs: set when the run was judged against an existing baseline (so a baseline existed at that time). */
+  recordHealth?: DataHealthStatus | null;
+  pageHealth?: DataHealthStatus | null;
 }
 
 /** A page-count check needs at least this many comparable historical page counts. */
@@ -123,8 +136,65 @@ const pagesOf = (m: SourceRunMetrics): number | null =>
     ? Math.max(0, m.pagesFetched)
     : null;
 
-export function buildSourceBaseline(runs: HistoricalRun[], now = new Date()): SourceBaseline {
-  const eligible = runs.filter((r) => r.metrics.evaluationEligible !== false);
+/**
+ * BASELINE EVIDENCE: which runs may define "normal" for a source.
+ *  - Only HEALTHY runs. A WARNING / INCOMPLETE / CRITICAL / BLOCKED / FAILED / NO_DATA run is an anomaly, and an anomaly that
+ *    repeats must never become the reference it is judged against (otherwise a persistent collapse turns into the new normal).
+ *  - The one exception is the very first comparable full pass of a source (RECOVERING, unprotected, with a count): without it
+ *    a new source could never reach HEALTHY.
+ *  - Incremental runs (evaluationEligible false) were never evidence.
+ *  - Rows with no stored verdict (written before verdicts existed) are kept as they were.
+ */
+function isBaselineEvidence(r: HistoricalRun): boolean {
+  const m = r.metrics;
+  if (m.evaluationEligible === false) return false;
+  const s = r.dataStatus;
+  if (s === undefined || s === "HEALTHY") return true;
+  return s === "RECOVERING" && r.protectExistingData !== true && !m.blocked && !m.structureChanged && !m.failedCount && m.paginationComplete !== false;
+}
+
+const newestFirst = (runs: HistoricalRun[]) => [...runs].sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+
+/**
+ * Combines run lists (for example the newest rows and the newest HEALTHY rows) into one list, newest first, each run once.
+ * The healthy rows are loaded on their own so that a long stretch of anomalous runs cannot push the healthy history out of
+ * the loaded window.
+ */
+export function mergeHistoricalRuns(...lists: HistoricalRun[][]): HistoricalRun[] {
+  const seen = new Set<string>();
+  const out: HistoricalRun[] = [];
+  for (const run of lists.flat()) {
+    const key = `${run.startedAt.getTime()}|${run.technicalStatus}|${run.dataStatus ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(run);
+  }
+  return newestFirst(out);
+}
+
+/**
+ * Is a source anomaly unresolved? True when the latest verdict protects AND the anomaly streak (back to the last unflagged verdict)
+ * shows that a baseline existed when it began: a run judged against a baseline, or the "protected, no baseline left" state itself.
+ * A brand-new source whose first run was blocked, empty or half-read has no such marker and may still seed its first baseline.
+ */
+function anomalyOpenIn(runs: HistoricalRun[]): boolean {
+  if (!protectionFromRuns(runs).protected) return false;
+  for (const r of runs) {
+    const s = r.dataStatus;
+    if (s === undefined || (s === "RECOVERING" && r.protectExistingData !== true)) continue;
+    if (!(r.protectExistingData ?? PROTECTIVE_STATUSES.has(s))) return false; // the streak ended with an unflagged verdict
+    if (s === "RECOVERING" || r.recordHealth != null || r.pageHealth != null) return true;
+  }
+  return false;
+}
+
+export function buildSourceBaseline(allRuns: HistoricalRun[], now = new Date()): SourceBaseline {
+  const sorted = newestFirst(allRuns);
+  // An accepted baseline is a reset point: it and everything after it count, nothing before it does.
+  const acceptedIdx = sorted.findIndex((r) => r.metrics.baselineAccepted === true);
+  const runs = acceptedIdx >= 0 ? sorted.slice(0, acceptedIdx + 1) : sorted;
+  const anomalyOpen = anomalyOpenIn(runs);
+  const eligible = runs.filter(isBaselineEvidence);
   const valid = eligible
     .map((r) => ({ ...r, count: countOf(r.metrics), pages: pagesOf(r.metrics) }))
     .filter((r) => r.count !== null);
@@ -176,6 +246,8 @@ export function buildSourceBaseline(runs: HistoricalRun[], now = new Date()): So
     pageMedian30d: median(p30),
     pageSampleCount7d: p7.length,
     pageSampleCount30d: p30.length,
+    anomalyOpen,
+    acceptedAt: acceptedIdx >= 0 ? sorted[acceptedIdx].startedAt.toISOString() : null,
   };
 }
 
@@ -254,6 +326,11 @@ export function evaluateCompleteness(
     pageHealth: extra.pageHealth ?? null,
   });
 
+  // An administrator confirmed that this size is the source's new normal (see baselineToAccept). The run is the new reference point.
+  if (metrics.baselineAccepted === true) {
+    return make("HEALTHY", 100, `Baseline accepted by an administrator at ${currentCount ?? "n/a"} records (the run was ${metrics.acceptedFromStatus ?? "flagged"} before); older runs no longer count.`, false, { countDropRatio: null, recordHealth: "HEALTHY" });
+  }
+
   // Some collectors intentionally run incrementally (for example, a 100-page safety tick).
   // Those runs must contribute no completeness verdict until the collector says the inventory pass is complete.
   if (metrics.evaluationEligible === false) {
@@ -291,9 +368,15 @@ export function evaluateCompleteness(
     return make("CRITICAL", 0, "The source returned zero records against a non-zero historical baseline.", true, { countDropRatio: 1, recordHealth: "CRITICAL" });
   }
   if (currentCount === null) {
-    return make("RECOVERING", null, "No comparable inventory count is available yet; historical baseline is still being established.", false);
+    return make("RECOVERING", null, "No comparable inventory count is available yet; historical baseline is still being established.", baseline.anomalyOpen);
   }
   if (!reference || baseline.sampleCount7d + baseline.sampleCount30d === 0) {
+    // An earlier anomaly is still unresolved and no healthy run is left to compare with (the healthy history aged out). This is NOT a
+    // new source: treating it as a first run would let a long collapse become the baseline. Protection continues until an
+    // administrator accepts the new size, or a healthy full pass can be judged again.
+    if (baseline.anomalyOpen) {
+      return make("RECOVERING", null, "An earlier source anomaly is unresolved and no healthy run remains to compare with; existing data stays protected until an administrator accepts the new size.", true);
+    }
     return make(
       currentCount === 0 ? "NO_DATA" : "RECOVERING",
       currentCount === 0 ? 0 : null,
@@ -325,7 +408,7 @@ export function evaluateCompleteness(
 
 export function parseMetricsMessage(
   message: string | null | undefined,
-): { metrics: SourceRunMetrics; dataStatus?: DataHealthStatus; protectExistingData?: boolean } | null {
+): { metrics: SourceRunMetrics; dataStatus?: DataHealthStatus; protectExistingData?: boolean; recordHealth?: DataHealthStatus | null; pageHealth?: DataHealthStatus | null } | null {
   if (!message?.startsWith("[DATA_ENGINE_V1] ")) return null;
   const newline = message.indexOf("\n");
   if (newline < 0) return null;
@@ -368,4 +451,49 @@ export function formatMetricsMessage(
   }
   const room = Math.max(0, MAX_MESSAGE - PREFIX.length - header.length - 1);
   return `${PREFIX}${header}\n${(humanMessage ?? "").slice(0, room)}`;
+}
+
+
+/** Metrics of a run that was refused before it read anything (robots.txt, 401/403, CAPTCHA). No count: a refusal is not a measurement of size. */
+export const refusedRunMetrics = (error: string): SourceRunMetrics => ({
+  blocked: true,
+  failedCount: 1,
+  paginationComplete: false,
+  coverageComplete: false,
+  evaluationEligible: true,
+  error: error.slice(0, 200),
+});
+
+export type BaselineAcceptance =
+  | { ok: true; metrics: SourceRunMetrics; fromStatus: DataHealthStatus; count: number; previousReference: number | null }
+  | { ok: false; reason: string };
+
+/**
+ * May an administrator accept the source's CURRENT size as its new baseline? Only when the latest evaluated run is flagged AND is a
+ * clean, complete measurement: not blocked, not failed, no structure change, not empty, pagination finished, not an incremental slice.
+ * A blocked or half-read run says nothing about how big the source really is. The returned metrics become a run-log row that
+ * resets the baseline (see buildSourceBaseline); nothing else is touched.
+ */
+export function baselineToAccept(runs: HistoricalRun[]): BaselineAcceptance {
+  const sorted = newestFirst(runs);
+  const protection = protectionFromRuns(sorted);
+  if (protection.basis !== "verdict" || !protection.protected) return { ok: false, reason: "Nothing to accept: the source's latest evaluated run is not flagged." };
+  const run = latestEvaluatedRun(sorted);
+  if (!run || !run.dataStatus) return { ok: false, reason: "No evaluated run to accept." };
+  const m = run.metrics;
+  const status = run.dataStatus;
+  if (status === "BLOCKED" || status === "FAILED" || status === "NO_DATA") return { ok: false, reason: `The latest run is ${status}: a run that could not read the source cannot define its size.` };
+  if (m.blocked || m.structureChanged || m.failedCount) return { ok: false, reason: "The latest run was blocked, failed or saw a changed page structure; wait for a clean complete pass." };
+  if (m.evaluationEligible === false) return { ok: false, reason: "The latest run was only a slice of the source; wait for a complete pass." };
+  if (m.paginationComplete === false) return { ok: false, reason: "The latest run did not finish reading every page; wait for a complete pass." };
+  const count = countOf(m);
+  if (count === null || count <= 0) return { ok: false, reason: "The latest run found no records; that cannot be accepted as the source's size." };
+  const before = buildSourceBaseline(sorted.slice(sorted.indexOf(run) + 1), run.startedAt);
+  return {
+    ok: true,
+    fromStatus: status,
+    count,
+    previousReference: before.median7d ?? before.median30d,
+    metrics: { ...m, evaluationEligible: true, blocked: false, error: undefined, baselineAccepted: true, acceptedFromStatus: status },
+  };
 }

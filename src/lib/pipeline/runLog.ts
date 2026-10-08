@@ -2,7 +2,9 @@ import { prisma } from "@/lib/db/prisma";
 import {
   buildSourceBaseline,
   evaluateCompleteness,
+  baselineToAccept,
   formatMetricsMessage,
+  mergeHistoricalRuns,
   parseMetricsMessage,
   type DataHealthStatus,
   type HistoricalRun,
@@ -29,16 +31,11 @@ export interface RunLogInput {
   yield?: YieldMarker;
 }
 
-/** Recent runs of one source (last 30 days, newest first) that carry a data-engine verdict. Throws if the database cannot be read. */
-async function loadHistoricalRuns(source: string): Promise<HistoricalRun[]> {
-  const previous = await prisma.sourceRunLog.findMany({
-    where: { source, startedAt: { gte: new Date(Date.now() - 30 * 864e5) } },
-    orderBy: { startedAt: "desc" },
-    take: 60,
-    select: { startedAt: true, status: true, message: true },
-  });
+type RunRow = { startedAt: Date; status: string; message: string | null };
+
+function toHistoricalRuns(rows: RunRow[]): HistoricalRun[] {
   const runs: HistoricalRun[] = [];
-  for (const r of previous as { startedAt: Date; status: string; message: string | null }[]) {
+  for (const r of rows) {
     const parsed = parseMetricsMessage(r.message);
     if (!parsed) continue;
     runs.push({
@@ -47,9 +44,26 @@ async function loadHistoricalRuns(source: string): Promise<HistoricalRun[]> {
       metrics: parsed.metrics,
       dataStatus: parsed.dataStatus,
       protectExistingData: parsed.protectExistingData,
+      recordHealth: parsed.recordHealth,
+      pageHealth: parsed.pageHealth,
     });
   }
   return runs;
+}
+
+/**
+ * Recent runs of one source (last 30 days, newest first) that carry a data-engine verdict. Throws if the database cannot be read.
+ * The newest 60 rows are joined by the newest HEALTHY rows loaded on their own: a long stretch of anomalous runs must not push
+ * the healthy history (the baseline) out of the window, or recovery could no longer be judged.
+ */
+export async function loadHistoricalRuns(source: string): Promise<HistoricalRun[]> {
+  const since = new Date(Date.now() - 30 * 864e5);
+  const select = { startedAt: true, status: true, message: true } as const;
+  const [recent, healthy] = await Promise.all([
+    prisma.sourceRunLog.findMany({ where: { source, startedAt: { gte: since } }, orderBy: { startedAt: "desc" }, take: 60, select }),
+    prisma.sourceRunLog.findMany({ where: { source, startedAt: { gte: since }, message: { contains: '"dataStatus":"HEALTHY"' } }, orderBy: { startedAt: "desc" }, take: 30, select }),
+  ]);
+  return mergeHistoricalRuns(toHistoricalRuns(recent as RunRow[]), toHistoricalRuns(healthy as RunRow[]));
 }
 
 /**
@@ -85,6 +99,29 @@ export async function getLastHealthyInventory(source: string): Promise<number | 
   } catch {
     return undefined; // an extra safety check; if it cannot be read the normal verdicts still apply
   }
+}
+
+export type AcceptBaselineOutcome = { ok: true; message: string } | { ok: false; reason: string };
+
+/**
+ * Admin action: accept the source's CURRENT size as its new baseline after a confirmed, legitimate change (see baselineToAccept
+ * for what is refused). It only writes one run-log row that resets the baseline; no listing is touched. Fails closed.
+ */
+export async function acceptNewBaseline(source: string, by: string): Promise<AcceptBaselineOutcome> {
+  let runs: HistoricalRun[];
+  try {
+    runs = await loadHistoricalRuns(source);
+  } catch (e) {
+    return { ok: false, reason: `The run history could not be read (${e instanceof Error ? e.message.slice(0, 120) : "unknown error"}).` };
+  }
+  const pick = baselineToAccept(runs);
+  if (!pick.ok) return pick;
+  const last = await prisma.sourceRunLog.findFirst({ where: { source }, orderBy: { startedAt: "desc" }, select: { kind: true } });
+  const kind = (["builtin", "feed", "csv", "cron"].includes(last?.kind ?? "") ? last?.kind : "feed") as RunLogInput["kind"];
+  const message = `Baseline accepted by ${by.slice(0, 80)}: ${pick.count} records is now this source's normal size (it was ${pick.fromStatus}${pick.previousReference ? `; the previous normal was about ${Math.round(pick.previousReference)}` : ""}).`;
+  await logRun({ source, kind, trigger: "manual", status: "ok", message, metrics: pick.metrics });
+  const after = await getSourceProtection(source);
+  return after.protected ? { ok: false, reason: "The acceptance could not be recorded; the source is still protected." } : { ok: true, message };
 }
 
 /** Records one pipeline run for Admin → Data Engine → History. Never throws: logging must not break a run. */

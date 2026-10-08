@@ -43,7 +43,7 @@ Totals: 81 pass, 0 genuine failures, 21 tests unable to load. `npx tsc --noEmit`
 
 ### Remaining P1 issues
 1. **BankAuctions.in baseline (decision made, not implemented).** Option A (judge only full passes, current) is correct but starves the baseline; option B (a separate incremental health metric) would not detect inventory loss; **recommended: option C**, report the sitemap size (`discoveredCount`, already computed every tick) as a full-inventory observation on every run, with page counts left non-comparable. This is more than a hardening change because the baseline query takes only the 60 newest rows (`runLog.ts`), and BankAuctions logs a row every 5 minutes, so the window would cover about 5 hours and a slow decline would never register. Needs a downsampled/daily baseline first. Also unverified and worth checking: WordPress core splits sitemaps at 2,000 URLs, and the adapter reads only `/wp-sitemap-auctions-1.xml`; if the site has more than 2,000 listings the rest are never discovered (not verified, needs a live check of `-2.xml`).
-2. **Baseline drift on a persistent anomaly.** Anomalous runs still feed the median. If a source stays collapsed long enough (roughly half of the 7-day samples), the collapse becomes the new normal and protection lifts by itself. Fix: exclude non-HEALTHY runs from baselines, with an explicit admin "accept new baseline" action for genuine shrinkage.
+2. **~~Baseline drift on a persistent anomaly.~~ FIXED in Phase 3 PR 2 (see "Baseline hardening" below).** Original description: Anomalous runs still feed the median. If a source stays collapsed long enough (roughly half of the 7-day samples), the collapse becomes the new normal and protection lifts by itself. Fix: exclude non-HEALTHY runs from baselines, with an explicit admin "accept new baseline" action for genuine shrinkage.
 3. **`AuctionEvent` has no writer.** No minimal safe fix was required by the Phase 2 changes, so it is left for the lifecycle phase.
 4. **POSTPONED / CANCELLED are never set from source data.** Left for the lifecycle phase; no Phase 2 regression depends on it.
 5. **BAANKNET refused-at-start run logs no metrics** (`baanknetImport.ts` ~l.119 logs status `blocked` without `metrics`), so that case does not set protection.
@@ -444,4 +444,19 @@ No new source was added and no database schema changed.
 - **What was NOT done:** no historical clean-up, no restore of listings already hidden by the old rule, no deletes, no direct REMOVED writes, no schema change, no backfill. Listings hidden earlier stay hidden (restore from Admin → Engine → Duplicates if one was wrong).
 - **Tests:** `tests/dedupe.test.ts` (22): the 13 required scenarios, address/PIN helpers, and structural guards. They were first written against the old rule (commit "dedup step 1"), where the UNSAFE cases matched.
 - **Still open (same area):** `duplicates.ts` keeps its own title tokenizer for the admin review list (a different stop-word list); `thinFix.ts` builds `Known` records without addresses (it does not match, so nothing changes).
+
+## Baseline hardening (Phase 3, PR 2; added 2026-10-08)
+
+**Problem fixed:** anomalous runs fed the median, so a source that stayed collapsed long enough made the collapse its own "normal" and protection lifted by itself.
+
+**What changed** (`completeness.ts`, `sourceProtection.ts`, `runLog.ts`; thresholds untouched: 10% / 30% / 60%):
+- **Baseline evidence = HEALTHY runs only** (`isBaselineEvidence`). WARNING / INCOMPLETE / CRITICAL / BLOCKED / FAILED / NO_DATA and incremental runs never define "normal". The one exception is the very first comparable full pass of a new source (RECOVERING, unprotected, with a count) so that a new source can reach HEALTHY.
+- **The healthy history cannot be pushed out of the loaded window.** `loadHistoricalRuns` loads the newest 60 rows PLUS the newest 30 HEALTHY rows (`mergeHistoricalRuns`), so a long stretch of anomalous runs does not erase the reference.
+- **Protection survives an expired baseline.** If the healthy history is older than 30 days and an anomaly is still open (`anomalyOpen`: the anomaly streak began against an existing baseline), a full pass is recorded as `RECOVERING` with `protectExistingData: true`; `latestEvaluatedRun` treats such a row as a verdict. Result: a collapse never turns into "first run" by itself. It ends by a healthy full pass (if a reference remains) or by the admin action below.
+- **Admin action "Accept new baseline"** (Admin → Engine → Coverage → "Sources under data protection"; master only). It is offered only when the latest evaluated run is a clean, complete measurement (not blocked / failed / structure-changed / empty / incremental / half-read). It writes ONE run-log row (`metrics.baselineAccepted`, HEALTHY, audit text with who and the previous size). That row is a reset point: `buildSourceBaseline` ignores everything older. No listing is touched.
+- **BAANKNET refused at start** (robots.txt) now logs `refusedRunMetrics()`: BLOCKED + protect, with no count, so a refusal is never a size measurement.
+
+**Operational consequence:** if a source really and permanently shrinks, it stays flagged (existing data protected, no source-driven removal) until the owner clicks "Accept ... as the new normal". That is deliberate. A new source whose first run was blocked/empty/half-read can still seed its first baseline.
+
+**Not done here:** no historical rows were rewritten, no production run, no migration.
 
