@@ -11,6 +11,8 @@ import {
   type SourceRunMetrics,
 } from "./completeness";
 import { runDisappearanceSweep } from "./lastSeen";
+import { advanceRecovery } from "./recovery";
+import { prismaRecoveryStore } from "./recoveryStore";
 import { prismaLastSeenStore } from "./lastSeenStore";
 import { protectionFromRuns, unreadableProtection, type SourceProtection } from "./sourceProtection";
 import { formatYieldMarker, type YieldMarker } from "./zeroYield";
@@ -167,6 +169,16 @@ export async function logRun(input: RunLogInput) {
       if (sweep.evaluated) {
         const text = `${sweep.flagged} newly flagged, ${sweep.cleared} cleared, ${sweep.missing} not seen of ${sweep.candidates} tracked.${sweep.skippedReason ? ` ${sweep.skippedReason}.` : ""} Flag only: nothing was hidden or removed.`;
         await prisma.sourceRunLog.create({ data: { source: `${input.source} · disappearance check`, kind: input.kind, trigger: input.trigger, status: "skipped", created: 0, updated: 0, duplicates: 0, rejected: 0, aiTokens: 0, message: text, startedAt, durationMs: 0 } });
+      }
+    }
+    // A collapsed, protected source gets ONE controlled full recovery pass queued (see recovery.ts). It only ever records a request and,
+    // for BankAuctions.in, turns on the existing "Import all" switch; it cannot clear protection or touch a listing, and cannot fail a run.
+    if (verdict && input.metrics) {
+      try {
+        const history = await loadHistoricalRuns(input.source);
+        await advanceRecovery(prismaRecoveryStore, { source: input.source, protection: protectionFromRuns(history), history, now: new Date() });
+      } catch {
+        /* recovery is best-effort; protection stays on whatever happens here */
       }
     }
     // Keep the table small: drop entries older than 60 days occasionally.
