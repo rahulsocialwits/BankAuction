@@ -222,3 +222,65 @@ test("the run log reads the stored verdict back (history carries protectExisting
   assert.match(src, /protectionFromRuns\(/);
   assert.match(src, /unreadableProtection\(/);
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// BankAuctions.in: incremental runs still see the whole sitemap and must catch an index collapse.
+// ---------------------------------------------------------------------------------------------------------------------
+const incrementalWithIndex = (indexNow: number, lastHealthy?: number): SourceRunMetrics => ({
+  ...incremental(),
+  discoveredCount: indexNow,
+  sitemapReferenceCount: lastHealthy,
+});
+
+test("INDEX WATCH: an incremental run whose sitemap collapsed (2,000 -> 400) is CRITICAL and protects existing data", async () => {
+  const log = healthyLog();
+  const run = log.add(incrementalWithIndex(400, 2000));
+  assert.equal(run.status, "CRITICAL");
+  assert.equal(run.protectExistingData, true);
+  assert.equal(log.protection().protected, true);
+  const store = new MemoryStore(["a"]);
+  assert.equal((await removeListingIfSourceTrusted(store, log.protection(), request("a"))).applied, false);
+  assert.deepEqual(store.statuses(), ["PUBLISHED"]);
+});
+
+test("INDEX WATCH: thresholds match the full-pass ones (10% WARNING, 30% INCOMPLETE, 60% CRITICAL)", () => {
+  const verdict = (now: number) => new FakeRunLog().add(incrementalWithIndex(now, 2000)).status;
+  assert.equal(verdict(1799), "WARNING");
+  assert.equal(verdict(1399), "INCOMPLETE");
+  assert.equal(verdict(799), "CRITICAL");
+});
+
+test("INDEX WATCH: a normal sitemap, a growing sitemap, or no reference leaves incremental runs as RECOVERING (no verdict)", () => {
+  for (const m of [incrementalWithIndex(2000, 2000), incrementalWithIndex(1900, 2000), incrementalWithIndex(2300, 2000), incrementalWithIndex(400, undefined), incrementalWithIndex(0, undefined)]) {
+    const run = new FakeRunLog().add(m);
+    assert.equal(run.status, "RECOVERING");
+    assert.equal(run.protectExistingData, false);
+  }
+});
+
+test("INDEX WATCH: the reference is the last healthy full pass, so a collapse that persists does NOT become the new normal", () => {
+  const log = healthyLog();
+  for (let i = 0; i < 100; i++) {
+    const run = log.add(incrementalWithIndex(400, 2000)); // adapter keeps passing the last HEALTHY inventory
+    assert.equal(run.status, "CRITICAL");
+  }
+  assert.equal(log.protection().protected, true);
+});
+
+test("INDEX WATCH: protection clears only after a later evaluated healthy full pass", () => {
+  const log = healthyLog();
+  log.add(incrementalWithIndex(400, 2000));
+  log.add(incrementalWithIndex(2000, 2000)); // sitemap back, but an incremental run carries no clearing verdict
+  assert.equal(log.protection().protected, true);
+  assert.equal(log.add(fullPass(2000, 40)).status, "HEALTHY");
+  assert.equal(log.protection().protected, false);
+});
+
+test("INDEX WATCH wiring: adapter passes sitemapReferenceCount from the last healthy full pass", () => {
+  const adapter = readFileSync(join(__dirname, "..", "src/data-sources/bankauctions/adapter.ts"), "utf8");
+  assert.match(adapter, /getLastHealthyInventory\("BankAuctions\.in"\)/);
+  assert.match(adapter, /sitemapReferenceCount,/);
+  const runLog = readFileSync(join(__dirname, "..", "src/lib/pipeline/runLog.ts"), "utf8");
+  assert.match(runLog, /"dataStatus":"HEALTHY"/);
+  assert.match(runLog, /"evaluationEligible":true/);
+});

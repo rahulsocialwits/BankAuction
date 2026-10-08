@@ -61,6 +61,29 @@ export async function getSourceProtection(source: string): Promise<SourceProtect
   }
 }
 
+/**
+ * Size of the source index (inventoryCount) at the last HEALTHY full pass of a source, or undefined if there is none or it
+ * cannot be read. Used by incremental collectors to notice an index collapse on every run, not only on full passes.
+ * Unlike the 60-row history window, this does not drift: a collapse that persists never becomes the reference.
+ */
+export async function getLastHealthyInventory(source: string): Promise<number | undefined> {
+  try {
+    const row = await prisma.sourceRunLog.findFirst({
+      where: {
+        source,
+        startedAt: { gte: new Date(Date.now() - 30 * 864e5) },
+        AND: [{ message: { contains: '"dataStatus":"HEALTHY"' } }, { message: { contains: '"evaluationEligible":true' } }],
+      },
+      orderBy: { startedAt: "desc" },
+      select: { message: true },
+    });
+    const count = parseMetricsMessage(row?.message)?.metrics.inventoryCount;
+    return typeof count === "number" && count > 0 ? count : undefined;
+  } catch {
+    return undefined; // an extra safety check; if it cannot be read the normal verdicts still apply
+  }
+}
+
 /** Records one pipeline run for Admin → Data Engine → History. Never throws: logging must not break a run. */
 export async function logRun(input: RunLogInput) {
   const startedAt = input.startedAt ?? new Date();

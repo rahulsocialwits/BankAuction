@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { logRun } from "@/lib/pipeline/runLog";
+import { getLastHealthyInventory, logRun } from "@/lib/pipeline/runLog";
 import { isVehicleListing } from "@/lib/import/csvImport";
 import { politeFetch } from "@/lib/fetch/politeFetch";
 import { getSourceDefinition } from "@/data-sources/registry";
@@ -209,6 +209,11 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
     });
   }
 
+  // Every run sees the whole sitemap, so every run can be checked against the last healthy full pass (see completeness.ts).
+  const sitemapReferenceCount = discoveredCount > 0 ? await getLastHealthyInventory("BankAuctions.in") : undefined;
+  // WordPress core sitemaps hold at most 2,000 URLs per file; at that size the source may have more listings than we can see.
+  const sitemapAtCap = discoveredCount >= 2000;
+
   await logRun({
     source: "BankAuctions.in",
     kind: "builtin",
@@ -218,7 +223,7 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
     updated: summary.updatedProperties,
     duplicates: summary.duplicatesFound,
     rejected: summary.failures,
-    message: `${opts.all ? "Import all: " : ""}${summary.pagesChecked} pages checked, ${summary.newProperties} new${opts.all && summary.remaining ? `, ${summary.remaining} left` : ""}` + (summary.errors[0] ? ` — first error: ${summary.errors[0].message}` : ""),
+    message: `${opts.all ? "Import all: " : ""}${summary.pagesChecked} pages checked, ${summary.newProperties} new${opts.all && summary.remaining ? `, ${summary.remaining} left` : ""}` + (sitemapAtCap ? " — sitemap is at the 2,000-URL WordPress cap: check for a wp-sitemap-auctions-2.xml" : "") + (summary.errors[0] ? ` — first error: ${summary.errors[0].message}` : ""),
     startedAt: runStartedAt,
     metrics: {
       inventoryCount: !!opts.all && !summary.remaining && discoveredCount > 0 ? discoveredCount : undefined,
@@ -236,6 +241,7 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
       // Pages read in ONE run depend on the tick's time budget (the last tick of an Import-all pass reads only what is left), not on the
       // source's structure, so they are never compared with page history. The record check (sitemap size) still applies.
       pageCountComparable: false,
+      sitemapReferenceCount,
       paginationComplete: !!opts.all && !summary.remaining && discoveredCount > 0,
       coverageComplete: !!opts.all && !summary.remaining && discoveredCount > 0,
       evaluationEligible: !!opts.all && !summary.remaining && discoveredCount > 0,
