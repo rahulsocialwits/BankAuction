@@ -233,6 +233,9 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
       pagesDiscovered: discoveredCount,
       pagesFetched: summary.pagesChecked,
       pagesFailed: summary.failures,
+      // Pages read in ONE run depend on the tick's time budget (the last tick of an Import-all pass reads only what is left), not on the
+      // source's structure, so they are never compared with page history. The record check (sitemap size) still applies.
+      pageCountComparable: false,
       paginationComplete: !!opts.all && !summary.remaining && discoveredCount > 0,
       coverageComplete: !!opts.all && !summary.remaining && discoveredCount > 0,
       evaluationEligible: !!opts.all && !summary.remaining && discoveredCount > 0,

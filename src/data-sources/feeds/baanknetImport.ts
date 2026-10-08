@@ -9,6 +9,14 @@ import { UA } from "./webScan";
 import { webStateOf, withWebState } from "./siteScan";
 
 /*
+ * COMPLIANCE FLAG: BAANKNET ACCESS AUTHORIZATION: UNKNOWN / REQUIRES BUSINESS CONFIRMATION.
+ * baanknet.com's Terms restrict copying content without written consent from PSB Alliance (see src/data-sources/registry.ts).
+ * No such consent is recorded in this repository. This importer does not bypass any access control (it honours robots.txt and
+ * stops on 401 / 403 / CAPTCHA), but its use must not be expanded, and the source must not be described as legally cleared,
+ * until the project owner confirms authorization and records it in registry.ts.
+ */
+
+/*
  * BAANKNET importer: ALL public auction properties, resumable, no AI, no browser.
  *
  * baanknet.com draws its auction list from its own public listing data: the page asks
