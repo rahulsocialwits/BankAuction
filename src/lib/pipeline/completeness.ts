@@ -128,6 +128,21 @@ export function evaluateCompleteness(
 ): CompletenessResult {
   const currentCount = countOf(metrics);
   const reference = baseline.median7d ?? baseline.median30d ?? baseline.previousRunCount;
+
+  // Some collectors intentionally run incrementally (for example, a 100-page safety tick).
+  // Those runs must contribute no completeness verdict until the collector says the inventory pass is complete.
+  if (metrics.evaluationEligible === false) {
+    return {
+      status: "RECOVERING",
+      score: null,
+      reason: "Incremental run recorded; completeness will be evaluated only after a complete source inventory pass.",
+      protectExistingData: false,
+      baseline,
+      currentCount,
+      countDropRatio: null,
+      pageDropRatio: null,
+    };
+  }
   const countDropRatio = currentCount !== null && reference && reference > 0
     ? Math.max(0, (reference - currentCount) / reference)
     : null;
