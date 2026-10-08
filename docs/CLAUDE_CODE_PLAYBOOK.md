@@ -67,6 +67,8 @@ Merged into `main`:
 
 - **PR (Phase 3, PDF multi-lot extraction):** `pdfLots.ts` splits a notice into validated lots (price, date, address, confidence; scanned = NEEDS_OCR). Pure and NOT wired into ingestion yet; fixtures are synthetic. See the handover, "PDF multi-lot extraction".
 
+- **PR (Phase 3, source status mapping):** an explicit source status maps to existing statuses only (postponed -> POSTPONED; cancelled/withdrawn -> CANCELLED; sold/completed -> COMPLETED), with negation guards; new listings honour it; disappearance flags never become a status. See the handover, "Source lifecycle status mapping".
+
 - **PR (Phase 3, dedup hardening):** a title/price/date match is no longer enough to merge or hide listings; `propertyIdentity.ts` requires an id, an address match or a distinctive title; merges are logged in `PropertyChange` (`dedup_merge`). See the handover, "Deduplication hardening".
 
 Pending owner tasks: run "Import all" once for BankAuctions.in so the engine has a healthy full-pass reference; check Admin → Engine → History daily at first; set one auction to Postponed in the admin and confirm the badge on its public page.
@@ -172,7 +174,7 @@ Do these in order; each source gets its own branch and PR.
 9. **Per-source first-seen provenance for feed sources** (`SourceRecord` is written only by the BankAuctions.in crawler): needed if "found by" attribution on the Coverage page proves too coarse. Needs an owner-approved schema change.
 10. **Phase 3 sources** (new banks/portals) via §9, one per PR.
 
-Do not start a backlog item the owner has not asked for. Propose it, explain the business impact in one or two lines, wait for "go".
+Phase 3 PRs 1-9 are all built (PRs 8 and 9 additions are pure/mapping only: the PDF extractor is not wired in). Do not start a backlog item the owner has not asked for. Propose it, explain the business impact in one or two lines, wait for "go".
 
 ---
 

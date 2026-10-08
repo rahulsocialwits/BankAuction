@@ -1,0 +1,43 @@
+{
+  "_note": "Status wording as each source/channel can present it, and what the engine must make of it. null = no explicit signal: the status follows the dates. Written for these tests; add real labels when a source is seen to use one.",
+  "csv_sheet_auction_status_column": [
+    { "raw": "Postponed", "expected": "POSTPONED" },
+    { "raw": "AUCTION POSTPONED", "expected": "POSTPONED" },
+    { "raw": "Adjourned", "expected": "POSTPONED" },
+    { "raw": "Deferred", "expected": "POSTPONED" },
+    { "raw": "put on hold", "expected": "POSTPONED" },
+    { "raw": "Cancelled", "expected": "CANCELLED" },
+    { "raw": "Canceled", "expected": "CANCELLED" },
+    { "raw": "Auction cancelled by bank", "expected": "CANCELLED" },
+    { "raw": "Called off", "expected": "CANCELLED" },
+    { "raw": "Withdrawn", "expected": "CANCELLED" },
+    { "raw": "Withdrawn by bank", "expected": "CANCELLED" },
+    { "raw": "Sold", "expected": "COMPLETED" },
+    { "raw": "SOLD", "expected": "COMPLETED" },
+    { "raw": "Property sold", "expected": "COMPLETED" },
+    { "raw": "Completed", "expected": "COMPLETED" },
+    { "raw": "Auction concluded", "expected": "COMPLETED" },
+    { "raw": "Not cancelled", "expected": null },
+    { "raw": "No cancellation", "expected": null },
+    { "raw": "Not postponed", "expected": null },
+    { "raw": "Unsold", "expected": null },
+    { "raw": "Not sold", "expected": null },
+    { "raw": "Incomplete", "expected": null },
+    { "raw": "Cancelled / sold", "expected": null },
+    { "raw": "Upcoming", "expected": null },
+    { "raw": "Live", "expected": null },
+    { "raw": "Open", "expected": null },
+    { "raw": "Active", "expected": null },
+    { "raw": "Expired", "expected": null },
+    { "raw": "Closed", "expected": null },
+    { "raw": "", "expected": null }
+  ],
+  "baanknet_list_filters": [
+    { "raw": "upcoming", "expected": null },
+    { "raw": "live", "expected": null }
+  ],
+  "long_boilerplate": [
+    { "raw": "The EMD will be refunded to unsuccessful bidders and the auction may be cancelled or postponed at the sole discretion of the authorised officer without assigning any reason.", "expected": null },
+    { "raw": "In case the property is sold, the sale shall be subject to confirmation by the secured creditor, and if the sale is not completed within 15 days the deposit may be forfeited.", "expected": null }
+  ]
+}

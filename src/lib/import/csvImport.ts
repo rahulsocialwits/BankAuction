@@ -173,7 +173,7 @@ function auctionExtras(rec: ListingRecord) {
     autoExtension: yn(rec.auto_extension),
     extensionDurationMins: rec.extension_mins ? Number(rec.extension_mins) || null : null,
     extensionTrigger: rec.extension_trigger || null,
-    status: deriveAuctionStatusFromDates(start, end),
+    status: resolveAuctionStatus({ current: null, derived: deriveAuctionStatusFromDates(start, end), explicit: detectExplicitStatus(rec.auction_status) }),
   };
 }
 
@@ -344,7 +344,7 @@ async function addReauctionRound(hit: Known, rec: ListingRecord, titleTokens: Se
       auctionMethod: col("auction_method") || null,
       possessionStatus: col("possession_status") || null,
       ...x,
-      status: deriveAuctionStatusFromDates(start, x.auctionEnd),
+      status: resolveAuctionStatus({ current: null, derived: deriveAuctionStatusFromDates(start, x.auctionEnd), explicit: detectExplicitStatus(rec.auction_status) }),
       statusSource,
       sourceUrl: col("source_url") || sourceUrl || null,
     },
@@ -608,7 +608,7 @@ export async function importRecords(
           possessionStatus: col("possession_status") || null,
           ...extras,
           // Feeds that carry no end date keep the old behaviour (upcoming); with dates the status follows them.
-          status: validStart || extras.auctionEnd ? deriveAuctionStatusFromDates(validStart, extras.auctionEnd) : "UPCOMING",
+          status: resolveAuctionStatus({ current: null, derived: validStart || extras.auctionEnd ? deriveAuctionStatusFromDates(validStart, extras.auctionEnd) : "UPCOMING", explicit: detectExplicitStatus(rec.auction_status) }),
           statusSource,
           sourceUrl: col("source_url") || sourceUrl || null,
         },
