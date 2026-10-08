@@ -34,7 +34,7 @@ Amounts are digit strings in rupees; dates are IST ISO strings (`2026-10-06T10:0
 * Error behaviour: an AI failure makes that source run fail with the real message (for example `Relay Models request failed: HTTP 401 … Invalid token` when the key's quota is exhausted); it is stored in `FeedSource.lastMessage` and History.
 
 ## 3. Fetch rules (all website fetching)
-* `blockedHosts.ts` `BLOCKED_HOSTS = ["auctionbazaar.com", "bankauction.co"]` (project policy; message "Source disabled by project configuration"). `baanknet.com` was removed from the list by the owner (commit `6c3a504`).
+* `blockedHosts.ts` `BLOCKED_HOSTS = ["auctionbazaar.com", "bankauction.co", "findauction.in"]` (project policy; message "Source disabled by project configuration"). `baanknet.com` was removed from the list by the owner (commit `6c3a504`).
 * robots.txt: `RobotsGate` (read once per site, wildcard `*` and `$`, longest rule wins, Allow wins ties, Crawl-delay honoured) — implemented in `lib/fetch/robotsRules.ts`.
 * One retry only for HTTP 429/503 (`fetchWithRetry`, `Retry-After` honoured, max 20 s). 401 / 403 / CAPTCHA / anti-bot page = refusal: the page or source stops (source "Blocked"), never retried or bypassed. 5xx/timeouts = temporary errors; the source stays Live.
 * User agent: `BankAuctionBot/1.0 (+https://auction.bizsocio.com)` (`webScan.ts` `UA`); the built-in crawler sends `BankAuctionBot/0.1 …` (`politeFetch.ts`).

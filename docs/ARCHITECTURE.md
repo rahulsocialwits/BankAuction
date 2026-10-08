@@ -113,7 +113,7 @@ flowchart LR
 | `feeds/deepScan.ts` | read one listing in depth (page + PDFs + AI), fetch layer with render fallback | `realDeps`, `makeDeepener`, `DEEP_PROMPT`, `noticeLinks`, `extractBaanknetEmbeddedAuctions`, `baanknetRecordsFromSources` |
 | `feeds/render.ts`, `renderedParser.ts` | JS-shell detection, browser rendering wrapper, code parser of rendered detail pages | `isJsShell`, `RenderingFetcher`, `parseRenderedProperty`, `toListingRecord` |
 | `feeds/robotsGate.ts` | robots.txt read once per site, Crawl-delay | `RobotsGate` |
-| `feeds/blockedHosts.ts` | the do-not-fetch list | `BLOCKED_HOSTS`, `checkSourceUrl`, `denylistMatch` |
+| `feeds/blockedHosts.ts` | the do-not-fetch list | `BLOCKED_HOSTS`, `checkSourceUrl`, `denylistMatch`, `isBlockedRecord` |
 | `feeds/sheets.ts` | Google Sheet tab discovery + CSV export | `listSheetTabs`, `fetchTabCsv`, `sheetIdFromUrl` |
 
 ### `src/lib/`

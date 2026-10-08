@@ -3,7 +3,8 @@ import { POLICY_PREFIX } from "@/lib/fetch/httpStatus";
 // THE do-not-fetch list. A decision of THIS PROJECT (not something a website said): sites whose terms or robots.txt disallow
 // copying. Never accepted as link sources, never requested, and listings that come from them (for example rows of a shared
 // sheet whose source_url points there) are not imported either. Changing this list is a policy decision of the project owner.
-export const BLOCKED_HOSTS = ["auctionbazaar.com", "bankauction.co"];
+// findauction.in: never a source of any kind (owner rule). It is a coverage benchmark in conversation only. Sub-domains such as www. match too.
+export const BLOCKED_HOSTS = ["auctionbazaar.com", "bankauction.co", "findauction.in"];
 
 /** The list entry a hostname matches (exact host or any sub-domain), or null. */
 export const denylistMatch = (hostname: string): string | null => BLOCKED_HOSTS.find((h) => hostname === h || hostname.endsWith("." + h)) ?? null;
@@ -16,6 +17,18 @@ export function isBlockedUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * True when an imported record comes from a do-not-fetch host: its own source address, a source-qualified id ("src:<host>:<id>"),
+ * or the address the import was started from. Used by the shared write path (importRecords) so that NO route into the database
+ * (link source, sheet, CSV, bulk import) can bring such a listing in, whatever the route's own checks do.
+ */
+export function isBlockedRecord(rec: { source_url?: unknown; external_id?: unknown }, importUrl?: string | null): boolean {
+  const urls = [rec.source_url, importUrl].filter((u): u is string => typeof u === "string" && u.trim() !== "");
+  if (urls.some((u) => isBlockedUrl(u.trim()))) return true;
+  const id = typeof rec.external_id === "string" ? /^src:([^:]+):/i.exec(rec.external_id.trim()) : null;
+  return !!id && isBlockedHost(id[1].toLowerCase());
 }
 
 export type SourceUrlCheck = { ok: true; url: string } | { ok: false; reason: string; status?: "internal_policy_block" };
