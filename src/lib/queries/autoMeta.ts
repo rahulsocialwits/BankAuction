@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
+import { activeAuctionWhere } from "@/lib/domain/auctionLifecycle";
 
 /** Home-page meta description written from live numbers, so it never goes stale. Cached for 10 minutes. */
 export const getAutoHomeDescription = unstable_cache(
@@ -9,7 +10,7 @@ export const getAutoHomeDescription = unstable_cache(
         prisma.property.count({ where: { status: "PUBLISHED" } }),
         prisma.bank.count({ where: { auctions: { some: { property: { status: "PUBLISHED" } } } } }),
         prisma.property.groupBy({ by: ["addressText"], where: { status: "PUBLISHED", addressText: { not: null } } }).then((g) => g.length),
-        prisma.auction.count({ where: { status: { in: ["UPCOMING", "LIVE", "AUCTION_TODAY"] }, property: { status: "PUBLISHED" } } }),
+        prisma.auction.count({ where: { AND: [activeAuctionWhere()], property: { status: "PUBLISHED" } } }),
       ]);
       if (listings === 0) return "Discover bank auction properties across India: flats, houses, plots and commercial assets with reserve prices and auction dates.";
       return (

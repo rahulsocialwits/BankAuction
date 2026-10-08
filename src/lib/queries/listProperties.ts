@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { AuctionStatus, Prisma, PropertyCategory } from "@prisma/client";
 import { canonCity } from "@/lib/pipeline/locations";
+import { activeAuctionWhere, effectiveAuctionStatus, inactiveAuctionWhere } from "@/lib/domain/auctionLifecycle";
 
 export type StatusGroup = "active" | "completed" | "all";
 
@@ -16,8 +17,6 @@ export interface PropertyFilters {
   priceMin?: number;
   priceMax?: number;
 }
-
-const ACTIVE_STATUSES: AuctionStatus[] = ["UPCOMING", "LIVE", "AUCTION_TODAY"];
 
 function textMatch(term: string): Prisma.PropertyWhereInput {
   return {
@@ -36,12 +35,9 @@ export function publishedWhere(filters: PropertyFilters = {}): Prisma.PropertyWh
       ? { gte: filters.priceMin, lte: filters.priceMax }
       : undefined;
 
+  // Effective status (auctionLifecycle.ts): an auction that is still stored as open but whose date is over counts as ended.
   const statusFilter =
-    filters.statusGroup === "active"
-      ? { in: ACTIVE_STATUSES }
-      : filters.statusGroup === "completed"
-        ? { notIn: ACTIVE_STATUSES }
-        : undefined;
+    filters.statusGroup === "active" ? activeAuctionWhere() : filters.statusGroup === "completed" ? inactiveAuctionWhere() : undefined;
 
   const and: Prisma.PropertyWhereInput[] = [];
   if (filters.keyword) and.push(textMatch(filters.keyword));
@@ -66,7 +62,7 @@ export function publishedWhere(filters: PropertyFilters = {}): Prisma.PropertyWh
       some: {
         bankId: filters.bankId,
         reservePrice: priceFilter,
-        status: statusFilter,
+        AND: statusFilter ? [statusFilter] : undefined,
       },
     },
     AND: and.length ? and : undefined,
@@ -96,6 +92,7 @@ export function toPropertyCardData(p: {
     bank: { name: string } | null;
     reservePrice: unknown;
     auctionStart: Date | null;
+    auctionEnd?: Date | null;
     status: AuctionStatus;
   }>;
   media?: Array<{ media: { sourceUrl: string } }>;
@@ -109,7 +106,7 @@ export function toPropertyCardData(p: {
     bankName: auction?.bank?.name ?? null,
     reservePrice: auction?.reservePrice ?? null,
     auctionStart: auction?.auctionStart ?? null,
-    status: auction?.status ?? null,
+    status: auction ? effectiveAuctionStatus(auction) : null,
     imageUrl: p.media?.[0]?.media.sourceUrl ?? null,
   };
 }

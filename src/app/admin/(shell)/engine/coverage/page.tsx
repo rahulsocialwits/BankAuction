@@ -120,7 +120,7 @@ export default async function CoveragePage() {
     ["Unique", overall.unique, "Total minus duplicates and removed."],
     ["Published", overall.published, "Unique and visible to visitors."],
     ["Current", overall.current, "Published and not over (or postponed)."],
-    ["Stale", overall.stale, "Published and marked open, but the date passed more than a day ago."],
+    ["Stale (shown as ended)", overall.stale, "Stored as open but the auction is over. The website already shows these as ended; only the stored value lags."],
     ["Current unique actionable", overall.actionable, "Current, with reserve price, auction date and an address."],
   ];
 
