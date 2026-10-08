@@ -1,3 +1,4 @@
+import { observeListing } from "@/lib/pipeline/fieldObservations";
 import { prisma } from "@/lib/db/prisma";
 import { getLastHealthyInventory, logRun } from "@/lib/pipeline/runLog";
 import { isVehicleListing } from "@/lib/import/csvImport";
@@ -438,6 +439,7 @@ async function ingestOnePage(
       auctionId = auction.id;
       summary.updatedProperties++;
       summary.newAuctions++;
+      await observeListing({ propertyId, auctionId }, { reserve: normalized.reservePrice, start: normalized.auctionStart, address: normalized.cityRaw }, { statusSource: "BankAuctions.in", method: "html", document: url });
 
       for (const doc of normalized.documents) {
         const document = await prisma.document.upsert({
@@ -530,6 +532,9 @@ async function ingestOnePage(
     });
     summary.documentsFound++;
   }
+
+  // Provenance: what bankauctions.in showed for this listing (append-only; an unchanged value adds nothing).
+  await observeListing({ propertyId, auctionId }, { reserve: normalized.reservePrice, start: normalized.auctionStart, address: normalized.cityRaw }, { statusSource: "BankAuctions.in", method: "html", document: url });
 
   await upsertSourceRecord(sourceId, url, contentHash, normalized, validation.needsReview ? "PENDING_REVIEW" : "PROCESSED", propertyId, auctionId);
 }

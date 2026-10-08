@@ -245,7 +245,7 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
         const deepener = makeDeepener({ html: text, pageUrl: check.url, siblingTitles: scan.records.map((r) => String(r.title ?? "")), deadline: Date.now() + (opts.deepBudgetMs ?? (trigger === "manual" ? 200_000 : 150_000)) });
         let out: ImportResult;
         try {
-          out = await importRecords(scan.records, `feed:${feed.name}`, "PUBLISHED", check.url, { deepen: deepener, strict: true });
+          out = await importRecords(scan.records, `feed:${feed.name}`, "PUBLISHED", check.url, { deepen: deepener, strict: true, method: "ai_page" });
         } finally {
           await deepener.deps.close?.(); // the browser (if the render fallback started one) is released
         }

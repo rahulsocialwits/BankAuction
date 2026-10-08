@@ -323,7 +323,7 @@ export async function importTabular(
       const { records, left } = recordsFromRows(rows, layout, cursor, to, join);
       for (const [k, n] of Object.entries(left)) leftAll[k] = (leftAll[k] ?? 0) + n;
       if (records.length) {
-        const r = await importRecords(records, statusSource, "PUBLISHED", opts.sourceUrl, { enrich: layout.kind === "raw_source" });
+        const r = await importRecords(records, statusSource, "PUBLISHED", opts.sourceUrl, { enrich: layout.kind === "raw_source", method: "sheet" });
         acc = { created: acc.created + r.created, skipped: acc.skipped + r.skipped, failed: acc.failed + r.failed, updated: (acc.updated ?? 0) + (r.updated ?? 0), stale: (acc.stale ?? 0) + (r.stale ?? 0) };
       }
       cursor = to;
@@ -361,7 +361,7 @@ export async function importTabular(
   const records = applyMapping(rows, mapping);
   let total: ImportResult = { created: 0, skipped: 0, failed: 0 };
   for (let i = 0; i < records.length; i += MAX_ROWS) {
-    const r = await importRecords(records.slice(i, i + MAX_ROWS), statusSource, "PUBLISHED", opts.sourceUrl);
+    const r = await importRecords(records.slice(i, i + MAX_ROWS), statusSource, "PUBLISHED", opts.sourceUrl, { method: "sheet" });
     total = { created: total.created + r.created, skipped: total.skipped + r.skipped, failed: total.failed + r.failed };
   }
   return { ...total, tokens, usedAi, state: { hash, mapKey, mapping } };

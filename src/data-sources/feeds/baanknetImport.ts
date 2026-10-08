@@ -184,7 +184,7 @@ export async function runBaanknetImport(feed: FeedSource, trigger: "schedule" | 
       }
 
       if (pages.length) {
-        const results = await Promise.allSettled(pages.map((p) => importRecords(baanknetRecordsFromSources(p.rows), `feed:${feed.name}`, "PUBLISHED", "https://baanknet.com/", { enrich: true, strict: true })));
+        const results = await Promise.allSettled(pages.map((p) => importRecords(baanknetRecordsFromSources(p.rows), `feed:${feed.name}`, "PUBLISHED", "https://baanknet.com/", { enrich: true, strict: true, method: "api" })));
         let advance = 0;
         for (let i = 0; i < pages.length; i++) {
           const res = results[i];

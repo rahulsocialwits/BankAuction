@@ -460,3 +460,17 @@ No new source was added and no database schema changed.
 
 **Not done here:** no historical rows were rewritten, no production run, no migration.
 
+## Field-level provenance (Phase 3, PR 3; added 2026-10-08)
+
+**What it is:** an append-only record of where the three key fields (reserve price, auction date, address) were seen: which source, which extraction method, which page, when. It never overwrites anything and never decides which value is right. A second source showing a different reserve price is just a second observation. This is the base for dispute checks, source-contribution measurement, dedup, disappearance tracking, PDF extraction and reconciliation.
+
+**Storage (no schema change, no migration):** rows in `PropertyChange` with `field = "obs:reserve_price" | "obs:auction_start" | "obs:address"` and `newValue` = compact JSON `{v: value, s: source, m: method, d: document, c: confidence}`. Reserve price and date rows carry the `auctionId` of their round; the address row does not. Code: `fieldProvenance.ts` (pure: normalise, encode/decode, `planObservations`), `fieldObservations.ts` (Prisma store, `observeListing`).
+
+**Rule for "unchanged":** a series is `field + round + source + method`. A new row is written only when the newest stored value of that series differs (address compared ignoring case and spacing). Re-reading an unchanged listing adds nothing; a changed value adds one row; a second source or method is its own series, so conflicts stay visible. A→B→A records the second A.
+
+**Where it is written:** `importRecords()` (every new listing, and every re-read of a matched existing listing, including values that are NOT applied because the listing is held back by a stronger rule) and the BankAuctions.in crawler. Methods: `api` (BAANKNET), `html` (site scans, bankauctions.in), `ai_page` (AI page scans), `sheet` / `csv`. `pdf` exists as a value but nothing sets it yet (PR 8).
+
+**Not covered yet:** a re-auction round created by `addReauctionRound` has no observations of its own (its first re-read adds them); manual admin edits are not observations; there is no admin screen to browse observations (query `PropertyChange` where `field like 'obs:%'`). `never throws`: if writing an observation fails the import carries on.
+
+**Cost:** one extra read of a property's `obs:` rows per record, and a few small rows per new or changed value. Rollback: revert the PR; existing `obs:` rows are harmless history.
+
