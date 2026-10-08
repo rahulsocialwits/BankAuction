@@ -61,6 +61,8 @@ Merged into `main`:
 
 - **PR (Phase 3, field provenance):** append-only `obs:` observations of reserve price / auction date / address in `PropertyChange` (source, method, document, time); see the handover, "Field-level provenance".
 
+- **PR (Phase 3, daily coverage history):** one reading per India day of the Coverage numbers (current unique actionable etc.), total and per source, stored as `coverage-snapshot` run-log rows; shown under Coverage -> "Daily history". No schema change; see the handover, "Daily coverage history".
+
 - **PR (Phase 3, dedup hardening):** a title/price/date match is no longer enough to merge or hide listings; `propertyIdentity.ts` requires an id, an address match or a distinctive title; merges are logged in `PropertyChange` (`dedup_merge`). See the handover, "Deduplication hardening".
 
 Pending owner tasks: run "Import all" once for BankAuctions.in so the engine has a healthy full-pass reference; check Admin → Engine → History daily at first; set one auction to Postponed in the admin and confirm the badge on its public page.

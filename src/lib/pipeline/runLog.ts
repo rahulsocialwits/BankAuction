@@ -171,7 +171,9 @@ export async function logRun(input: RunLogInput) {
     }
     // Keep the table small: drop entries older than 60 days occasionally.
     if (Math.random() < 0.02) {
-      await prisma.sourceRunLog.deleteMany({ where: { startedAt: { lt: new Date(Date.now() - 60 * 864e5) } } });
+      await prisma.sourceRunLog.deleteMany({ where: { startedAt: { lt: new Date(Date.now() - 60 * 864e5) }, kind: { not: "coverage-snapshot" } } });
+      // daily coverage readings are tiny and are the history: keep them for a year
+      await prisma.sourceRunLog.deleteMany({ where: { kind: "coverage-snapshot", startedAt: { lt: new Date(Date.now() - 400 * 864e5) } } });
     }
   } catch {
     /* ignore */

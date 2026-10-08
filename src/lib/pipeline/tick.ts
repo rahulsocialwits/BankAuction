@@ -6,6 +6,7 @@ import { logRun } from "./runLog";
 import { enrichLocations } from "./geo";
 import { autoReviewPending } from "./review";
 import { revalidateTag } from "next/cache";
+import { snapshotCoverageIfDue } from "./coverageHistoryStore";
 import { aiWindow, claimAiSlotWork, istLabel, nextSlotStart } from "./aiSchedule";
 import { CLAIM_STALE_MS, leaseBlockedBy, leaseWinner } from "./tickLease";
 
@@ -32,6 +33,8 @@ export async function runTick(opts: { limit?: number; trigger?: TickTrigger; via
     const hardEnd = startedAt.getTime() + 262_000;
     const feeds = await runAllFeeds({ aiSlotStart: window.open ? window.slotStart : null, hardEnd });
     const hidden = await autoCleanExactDuplicates();
+    // one small reading per India day of how many current unique actionable auctions we hold (reads auctions, writes only its own rows)
+    await snapshotCoverageIfDue().catch(() => undefined);
     const timeLeft = hardEnd - Date.now();
     const geo = slotWork && timeLeft > 60_000 ? await enrichLocations(96).catch(() => ({ processed: 0, tokens: 0, failed: true })) : { processed: 0, tokens: 0, failed: false };
     const places = geo.processed;
