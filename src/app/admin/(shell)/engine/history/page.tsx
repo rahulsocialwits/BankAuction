@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import EngineTabs from "@/components/admin/EngineTabs";
+import { parseMetricsMessage, type DataHealthStatus } from "@/lib/pipeline/completeness";
 
 export const dynamic = "force-dynamic";
 
@@ -10,13 +11,31 @@ const STATUS: Record<string, string> = {
   skipped: "bg-gray-100 text-gray-600",
 };
 
+const DATA_STATUS: Record<DataHealthStatus, string> = {
+  HEALTHY: "bg-green-50 text-green-700",
+  WARNING: "bg-yellow-50 text-yellow-700",
+  INCOMPLETE: "bg-orange-50 text-orange-700",
+  CRITICAL: "bg-red-50 text-red-700",
+  BLOCKED: "bg-red-50 text-red-700",
+  FAILED: "bg-red-50 text-red-700",
+  NO_DATA: "bg-gray-100 text-gray-600",
+  RECOVERING: "bg-blue-50 text-blue-700",
+};
+
 export default async function HistoryPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
   const { filter } = await searchParams;
-  const logs = await prisma.sourceRunLog.findMany({
-    where: filter === "problems" ? { status: { in: ["error", "blocked", "policy_block"] } } : filter === "ticks" ? { kind: "cron" } : { kind: { notIn: ["cron", "claim", "ai-slot", "builtin-all"] } },
+  const rawLogs = await prisma.sourceRunLog.findMany({
+    where: filter === "ticks" ? { kind: "cron" } : { kind: { notIn: ["cron", "claim", "ai-slot", "builtin-all"] } },
     orderBy: { startedAt: "desc" },
     take: 150,
   });
+  const logs = filter === "problems"
+    ? rawLogs.filter((l) => {
+        const dataStatus = parseMetricsMessage(l.message)?.dataStatus;
+        return ["error", "blocked", "policy_block"].includes(l.status) ||
+          ["WARNING", "INCOMPLETE", "CRITICAL", "BLOCKED", "FAILED", "NO_DATA"].includes(dataStatus ?? "");
+      })
+    : rawLogs;
 
   const tabs = [
     ["", "Source runs"],
@@ -47,6 +66,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
               <th className="px-3 py-2 text-left">When</th>
               <th className="px-3 py-2 text-left">Source</th>
               <th className="px-3 py-2 text-left">Status</th>
+              <th className="px-3 py-2 text-left">Data health</th>
               <th className="px-3 py-2 text-right">New</th>
               <th className="px-3 py-2 text-right">Dup</th>
               <th className="px-3 py-2 text-right">Rejected</th>
@@ -63,11 +83,19 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
                 </td>
                 <td className="px-3 py-2 font-medium">{l.source}</td>
                 <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded font-semibold ${STATUS[l.status] ?? ""}`}>{l.status}</span></td>
+                <td className="px-3 py-2">
+                  {(() => {
+                    const dataStatus = parseMetricsMessage(l.message)?.dataStatus;
+                    return dataStatus ? <span className={`px-2 py-0.5 rounded font-semibold ${DATA_STATUS[dataStatus]}`}>{dataStatus}</span> : "—";
+                  })()}
+                </td>
                 <td className="px-3 py-2 text-right">{l.created}</td>
                 <td className="px-3 py-2 text-right">{l.duplicates}</td>
                 <td className="px-3 py-2 text-right">{l.rejected}</td>
                 <td className="px-3 py-2 text-right">{l.aiTokens || "—"}</td>
-                <td className="px-3 py-2 text-brand-muted max-w-xs break-words">{l.message ?? ""}</td>
+                <td className="px-3 py-2 text-brand-muted max-w-xs break-words">
+                  {l.message?.replace(/^\[DATA_ENGINE_V1\] \{.*\}\n/, "") ?? ""}
+                </td>
               </tr>
             ))}
           </tbody>
