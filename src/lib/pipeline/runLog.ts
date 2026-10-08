@@ -34,20 +34,19 @@ async function loadHistoricalRuns(source: string): Promise<HistoricalRun[]> {
     take: 60,
     select: { startedAt: true, status: true, message: true },
   });
-  return previous
-    .map((r: { startedAt: Date; status: string; message: string | null }) => {
-      const parsed = parseMetricsMessage(r.message);
-      return parsed
-        ? {
-            startedAt: r.startedAt,
-            technicalStatus: r.status,
-            metrics: parsed.metrics,
-            dataStatus: parsed.dataStatus,
-            protectExistingData: parsed.protectExistingData,
-          }
-        : null;
-    })
-    .filter((r: HistoricalRun | null): r is HistoricalRun => !!r);
+  const runs: HistoricalRun[] = [];
+  for (const r of previous as { startedAt: Date; status: string; message: string | null }[]) {
+    const parsed = parseMetricsMessage(r.message);
+    if (!parsed) continue;
+    runs.push({
+      startedAt: r.startedAt,
+      technicalStatus: r.status,
+      metrics: parsed.metrics,
+      dataStatus: parsed.dataStatus,
+      protectExistingData: parsed.protectExistingData,
+    });
+  }
+  return runs;
 }
 
 /**
