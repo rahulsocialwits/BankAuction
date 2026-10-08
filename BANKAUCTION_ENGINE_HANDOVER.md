@@ -369,3 +369,10 @@ npm test                    # tsx --test tests/*.test.ts
 npx next build
 npx tsx scripts/diagnose-source.ts https://example-bank.example/auctions   # read-only: follows robots.txt and the do-not-fetch list, makes at most 2 requests per URL, writes nothing
 ```
+
+## BankAuctions.in index watch (added after Phase 2 merge)
+
+- Every 5-minute run already downloads the whole sitemap. Each run now compares that size (`discoveredCount`) with the inventory of the **last HEALTHY full pass** (`getLastHealthyInventory`, passed as `sitemapReferenceCount`). A drop of 10% / 30% / 60% gives WARNING / INCOMPLETE / CRITICAL and sets `protectExistingData`, so the removal gate (`sourceRemoval.ts`) holds back source-driven removals immediately instead of waiting for a full pass.
+- The reference is the last healthy full pass, not a rolling window, so a collapse that persists never becomes the new normal.
+- A normal incremental run still returns RECOVERING (no verdict). Protection set by an index collapse clears only after a later healthy full pass ("Import all"). This errs on the side of protecting data.
+- The sitemap index (wp-sitemap.xml) was checked on 2026-10-08 and lists a single auctions file, so reading only `wp-sitemap-auctions-1.xml` is not a current gap. WordPress caps a file at 2,000 URLs: if the run message shows the cap warning, check for a `-2` file.

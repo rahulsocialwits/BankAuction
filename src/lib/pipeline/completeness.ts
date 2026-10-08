@@ -34,6 +34,12 @@ export interface SourceRunMetrics {
    * (for example a run that deliberately reads only a slice of the source). The page check is then skipped.
    */
   pageCountComparable?: boolean;
+  /**
+   * Incremental collectors (for example BankAuctions.in) read only a slice per run but still see the whole source index
+   * (the sitemap) every time. When the collector supplies the index size it saw this run (discoveredCount) and the size of
+   * the last healthy full pass (sitemapReferenceCount), an incremental run can still detect an index collapse.
+   */
+  sitemapReferenceCount?: number;
   httpStatus?: number;
   apiStatus?: string;
   blocked?: boolean;
@@ -201,6 +207,16 @@ function pageReference(baseline: SourceBaseline): number | null {
   return reference;
 }
 
+/** Index-size check for incremental runs. Returns null when it cannot be evaluated or the index is fine. */
+function indexCollapseVerdict(m: SourceRunMetrics): { verdict: Exclude<DropVerdict, "HEALTHY">; ratio: number } | null {
+  const ref = m.sitemapReferenceCount;
+  const now = m.discoveredCount;
+  if (typeof ref !== "number" || typeof now !== "number" || !Number.isFinite(ref) || !Number.isFinite(now) || ref <= 0) return null;
+  const ratio = Math.max(0, (ref - now) / ref);
+  const verdict = classifyDrop(ratio);
+  return verdict && verdict !== "HEALTHY" ? { verdict, ratio } : null;
+}
+
 export function evaluateCompleteness(
   metrics: SourceRunMetrics,
   baseline: SourceBaseline,
@@ -241,6 +257,16 @@ export function evaluateCompleteness(
   // Some collectors intentionally run incrementally (for example, a 100-page safety tick).
   // Those runs must contribute no completeness verdict until the collector says the inventory pass is complete.
   if (metrics.evaluationEligible === false) {
+    // The one exception: the source index (sitemap) collapsed versus the last healthy full pass. Slice size is irrelevant to that.
+    const indexVerdict = indexCollapseVerdict(metrics);
+    if (indexVerdict) {
+      const pct = Math.round(indexVerdict.ratio * 100);
+      const score = indexVerdict.verdict === "CRITICAL" ? 20 : indexVerdict.verdict === "INCOMPLETE" ? 45 : Math.max(0, 100 - pct);
+      return {
+        ...make(indexVerdict.verdict, score, `Source index (sitemap) ${indexVerdict.verdict === "WARNING" ? "is down" : "dropped by"} ${pct}% versus the last healthy full pass; existing data is protected.`, true, { countDropRatio: indexVerdict.ratio, recordHealth: indexVerdict.verdict }),
+        pageDropRatio: null,
+      };
+    }
     return {
       ...make("RECOVERING", null, "Incremental run recorded; completeness will be evaluated only after a complete source inventory pass.", false),
       countDropRatio: null,
