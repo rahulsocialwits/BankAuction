@@ -91,6 +91,8 @@ export function buildSourceBaseline(runs: HistoricalRun[], now = new Date()): So
   const since30 = now.getTime() - 30 * 864e5;
   const r7 = valid.filter((r) => r.startedAt.getTime() >= since7);
   const r30 = valid.filter((r) => r.startedAt.getTime() >= since30);
+  const r7Counts = r7.map((r) => r.count).filter((v): v is number => v !== null);
+  const r30Counts = r30.map((r) => r.count).filter((v): v is number => v !== null);
 
   const latest = valid[0];
   const previous = valid[1];
@@ -109,10 +111,10 @@ export function buildSourceBaseline(runs: HistoricalRun[], now = new Date()): So
 
   return {
     previousRunCount: previousCount,
-    median7d: median(r7.map((r) => r.count)),
-    min7d: r7.length ? Math.min(...r7.map((r) => r.count)) : null,
-    max7d: r7.length ? Math.max(...r7.map((r) => r.count)) : null,
-    median30d: median(r30.map((r) => r.count)),
+    median7d: median(r7Counts),
+    min7d: r7Counts.length ? Math.min(...r7Counts) : null,
+    max7d: r7Counts.length ? Math.max(...r7Counts) : null,
+    median30d: median(r30Counts),
     recentTrend: trend,
     lastSuccessfulRun: successful?.startedAt.toISOString() ?? null,
     lastCompleteRun: complete?.startedAt.toISOString() ?? null,
