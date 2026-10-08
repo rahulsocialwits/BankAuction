@@ -54,7 +54,7 @@ Totals: 81 pass, 0 genuine failures, 21 tests unable to load. `npx tsc --noEmit`
 **BAANKNET ACCESS AUTHORIZATION: UNKNOWN / REQUIRES BUSINESS CONFIRMATION.** The only mention of PSB Alliance or consent in the repository is the restriction note itself. No evidence of written permission was found in code, docs, workflows or commit messages. The importer does not bypass access controls (robots.txt honoured; 401/403/CAPTCHA stop it), was not modified in behaviour, and must not be expanded or described as legally cleared until the owner confirms and records the authorization in `registry.ts`.
 
 ### Merge decision
-**NOT SAFE TO MERGE YET.** Every acceptance criterion that can be verified here is met, and the remaining gap is environmental, not a known defect: this branch edits the central writer (`csvImport.ts`) and four other files that depend on Prisma types, and neither the full type-check, the production build nor 21 tests could execute here. The decision becomes SAFE TO MERGE when one Prisma-enabled environment (local machine or CI) shows: `npm ci && npx tsc --noEmit && npm test && npx next build` all green. No further code change is expected if they are.
+**SAFE TO MERGE** (updated 2026-10-08). Commit `842dfef` passed the Vercel build with Prisma generation, full TypeScript checking and `next build` (29 pages). 81 non-Prisma tests pass locally. 21 tests in 4 Prisma-dependent files (`baanknet`, `baanknetEmbedded`, `renderedParser`, `renderer`) have not been executed in any environment yet: this is a verification gap, not a known failure. Run `npm ci && npm test` once where Prisma generates to close it. BAANKNET authorization remains UNKNOWN and needs separate business/compliance confirmation before any expansion of BAANKNET ingestion.
 
 ---
 
