@@ -381,3 +381,11 @@ npx tsx scripts/diagnose-source.ts https://example-bank.example/auctions   # rea
 
 The project owner confirmed that BAANKNET use continues **without written permission** from BAANKNET / PSB Alliance. Recorded in `registry.ts` (`ownerDecision`) and `docs/BAANKNET.md`. Authorization status remains UNKNOWN / REQUIRES BUSINESS CONFIRMATION. Standing conditions: no importer expansion, no bypassing of access controls, stop on any refusal or request from BAANKNET, never describe the data as legally cleared. The risk (terms-of-use / access block) is the owner's to carry; it is not mitigated by this note.
 
+## POSTPONED / CANCELLED status (added 2026-10-08)
+
+- Before: nothing wrote POSTPONED or CANCELLED, and every re-import recomputed status from dates alone, so even a hand-set Postponed would have been reset to UPCOMING.
+- Now (`src/lib/domain/resolveAuctionStatus.ts`): an explicit POSTPONED/CANCELLED signal wins; a postponed/cancelled auction **stays** that way on later runs until the auction date changes (then the date-derived status applies again); everything else is unchanged. Wired into the BankAuctions.in update path and `csvImport.ts` (enrichExisting and the superseded-round update).
+- Signals available today: (1) admin edit page, new "Auction status" select (Automatic / Postponed / Cancelled), saved with `statusSource = "manual"`; (2) an `auction_status` column/field on CSV-style records, read only when it is a short deliberate status value. Free page text is deliberately NOT scanned (boilerplate like "EMD refunded if auction is cancelled" would cause false cancellations).
+- **Not done:** no source currently supplies an explicit status automatically. BankAuctions.in pages and the BAANKNET listing API were not changed (BAANKNET importer stays as is, see the compliance notes). Adding automatic detection needs a verified source field first.
+- `AuctionEvent` now has a writer: every status change in these paths writes a row (`src/lib/pipeline/auctionEvents.ts`, never throws).
+

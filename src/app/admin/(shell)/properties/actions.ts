@@ -6,6 +6,8 @@ import { redirect } from "next/navigation";
 import type { PropertyCategory, PropertyStatus } from "@prisma/client";
 import { requireMaster } from "@/lib/auth/adminAuth";
 import { propertyWhere } from "@/lib/admin/propertyFilter";
+import { deriveAuctionStatusFromDates } from "@/lib/domain/deriveAuctionStatus";
+import { recordAuctionStatusChange } from "@/lib/pipeline/auctionEvents";
 
 function refresh(slug?: string) {
   revalidatePath("/admin/properties");
@@ -133,9 +135,15 @@ export async function updateProperty(formData: FormData) {
 
   const a = existing!.auctions[0];
   if (a) {
+    // Auction status: "AUTO" follows the dates; POSTPONED / CANCELLED are set by hand and then stay until the date changes.
+    const choice = String(formData.get("auctionStatus") ?? "AUTO");
+    const nextStatus = choice === "POSTPONED" || choice === "CANCELLED" ? choice : deriveAuctionStatusFromDates((auctionStart as Date | null) ?? null, (auctionEnd as Date | null) ?? null);
+    if (nextStatus !== a.status) await recordAuctionStatusChange(a.id, a.status, nextStatus, `Set by admin (${choice})`);
     await prisma.auction.update({
       where: { id: a.id },
       data: {
+        status: nextStatus,
+        statusSource: choice === "AUTO" ? a.statusSource : "manual",
         reservePrice: reservePrice as number | null,
         emd: emd as number | null,
         auctionStart: auctionStart as Date | null,
