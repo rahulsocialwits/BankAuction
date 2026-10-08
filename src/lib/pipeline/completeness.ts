@@ -85,7 +85,7 @@ export function buildSourceBaseline(runs: HistoricalRun[], now = new Date()): So
   const valid = runs
     .filter((r) => r.metrics.evaluationEligible !== false)
     .map((r) => ({ ...r, count: countOf(r.metrics) }))
-    .filter((r): r is typeof r & { count: number } => r.count !== null);
+    .filter((r) => r.count !== null);
 
   const since7 = now.getTime() - 7 * 864e5;
   const since30 = now.getTime() - 30 * 864e5;
@@ -152,9 +152,6 @@ export function evaluateCompleteness(
   const pageDropRatio = currentPages !== undefined && pageReference && pageReference > 0
     ? Math.max(0, (pageReference - currentPages) / pageReference)
     : null;
-
-  const protect = (status: DataHealthStatus) =>
-    ["WARNING", "INCOMPLETE", "CRITICAL", "BLOCKED", "FAILED", "NO_DATA"].includes(status);
 
   if (metrics.blocked) {
     return { status: "BLOCKED", score: 0, reason: "Source access was blocked/refused; existing data must be preserved.", protectExistingData: true, baseline, currentCount, countDropRatio, pageDropRatio };
