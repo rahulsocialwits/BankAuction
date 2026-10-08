@@ -9,7 +9,7 @@ import { ensureSourceRow, runBankAuctionsIngestion, setBuiltInImportAll } from "
 import { isAiFeed, runFeedFull, runWebDiscovery, UNREACHABLE } from "@/data-sources/feeds/run";
 import { webStateOf, withWebState } from "@/data-sources/feeds/siteScan";
 import { fixThinListings } from "@/lib/pipeline/thinFix";
-import { logRun } from "@/lib/pipeline/runLog";
+import { acceptNewBaseline, logRun } from "@/lib/pipeline/runLog";
 
 function refresh() {
   revalidatePath("/admin/engine");
@@ -135,5 +135,17 @@ export async function importAllBuiltIn() {
 export async function pauseBuiltInImportAll() {
   await requireMaster();
   await setBuiltInImportAll(false);
+  refresh();
+}
+
+/**
+ * Accept a source's current size as its new normal, after the owner has confirmed the source really got smaller (or bigger) for a
+ * legitimate reason. Refused unless the latest run was a clean, complete read (see baselineToAccept). Writes one run-log row only.
+ */
+export async function acceptBaselineAction(formData: FormData) {
+  const admin = await requireMaster();
+  const source = String(formData.get("source") ?? "").trim();
+  if (source) await acceptNewBaseline(source, admin.adminId ? `admin ${admin.adminId}` : "the master admin");
+  revalidatePath("/admin/engine/coverage");
   refresh();
 }

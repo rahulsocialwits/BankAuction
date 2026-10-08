@@ -33,12 +33,18 @@ export interface SourceProtection {
 }
 
 /**
- * Latest protection state from a source's recent runs, NEWEST FIRST.
- * Runs with no verdict, or with RECOVERING (incremental / not yet evaluable), say nothing about completeness and are
- * skipped, so a routine incremental run cannot silently "clear" an earlier anomalous full pass.
+ * The run that decides the source's current protection: the newest run that carries a verdict.
+ * Skipped: runs with no verdict, and RECOVERING runs (incremental / not yet evaluable) that did not ask for protection, so a
+ * routine incremental run cannot silently "clear" an earlier anomalous full pass. A RECOVERING run that DID ask for protection
+ * (an unresolved anomaly with no healthy baseline left to compare against, see completeness.ts) is a verdict and keeps it on.
  */
+export function latestEvaluatedRun(runs: HistoricalRun[]): HistoricalRun | undefined {
+  return runs.find((r) => r.dataStatus !== undefined && (r.dataStatus !== "RECOVERING" || r.protectExistingData === true));
+}
+
+/** Latest protection state from a source's recent runs, NEWEST FIRST. */
 export function protectionFromRuns(runs: HistoricalRun[]): SourceProtection {
-  const evaluated = runs.find((r) => r.dataStatus !== undefined && r.dataStatus !== "RECOVERING");
+  const evaluated = latestEvaluatedRun(runs);
   if (!evaluated || !evaluated.dataStatus) {
     return { protected: false, status: null, reason: "No evaluated run in the recent history; nothing indicates an anomaly.", evaluatedAt: null, basis: "none" };
   }

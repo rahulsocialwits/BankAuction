@@ -2,6 +2,7 @@ import type { FeedSource } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { importRecords } from "@/lib/import/csvImport";
 import { logRun } from "@/lib/pipeline/runLog";
+import { refusedRunMetrics } from "@/lib/pipeline/completeness";
 import { describeStatus, fetchWithRetry, isRefusal } from "@/lib/fetch/httpStatus";
 import { baanknetRecordsFromSources } from "./deepScan";
 import { RobotsGate } from "./robotsGate";
@@ -124,7 +125,7 @@ export async function runBaanknetImport(feed: FeedSource, trigger: "schedule" | 
     const msg = "Blocked by robots.txt: the listing data address is not allowed for our crawler. Nothing was requested.";
     st.lastError = msg;
     await save(feed.id, st, msg, { status: "error", importAll: false });
-    await logRun({ source: feed.name, kind: "feed", trigger, status: "blocked", message: msg, startedAt });
+    await logRun({ source: feed.name, kind: "feed", trigger, status: "blocked", message: msg, startedAt, metrics: refusedRunMetrics(msg) }); // a refusal is recorded as BLOCKED (protects existing data) and carries no size, so it never enters a baseline
     return msg;
   }
 

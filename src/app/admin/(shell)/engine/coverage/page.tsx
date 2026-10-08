@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/db/prisma";
 import EngineTabs from "@/components/admin/EngineTabs";
 import { overlapOf, pct, summarizeCoverage, type CoverageAuctionRow } from "@/lib/pipeline/coverage";
+import { baselineToAccept } from "@/lib/pipeline/completeness";
+import { loadHistoricalRuns } from "@/lib/pipeline/runLog";
+import { protectionFromRuns } from "@/lib/pipeline/sourceProtection";
+import { acceptBaselineAction } from "../actions";
+import SubmitButton from "@/components/admin/SubmitButton";
 import { describeYield, isYieldProblem, overallYield, yieldStateOf, type YieldVerdict } from "@/lib/pipeline/zeroYield";
 
 export const dynamic = "force-dynamic";
@@ -113,6 +118,21 @@ export default async function CoveragePage() {
     .sort((a, b) => Number(isYieldProblem(b.verdict)) - Number(isYieldProblem(a.verdict)) || a.name.localeCompare(b.name));
   const problems = feedRows.filter((f) => f.active && isYieldProblem(f.verdict));
 
+  // Sources whose latest evaluated run is flagged: existing data is protected until a healthy full pass (or an accepted baseline).
+  const runSources = await prisma.sourceRunLog.groupBy({ by: ["source"], where: { startedAt: { gte: since }, kind: { in: ["builtin", "feed"] } } });
+  const protectedSources: { source: string; status: string | null; reason: string; since: string | null; canAccept: boolean; whyNot: string | null; size: number | null }[] = [];
+  for (const { source } of runSources as unknown as { source: string }[]) {
+    try {
+      const history = await loadHistoricalRuns(source);
+      const p = protectionFromRuns(history);
+      if (!p.protected) continue;
+      const pick = baselineToAccept(history);
+      protectedSources.push({ source, status: p.status, reason: p.reason, since: p.evaluatedAt, canAccept: pick.ok, whyNot: pick.ok ? null : pick.reason, size: pick.ok ? pick.count : null });
+    } catch {
+      /* a source whose history cannot be read is simply not listed here; the removal gate itself fails closed */
+    }
+  }
+
   const funnel: [string, number, string][] = [
     ["Total auction rounds", overall.total, "Every auction row in the database."],
     ["Duplicate", overall.duplicate, "Marked as a duplicate of another listing."],
@@ -144,6 +164,32 @@ export default async function CoveragePage() {
           ))}
         </div>
       </div>
+
+      <h2 className="text-lg font-semibold text-brand mb-1">Sources under data protection</h2>
+      <p className="text-xs text-brand-muted mb-3">
+        When a source suddenly returns far less than usual (or is blocked), the site keeps what it already has: nothing is hidden because of what that source returned. Protection ends by itself after one healthy complete pass. Only if the source has really and permanently changed size, accept its current size as the new normal.
+      </p>
+      {protectedSources.length === 0 ? (
+        <div className="bg-green-50 text-green-700 text-sm rounded-xl px-4 py-3 mb-6">No source is under data protection.</div>
+      ) : (
+        <div className="grid gap-2 mb-6">
+          {protectedSources.map((p) => (
+            <div key={p.source} className="bg-white border border-amber-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs">
+                <div className="text-sm font-medium text-amber-800">{p.source} — {p.status ?? "protected"}</div>
+                <div className="text-brand-muted mt-0.5">{p.reason}{p.since && ` Since ${new Date(p.since).toLocaleString("en-IN")}.`}</div>
+                {!p.canAccept && p.whyNot && <div className="text-brand-muted mt-0.5">New size cannot be accepted yet: {p.whyNot}</div>}
+              </div>
+              {p.canAccept && (
+                <form action={acceptBaselineAction}>
+                  <input type="hidden" name="source" value={p.source} />
+                  <SubmitButton className="text-xs border border-brand-border rounded-lg px-3 py-1.5 hover:bg-brand-bg">Accept {n(p.size ?? 0)} as the new normal</SubmitButton>
+                </form>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       <h2 className="text-lg font-semibold text-brand mb-1">Sources that return nothing</h2>
       <p className="text-xs text-brand-muted mb-3">

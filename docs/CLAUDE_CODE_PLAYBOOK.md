@@ -148,7 +148,7 @@ Do these in order; each source gets its own branch and PR.
 ## 10. Backlog (priority order)
 
 1. **Automatic POSTPONED/CANCELLED detection** from a verified source field (BankAuctions.in: inspect a real postponed auction page; do not scan free text). Today status is set by hand or via CSV `auction_status`.
-2. **Baseline drift / recovery:** protection set by an index collapse clears only after a healthy full pass; consider an automatic full-pass schedule so protection cannot stay stuck.
+2. ~~**Baseline drift / recovery**~~ DONE (Phase 3 PR 2): only HEALTHY runs are baseline evidence; protection persists until a healthy full pass or an admin "accept new baseline" (Coverage page). An automatic full-pass schedule is still worth considering (PR 5).
 3. **BAANKNET run refused at the start logs no metrics** — log a BLOCKED metric so protection reflects it.
 4. **Generic feeds are always evaluation-eligible** (likely noisy verdicts): review per-feed eligibility. (Zero-yield detection from Phase 3C now covers the "ok but found nothing" case; this item is about the completeness verdict itself.)
 5. ~~`autoCleanExactDuplicates` 0.4 rule~~ replaced by the evidence-based decision in `propertyIdentity.ts` (Phase 3 PR 1).
