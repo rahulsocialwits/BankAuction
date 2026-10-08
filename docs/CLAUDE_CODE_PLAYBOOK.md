@@ -53,6 +53,10 @@ Merged into `main`:
 
 - **PR (stale auctions):** ended auctions are shown as ended everywhere (read-side, no data written). See the handover, "Ended auctions shown as upcoming".
 
+- **PR (Phase 3, baseline hardening):** only HEALTHY runs define a source's normal; collapses stay protected; admin "accept new baseline" on the Coverage page; BAANKNET refusals recorded.
+
+- **PR (Phase 3, field provenance):** append-only `obs:` observations of reserve price / auction date / address in `PropertyChange` (source, method, document, time); see the handover, "Field-level provenance".
+
 - **PR (Phase 3, dedup hardening):** a title/price/date match is no longer enough to merge or hide listings; `propertyIdentity.ts` requires an id, an address match or a distinctive title; merges are logged in `PropertyChange` (`dedup_merge`). See the handover, "Deduplication hardening".
 
 Pending owner tasks: run "Import all" once for BankAuctions.in so the engine has a healthy full-pass reference; check Admin → Engine → History daily at first; set one auction to Postponed in the admin and confirm the badge on its public page.
@@ -149,7 +153,7 @@ Do these in order; each source gets its own branch and PR.
 
 1. **Automatic POSTPONED/CANCELLED detection** from a verified source field (BankAuctions.in: inspect a real postponed auction page; do not scan free text). Today status is set by hand or via CSV `auction_status`.
 2. ~~**Baseline drift / recovery**~~ DONE (Phase 3 PR 2): only HEALTHY runs are baseline evidence; protection persists until a healthy full pass or an admin "accept new baseline" (Coverage page). An automatic full-pass schedule is still worth considering (PR 5).
-3. **BAANKNET run refused at the start logs no metrics** — log a BLOCKED metric so protection reflects it.
+3. ~~BAANKNET run refused at the start logs no metrics~~ DONE (Phase 3 PR 2).
 4. **Generic feeds are always evaluation-eligible** (likely noisy verdicts): review per-feed eligibility. (Zero-yield detection from Phase 3C now covers the "ok but found nothing" case; this item is about the completeness verdict itself.)
 5. ~~`autoCleanExactDuplicates` 0.4 rule~~ replaced by the evidence-based decision in `propertyIdentity.ts` (Phase 3 PR 1).
 6. **Disappearance sweeper** ("listing no longer on the source"): does not exist. If ever built it must use `allowsDisappearanceAction` and require two consecutive HEALTHY full passes.

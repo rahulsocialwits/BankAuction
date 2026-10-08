@@ -5,6 +5,8 @@ import { deriveAuctionStatusFromDates } from "@/lib/domain/deriveAuctionStatus";
 import { auctionDateChanged, detectExplicitStatus, resolveAuctionStatus } from "@/lib/domain/resolveAuctionStatus";
 import { recordAuctionStatusChange } from "@/lib/pipeline/auctionEvents";
 import { decideSameProperty, formatMergeNote, titleOverlap, titleTokens, titlesSimilar, type MatchDecision } from "@/lib/pipeline/propertyIdentity";
+import { observeListing } from "@/lib/pipeline/fieldObservations";
+import type { ExtractionMethod } from "@/lib/pipeline/fieldProvenance";
 import { recordMerge } from "@/lib/pipeline/mergeLog";
 import { canonicalBankKey, canonicalBankName, normalizeListing } from "./normalize";
 import { removeListingFromSource } from "@/lib/pipeline/sourceRemoval";
@@ -69,7 +71,7 @@ export async function importCsvText(text: string, statusSource: string): Promise
   const header = rows.shift()?.map((h) => h.trim().toLowerCase()) ?? [];
   if (!header.includes("title")) return { created: 0, skipped: 0, failed: 0, error: "header" };
   const records = rows.slice(0, MAX_ROWS).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i]])));
-  return importRecords(records, statusSource, "PUBLISHED");
+  return importRecords(records, statusSource, "PUBLISHED", undefined, { method: "csv" });
 }
 
 const tokens = titleTokens;
@@ -378,6 +380,8 @@ export async function importRecords(
     deepen?: DeepHook;
     /** A listing must state a price or an auction date, and a place; otherwise it is rejected instead of published as "Not Available". */
     strict?: boolean;
+    /** How the records were read (api, html, sheet, ...). Stored with each field observation (provenance). */
+    method?: ExtractionMethod;
   } = {},
 ): Promise<ImportResult> {
   let created = 0;
@@ -488,6 +492,8 @@ export async function importRecords(
           skipped++;
           continue;
         }
+        // What this source shows for the matched listing is kept as provenance, whether or not it changes the stored value.
+        await observeListing({ propertyId: hit.propertyId, auctionId: hit.auctionId }, { reserve: reservePrice, start: validStart, address: col("location") }, { statusSource, method: opts.method, document: col("source_url") || sourceUrl });
         if ((opts.enrich || hit === sameId) && (await enrichExisting(hit, rec, statusSource, hit === sameId))) updated++;
         if (mediaOf(rec).length && (await attachMedia(hit.propertyId, mediaOf(rec)))) updated++;
         else if (opts.deepen && col("deep_done") !== "1" && (await isThin(hit))) {
@@ -610,6 +616,7 @@ export async function importRecords(
         await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "borrower_status", value: "not_available_from_source" } });
       }
       orphan = null;
+      await observeListing({ propertyId: property.id, auctionId: auction.id }, { reserve: reservePrice, start: validStart, address: col("location") }, { statusSource, method: opts.method, document: col("source_url") || sourceUrl });
       list.push({ tokens: titleTokens, reserve: reservePrice > 0 ? reservePrice : null, start: validStart, auctionId: auction.id, propertyId: property.id, ext: col("external_id") || null });
       created++;
     } catch (e) {

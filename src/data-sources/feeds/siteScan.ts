@@ -311,7 +311,7 @@ export async function scanSiteForNew(opts: {
     let cursor = 0;
     while (cursor < todo.length && Date.now() < deadline) {
       const batch = todo.slice(cursor, cursor + 500);
-      const r = await importRecords(batch.map((x) => x.record), source, "PUBLISHED", opts.startUrl, { strict: true });
+      const r = await importRecords(batch.map((x) => x.record), source, "PUBLISHED", opts.startUrl, { strict: true, method: "html" });
       out.import = {
         created: out.import.created + r.created,
         skipped: out.import.skipped + r.skipped,
@@ -359,7 +359,7 @@ export async function scanSiteForNew(opts: {
         continue;
       }
       writes = writes.then(async () => {
-        const r = await importRecords(res.records, source, "PUBLISHED", opts.startUrl, { strict: true });
+        const r = await importRecords(res.records, source, "PUBLISHED", opts.startUrl, { strict: true, method: "html" });
         out.import = { created: out.import.created + r.created, skipped: out.import.skipped + r.skipped, failed: out.import.failed + r.failed, updated: (out.import.updated ?? 0) + (r.updated ?? 0), held: (out.import.held ?? 0) + (r.held ?? 0) };
         for (const j of r.rejections ?? []) out.rejections.push({ url, title: j.title, reasons: j.reasons });
         say(`  ${r.created ? "NEW  " : r.skipped ? "known" : "skip "} ${res.records[0].title?.slice(0, 70)}  [reserve ${res.records[0].reserve_price || "—"}, EMD ${res.records[0].emd || "—"}, docs ${JSON.parse(res.records[0].documents ?? "[]").length}]`);
