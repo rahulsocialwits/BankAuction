@@ -57,7 +57,7 @@ export default async function DataEnginePage() {
     prisma.property.count({ where: { status: "PUBLISHED" } }),
     prisma.property.count({ where: { status: "PENDING_REVIEW" } }),
     prisma.sourceRunLog.findFirst({ where: { kind: "cron", status: "ok" }, orderBy: { startedAt: "desc" } }),
-    prisma.sourceRunLog.findMany({ where: { startedAt: { gte: since24h } }, orderBy: { startedAt: "desc" }, take: 200 }),
+    prisma.sourceRunLog.findMany({ where: { startedAt: { gte: since24h }, kind: { not: "coverage-snapshot" } }, orderBy: { startedAt: "desc" }, take: 200 }),
     prisma.sourceRunLog.aggregate({ where: { startedAt: { gte: since24h } }, _sum: { aiTokens: true, created: true } }),
     getAiConfig(),
     aiScheduleStatus(),

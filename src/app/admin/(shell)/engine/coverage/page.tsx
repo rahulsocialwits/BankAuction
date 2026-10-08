@@ -6,6 +6,7 @@ import { loadHistoricalRuns } from "@/lib/pipeline/runLog";
 import { protectionFromRuns } from "@/lib/pipeline/sourceProtection";
 import { acceptBaselineAction } from "../actions";
 import SubmitButton from "@/components/admin/SubmitButton";
+import { loadCoverageTrend } from "@/lib/pipeline/coverageHistoryStore";
 import { describeYield, isYieldProblem, overallYield, yieldStateOf, type YieldVerdict } from "@/lib/pipeline/zeroYield";
 
 export const dynamic = "force-dynamic";
@@ -139,6 +140,10 @@ export default async function CoveragePage() {
     .catch(() => [])) as unknown as { field: string; property: { id: string; title: string; slug: string; status: string } | null }[];
   const flaggedListings = flaggedRaw.filter((r) => r.property);
 
+  // One reading per India day, newest first for the table. A failure to read it must not break the page.
+  const trend = await loadCoverageTrend(30).catch(() => null);
+  const history = trend ? [...trend.all].reverse() : [];
+
   const funnel: [string, number, string][] = [
     ["Total auction rounds", overall.total, "Every auction row in the database."],
     ["Duplicate", overall.duplicate, "Marked as a duplicate of another listing."],
@@ -255,6 +260,56 @@ export default async function CoveragePage() {
         </table>
         {feedRows.length === 0 && <div className="p-8 text-center text-sm text-brand-muted">No link sources yet.</div>}
       </div>
+
+      <h2 className="text-lg font-semibold text-brand mb-1">Daily history</h2>
+      <p className="text-xs text-brand-muted mb-3">
+        One reading per day (India time), taken by the scheduler; the last reading of the day is kept. The number to watch is current unique actionable auctions. A day with no row means no reading was taken that day, not that the number was zero. Readings start the day this was deployed; nothing is back-filled.
+      </p>
+      {history.length === 0 ? (
+        <div className="bg-gray-100 text-gray-600 text-sm rounded-xl px-4 py-3 mb-6">No daily reading yet. The first one is taken by the next scheduler tick.</div>
+      ) : (
+        <div className="bg-white border border-brand-border rounded-xl overflow-x-auto mb-6">
+          <table className="w-full text-xs">
+            <thead className="bg-brand-bg text-brand-muted">
+              <tr><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-right">Current unique actionable</th><th className="px-3 py-2 text-right">Change</th><th className="px-3 py-2 text-right">Current</th><th className="px-3 py-2 text-right">Published</th><th className="px-3 py-2 text-right">Stale</th><th className="px-3 py-2 text-right">Duplicate</th><th className="px-3 py-2 text-right">All rows</th></tr>
+            </thead>
+            <tbody>
+              {history.map((h) => (
+                <tr key={h.date} className="border-t border-brand-border">
+                  <td className="px-3 py-2">{h.date}{h.gapDays > 0 ? <span className="text-brand-muted"> · {h.gapDays} day(s) with no reading before</span> : null}</td>
+                  <td className="px-3 py-2 text-right font-semibold">{n(h.counts.actionable)}</td>
+                  <td className={"px-3 py-2 text-right " + (h.change === null ? "text-brand-muted" : h.change < 0 ? "text-red-700" : "text-green-700")}>{h.change === null ? "—" : (h.change > 0 ? "+" : "") + n(h.change)}</td>
+                  <td className="px-3 py-2 text-right">{n(h.counts.current)}</td>
+                  <td className="px-3 py-2 text-right">{n(h.counts.published)}</td>
+                  <td className="px-3 py-2 text-right">{n(h.counts.stale)}</td>
+                  <td className="px-3 py-2 text-right">{n(h.counts.duplicate)}</td>
+                  <td className="px-3 py-2 text-right">{n(h.counts.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {trend && trend.bySource.size > 0 && history.length > 0 ? (
+        <details className="mb-6">
+          <summary className="text-sm text-brand cursor-pointer">Per-source history (current unique actionable by day)</summary>
+          <div className="bg-white border border-brand-border rounded-xl overflow-x-auto mt-2">
+            <table className="w-full text-xs">
+              <thead className="bg-brand-bg text-brand-muted"><tr><th className="px-3 py-2 text-left">Source (first to find)</th><th className="px-3 py-2 text-left">Latest first: date = actionable</th></tr></thead>
+              <tbody>
+                {[...trend.bySource.entries()]
+                  .sort((a, b) => (b[1][b[1].length - 1]?.counts.actionable ?? 0) - (a[1][a[1].length - 1]?.counts.actionable ?? 0))
+                  .map(([source, pts]) => (
+                    <tr key={source} className="border-t border-brand-border align-top">
+                      <td className="px-3 py-2 whitespace-nowrap">{source}</td>
+                      <td className="px-3 py-2">{[...pts].reverse().slice(0, 14).map((p) => `${p.date.slice(5)} = ${n(p.counts.actionable)}`).join("  ·  ")}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      ) : null}
 
       <h2 className="text-lg font-semibold text-brand mb-1">Who found our auctions</h2>
       <p className="text-xs text-brand-muted mb-3">

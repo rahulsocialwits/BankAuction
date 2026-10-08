@@ -494,3 +494,14 @@ Architecture unchanged (GitHub Actions tick, visitor fallback, claim lock, 262 s
 
 **Not done:** the external pinger itself (needs the owner's account and the secret; steps are written). The old per-source AI lock is unchanged. Slices assume a source uses its whole slice; sources that finish early simply leave time unused this tick.
 
+
+## Daily coverage history (Phase 3, PR 6; added 2026-10-08)
+
+Answers "Oct 8 -> X current unique actionable, Oct 9 -> Y". No schema change, no backfill, no new metric: a reading is exactly what the Coverage page computes (`summarizeCoverage`).
+
+- **What is stored:** per India calendar day, one `SourceRunLog` row per scope with `kind = "coverage-snapshot"`, `source = "Coverage snapshot <YYYY-MM-DD> · <scope>"` and a small JSON in `message` (`total, duplicate, removed, unique, published, current, stale, actionable`, plus `created/duplicates/rejected` over 30 days for sources where those are per-run amounts). Scope `ALL` = whole database; other scopes = the source that first found the auction (same attribution as the "Who found" table). Per-source counts add up to `ALL` (tested). BAANKNET carries no overlap numbers because it logs running totals (see PR #9).
+- **Idempotent:** a second reading on the same date updates that day's row (latest reading of the day wins) and never adds one. If a race ever creates two, the earliest is kept and the rest deleted.
+- **When:** the scheduler tick calls `snapshotCoverageIfDue()` after duplicate clean-up. It refreshes at most every 6 hours, so the day's last reading is within ~6 hours of the end of the day. Failure is swallowed: it can never fail a tick. Cost: one indexed lookup per tick; one read of all auctions (the same query as the Coverage page) up to 4 times a day.
+- **Retention:** snapshot rows are exempt from the 60-day run-log cleanup and kept 400 days. They are hidden from Engine -> History and the Engine "last 24h" list.
+- **Where to look:** Admin -> Engine -> Coverage -> "Daily history" (newest first, change vs previous reading, gaps shown; per-source history in a collapsed block).
+- **Limits:** history starts at deploy; a day without a tick has no row (shown as a gap, not zero). A reading reflects classification at reading time (e.g. stale count depends on the clock). Rollback: revert the PR; existing snapshot rows are harmless and can be deleted with `kind = 'coverage-snapshot'`.
