@@ -65,6 +65,8 @@ Merged into `main`:
 
 - **PR (Phase 3, automatic recovery):** a protected, collapsed source (INCOMPLETE/CRITICAL) gets one controlled full recovery pass queued (BankAuctions.in: the existing Import-all switch; others: recorded, they run their own passes); capped, cooled down, visible in History; only a complete HEALTHY pass clears protection. See the handover, "Automatic recovery".
 
+- **PR (Phase 3, PDF multi-lot extraction):** `pdfLots.ts` splits a notice into validated lots (price, date, address, confidence; scanned = NEEDS_OCR). Pure and NOT wired into ingestion yet; fixtures are synthetic. See the handover, "PDF multi-lot extraction".
+
 - **PR (Phase 3, dedup hardening):** a title/price/date match is no longer enough to merge or hide listings; `propertyIdentity.ts` requires an id, an address match or a distinctive title; merges are logged in `PropertyChange` (`dedup_merge`). See the handover, "Deduplication hardening".
 
 Pending owner tasks: run "Import all" once for BankAuctions.in so the engine has a healthy full-pass reference; check Admin → Engine → History daily at first; set one auction to Postponed in the admin and confirm the badge on its public page.
