@@ -221,6 +221,35 @@ export async function runBaanknetImport(feed: FeedSource, trigger: "schedule" | 
     message = `BAANKNET import in progress: ${progressLine(st)}. Continues automatically on the next scheduler tick.${rej}`;
     await save(feed.id, st, message, { status: "ok", importAll: true });
   }
-  await logRun({ source: feed.name, kind: "feed", trigger, status: stoppedBy === "error" ? "error" : "ok", created: st.created, duplicates: st.skipped, rejected: st.rejected, message, startedAt });
+  await logRun({
+    source: feed.name,
+    kind: "feed",
+    trigger,
+    status: stoppedBy === "error" ? "error" : "ok",
+    created: st.created,
+    duplicates: st.skipped,
+    rejected: st.rejected,
+    message,
+    startedAt,
+    metrics: {
+      inventoryCount: st.records,
+      discoveredCount: Object.values(st.totalRecords).reduce((a, b) => a + (b ?? 0), 0),
+      fetchedCount: st.records,
+      parsedCount: st.records,
+      publishedCount: st.created + st.updated,
+      updatedCount: st.updated,
+      duplicateCount: st.skipped,
+      rejectedCount: st.rejected,
+      pagesDiscovered: Object.values(st.totalPages).reduce((a, b) => a + (b ?? 0), 0),
+      pagesFetched: st.pagesDone,
+      paginationTotalPages: Object.values(st.totalPages).reduce((a, b) => a + (b ?? 0), 0),
+      paginationComplete: st.done,
+      coverageComplete: st.done,
+      evaluationEligible: stoppedBy !== "budget",
+      failedCount: stoppedBy === "error" ? 1 : 0,
+      error: st.lastError,
+      blocked: refused,
+    },
+  });
   return message;
 }
