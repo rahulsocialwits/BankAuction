@@ -410,6 +410,7 @@ No new source was added and no database schema changed.
 - Run-log rows carry a `[YIELD_V1] {json}` first line (history page shows ZERO_YIELD / DROPPED / ALL_REJECTED badges and the "Problems only" filter includes them).
 - It is an **alert only**: it never pauses a source, removes a listing, or changes protection. Pausing a dead source stays a human decision.
 - Tests: `tests/zeroYield.test.ts`, `tests/coverage.test.ts`, `tests/yieldWiring.test.ts` (source-level guards, including that the BAANKNET importer is untouched and the coverage page never writes).
+- **Correction (found on the first real Coverage page):** the BAANKNET importer writes the running totals of its current pass into `created / duplicates / rejected` on every tick, not per-tick amounts. Summing its run-log rows over 30 days overstated it (20,677 "new" against 5,325 BAANKNET auctions in the database). The overlap table therefore shows one pass (the largest in the window) for BAANKNET feeds and sums the rows of all other sources. The importer itself was not changed. Any future per-run arithmetic on `SourceRunLog.created` must keep this in mind.
 
 ## FindAuction.in block (added 2026-10-08)
 
