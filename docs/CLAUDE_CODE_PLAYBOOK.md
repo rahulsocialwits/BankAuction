@@ -55,6 +55,8 @@ Merged into `main`:
 
 - **PR (Phase 3, baseline hardening):** only HEALTHY runs define a source's normal; collapses stay protected; admin "accept new baseline" on the Coverage page; BAANKNET refusals recorded.
 
+- **PR (Phase 3, scheduler scalability):** fair per-source time slices, a tick lease shared by every trigger, `/api/cron/health` + watchdog (60-minute late alert); owner still needs to add a second pinger (steps in `docs/SCHEDULER.md`).
+
 - **PR (Phase 3, last-seen tracking):** flag-only disappearance flags for BAANKNET after two consecutive HEALTHY complete passes; nothing is hidden; see the handover, "Last-seen / disappearance tracking".
 
 - **PR (Phase 3, field provenance):** append-only `obs:` observations of reserve price / auction date / address in `PropertyChange` (source, method, document, time); see the handover, "Field-level provenance".

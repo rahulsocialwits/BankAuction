@@ -10,6 +10,7 @@ import { builtInImportAll } from "@/data-sources/bankauctions/adapter";
 import { isAiFeed } from "@/data-sources/feeds/run";
 import { webStateOf } from "@/data-sources/feeds/siteScan";
 import { aiScheduleStatus, istLabel } from "@/lib/pipeline/aiSchedule";
+import { schedulerHealth } from "@/lib/pipeline/schedulerHealth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -55,7 +56,7 @@ export default async function DataEnginePage() {
     prisma.feedSource.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.property.count({ where: { status: "PUBLISHED" } }),
     prisma.property.count({ where: { status: "PENDING_REVIEW" } }),
-    prisma.sourceRunLog.findFirst({ where: { kind: "cron" }, orderBy: { startedAt: "desc" } }),
+    prisma.sourceRunLog.findFirst({ where: { kind: "cron", status: "ok" }, orderBy: { startedAt: "desc" } }),
     prisma.sourceRunLog.findMany({ where: { startedAt: { gte: since24h } }, orderBy: { startedAt: "desc" }, take: 200 }),
     prisma.sourceRunLog.aggregate({ where: { startedAt: { gte: since24h } }, _sum: { aiTokens: true, created: true } }),
     getAiConfig(),
@@ -71,17 +72,17 @@ export default async function DataEnginePage() {
   const liveCount = (builtInPaused ? 0 : 1) + liveFeeds.length;
   const pausedCount = (builtInPaused ? 1 : 0) + feeds.filter((f) => !f.active).length;
 
-  // Scheduler health: a tick should arrive at least every ~90 minutes.
-  const tickAgeMin = lastTick ? (Date.now() - lastTick.startedAt.getTime()) / 60000 : null;
-  const schedulerTone: Tone = tickAgeMin === null ? "red" : tickAgeMin > 90 ? "amber" : "green";
+  // Scheduler health: a SUCCESSFUL tick should arrive at least every 60 minutes (same rule as the alert endpoint).
+  const sched = schedulerHealth(lastTick, new Date());
+  const schedulerTone: Tone = sched.state === "never" ? "red" : sched.late ? "amber" : "green";
 
   // Problems: everything that needs a human, in one list.
   const problems: { title: string; detail: string; fix: string }[] = [];
   if (!ai.hasKey) problems.push({ title: "AI key missing", detail: "Website scanning is off.", fix: "Set AI_API_KEY in Vercel and redeploy." });
   else if (!ai.keyValid) problems.push({ title: "AI key invalid", detail: `The saved key has non-standard characters (${ai.keyHint}).`, fix: "Re-paste the real key in Vercel and redeploy." });
   if (!ai.enabled) problems.push({ title: "AI is switched off", detail: "Link sources that need AI will fail.", fix: "Turn it on in AI Admin." });
-  if (tickAgeMin === null) problems.push({ title: "Scheduler has never run", detail: "No automatic run has been recorded.", fix: "Set up the 15-minute scheduler (see the card below)." });
-  else if (tickAgeMin > 90) problems.push({ title: "Scheduler is late", detail: `Last automatic run was ${ago(lastTick!.startedAt)}.`, fix: "Check GitHub Actions or your cron-job.org job." });
+  if (sched.state === "never") problems.push({ title: "Scheduler has never run", detail: "No successful automatic run has been recorded.", fix: "Set up the 15-minute scheduler (see the card below)." });
+  else if (sched.late) problems.push({ title: "Scheduler is late", detail: `The last successful automatic run was ${ago(lastTick!.startedAt)}.`, fix: "Check GitHub Actions or your cron-job.org job." });
   for (const f of feeds) {
     if (f.lastStatus === "error") {
       const silent = f.lastMessage?.startsWith("Site not responding");
@@ -127,7 +128,7 @@ export default async function DataEnginePage() {
         <div className="grid sm:grid-cols-3 gap-3 text-xs">
           <div className="rounded-lg border border-brand-border p-3">
             <div className="text-brand-muted mb-1">Scheduler (every 15 min)</div>
-            <Badge tone={schedulerTone}>{tickAgeMin === null ? "Never ran" : tickAgeMin > 90 ? "Late" : "Running"}</Badge>
+            <Badge tone={schedulerTone}>{sched.state === "never" ? "Never ran" : sched.late ? "Late" : "Running"}</Badge>
             <div className="mt-2 text-brand-muted">
               Last tick: {ago(lastTick?.startedAt)}
               {lastTick?.message && <div className="mt-0.5">{lastTick.message}</div>}

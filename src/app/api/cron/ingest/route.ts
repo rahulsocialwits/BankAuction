@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runTick } from "@/lib/pipeline/tick";
+import { acquireTickLease, releaseTickLease, runTick } from "@/lib/pipeline/tick";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 /**
  * HTTP-triggerable ingestion endpoint: the single "tick" that runs every live source
  * (built-in crawler + all active link sources). The GitHub Actions workflow (.github/workflows/tick.yml) calls it every 5 minutes;
- * any other scheduler (cron-job.org, UptimeRobot) can too. Without one, visitor traffic triggers a tick by itself (see /api/me).
+ * a second, independent pinger (cron-job.org, UptimeRobot; see docs/SCHEDULER.md) can call it too: a tick lease keeps them from overlapping. Without one, visitor traffic triggers a tick by itself (see /api/me).
  * Auth: ?secret=<CRON_SECRET>, header x-cron-secret, or "Authorization: Bearer <CRON_SECRET>".
  *
  * The tick runs INSIDE this request and the response is sent only after it finished, so the scheduler sees HTTP 200 only when the
@@ -22,12 +22,17 @@ export async function GET(request: NextRequest) {
 
   const limit = Number(request.nextUrl.searchParams.get("limit") ?? "100");
   const started = Date.now();
+  // Several triggers may call this endpoint (GitHub Actions, an external pinger): only one tick runs at a time. A trigger that finds
+  // another tick running (or one that just ran) answers 200 "skipped" and does nothing, so a second pinger is always safe.
+  const lease = await acquireTickLease("HTTP");
+  if ("skipped" in lease) return NextResponse.json({ ok: true, skipped: true, reason: lease.skipped, ms: Date.now() - started });
   try {
-    const result = await runTick({ limit: Number.isFinite(limit) && limit > 0 ? limit : 100, via: "HTTP", trigger: "cron" });
+    const result = await runTick({ limit: Number.isFinite(limit) && limit > 0 ? limit : 100, via: "HTTP", trigger: "cron", claimId: lease.id });
     return NextResponse.json({ ok: true, ms: Date.now() - started, result });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error("[cron/ingest] tick failed:", e);
+    await releaseTickLease(lease.id);
     return NextResponse.json({ ok: false, ms: Date.now() - started, error: message }, { status: 500 });
   }
 }

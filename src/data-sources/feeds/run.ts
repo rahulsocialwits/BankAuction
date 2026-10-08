@@ -7,6 +7,7 @@ import { enrichLocations } from "@/lib/pipeline/geo";
 import { importTabular, type TabState } from "@/lib/import/tabular";
 import { fetchTabCsv, listSheetTabs, sheetIdFromUrl } from "./sheets";
 import { acquireAiLock, aiWindow, releaseAiLock } from "@/lib/pipeline/aiSchedule";
+import { orderByWaiting, planScanOrder, scanWindowEnd, sliceFor, type PlanSource } from "@/lib/pipeline/tickPlan";
 import { checkSourceUrl, type SourceUrlCheck } from "./blockedHosts";
 import { isBaanknetUrl, runBaanknetImport } from "./baanknetImport";
 import { DEEP_MAX_LISTINGS, makeDeepener } from "./deepScan";
@@ -418,24 +419,25 @@ export async function runAllFeeds(opts: { aiSlotStart?: Date | null; hardEnd?: n
   // per tick so the scheduler never overruns its time; a source skipped now simply goes first next tick.
   // The whole tick must end well inside the 300 s function limit (the scheduler waits for the answer): built-in crawler ~60 s,
   // this scan loop at most 150 s, the rest ~40 s.
-  const scanBudgetEnd = Math.min(Date.now() + 150_000, opts.hardEnd ? opts.hardEnd - 70_000 : Infinity); // a BAANKNET batch can overrun by up to ~55 s (it starts no batch with less than 55 s left), so the window ends before hardEnd
+  const scanBudgetEnd = scanWindowEnd(Date.now(), opts.hardEnd); // 150 s at most, and 70 s before hardEnd (a BAANKNET batch can overrun by up to ~55 s)
   const web = feeds.filter((f) => isAiFeed(f.url));
   const order = await prisma.feedSource.findMany({ where: { id: { in: web.map((w) => w.id) } }, select: { id: true, sheetState: true } });
   const lastScan = new Map(order.map((o) => [o.id, webStateOf(o.sheetState).lastAt ? Date.parse(webStateOf(o.sheetState).lastAt as string) : 0]));
   const isImporting = (id: string) => !!webStateOf(order.find((o) => o.id === id)?.sheetState).importAll;
-  // Sources that are in the middle of "Import all" go FIRST (BAANKNET before the AI-heavy ones: it needs no AI), then the one waiting longest.
-  const queue = [...web].sort((a, b) => Number(isImporting(b.id)) - Number(isImporting(a.id)) || Number(isBaanknetUrl(b.url)) - Number(isBaanknetUrl(a.url)) || (lastScan.get(a.id) ?? 0) - (lastScan.get(b.id) ?? 0));
+  // Fair service (tickPlan.ts): sources starved for hours go first, then those in the middle of "Import all" (BAANKNET before the AI-heavy
+  // ones), then the one waiting longest. Each gets a weighted share of the window (an importing source is favoured, never exclusive);
+  // a source that does not fit is deferred and is first in line next tick.
+  const plan: (PlanSource & { id: string })[] = web.map((w: { id: string; url: string }) => ({ id: w.id, importing: isImporting(w.id), baanknet: isBaanknetUrl(w.url), lastScanAt: lastScan.get(w.id) ?? 0 }));
+  const queue = planScanOrder(plan, Date.now());
   for (let i = 0; i < queue.length; i++) {
-    const f = queue[i];
-    const left = scanBudgetEnd - Date.now();
-    if (left < 25_000) break;
-    // importing sources share what is left, but each gets a real turn (not the whole window for the first one only)
-    const importingLeft = queue.slice(i).filter((q) => isImporting(q.id)).length;
-    const budget = isImporting(f.id) ? Math.min(left, isBaanknetUrl(f.url) ? 200_000 : importingLeft > 1 ? Math.max(70_000, Math.floor(left / importingLeft)) : 200_000) : Math.min(left, 60_000);
-    await runWebDiscovery(f.id, "schedule", { budgetMs: budget }).catch(() => null);
+    const budget = sliceFor(queue[i], queue.slice(i), scanBudgetEnd - Date.now());
+    if (budget === null) { deferred++; continue; }
+    await runWebDiscovery(queue[i].id, "schedule", { budgetMs: budget }).catch(() => null);
   }
 
-  for (const f of feeds) {
+  // oldest run first, so the sources a short tick has to defer are not always the same ones
+  const waiting: typeof feeds = orderByWaiting(feeds);
+  for (const f of waiting) {
     // A site that never answered our crawler is retried twice a day, not on every tick.
     if (f.lastMessage?.startsWith(UNREACHABLE) && f.lastRunAt && Date.now() - f.lastRunAt.getTime() < UNREACHABLE_RETRY_MS) continue;
     // A source whose first import is not finished keeps going on every tick (AI sources only during their first day).

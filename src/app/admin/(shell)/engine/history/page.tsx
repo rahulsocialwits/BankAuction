@@ -26,7 +26,7 @@ const DATA_STATUS: Record<DataHealthStatus, string> = {
 export default async function HistoryPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
   const { filter } = await searchParams;
   const rawLogs = await prisma.sourceRunLog.findMany({
-    where: filter === "ticks" ? { kind: "cron" } : { kind: { notIn: ["cron", "claim", "ai-slot", "builtin-all"] } },
+    where: filter === "ticks" ? { kind: "cron" } : { kind: { notIn: ["cron", "claim", "claim_done", "ai-slot", "builtin-all"] } },
     orderBy: { startedAt: "desc" },
     take: 150,
   });

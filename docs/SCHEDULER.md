@@ -59,3 +59,19 @@ Flag `FeedSource.sheetState.web.importAll = true` + saved cursor → every tick 
 | Function killed at 300 s | no response; per-source locks expire after 6 min; cursors were saved per batch; the next tick continues |
 | GitHub schedule late/skipped | the visitor safety net starts ticks (35 min, or 5 min during an import). With no visitors and no GitHub run nothing runs — add an external pinger (e.g. cron-job.org) as a second trigger (NOT configured in the repository) |
 | Wrong/missing `CRON_SECRET` | 401 / 500 as above |
+
+## Phase 3 PR 5: fair budgets, tick lease, second trigger, alert (added 2026-10-08)
+
+**Fair time slices** (`tickPlan.ts`, used by `runAllFeeds`): the scan window is still at most 150 s and ends 70 s before the tick's 262 s hard deadline. Order: sources not scanned for 3 h (or never) first, then sources in the middle of "Import all" (BAANKNET first), then the one waiting longest. Each source gets a weighted share of what is left (importing sources count double, never exclusive): at least 25 s (importing: 70 s, the minimum for a BAANKNET batch), at most 60 s (importing: 200 s). A source that does not fit is deferred and is first in line next tick, so with more sources than one tick can serve, every source is still served within a few ticks. The sheet/CSV/AI-page loop is also ordered oldest-run first.
+
+**Tick lease** (`tickLease.ts`, `acquireTickLease` in `tick.ts`): every trigger takes a lease before running a tick: a `claim` row in `SourceRunLog`. Refused while another claim is younger than 6 minutes, or when the previous tick started less than 3 minutes ago. The earliest simultaneous claim wins (same answer for every claimant). The tick releases the lease when it ends (`claim_done`); a claim from a cut-off run expires after 6 minutes. `/api/cron/ingest` answers `200 {"ok":true,"skipped":true,"reason":...}` when it did not run a tick, so a second pinger is always safe. Visitors use the same lease.
+
+**Alert:** `/api/cron/health` (same secret) answers 200 while a successful tick happened in the last 60 minutes, otherwise 503. The workflow `.github/workflows/scheduler-watchdog.yml` calls it every 15 minutes and fails (GitHub e-mails the failure) on anything but 200. The Engine page uses the same rule (60 minutes, successful ticks only).
+
+### Second trigger and alert (owner setup, about 10 minutes, outside GitHub)
+GitHub's schedule is best-effort and can stop on its own, so add an independent pinger (cron-job.org is free):
+1. Sign up at cron-job.org and create a cron job. URL: `https://auction.bizsocio.com/api/cron/ingest?limit=100`. Schedule: every 5 minutes. Request timeout: 300 seconds (the maximum, a tick can take that long).
+2. Under "Advanced", add the request header `x-cron-secret` with the same value as the `CRON_SECRET` environment variable in Vercel (the same value stored as the GitHub secret `CRON_SECRET`). Do not put the secret in the URL if you can avoid it.
+3. Turn on failure notifications for the job (e-mail). A duplicate trigger is harmless: it answers `skipped`.
+4. Create a second cron job: URL `https://auction.bizsocio.com/api/cron/health`, every 15 minutes, same header, and enable notifications on failure. It answers 503 when the scheduler has been late for about 60 minutes, so you get an e-mail even if GitHub is down.
+
