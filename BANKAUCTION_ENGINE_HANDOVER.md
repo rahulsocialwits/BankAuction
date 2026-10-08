@@ -488,3 +488,9 @@ No new source was added and no database schema changed.
 
 **Notes:** BAANKNET's first full pass is RECOVERING and the second is the first HEALTHY one, so the earliest flag needs three complete passes (about 18 hours apart at the 6-hour refresh). A listing another source still shows is only flagged for the source that stopped showing it. A future removal action must use `allowsDisappearanceAction` and the flag; it is not built.
 
+## Scheduler scalability (Phase 3, PR 5; added 2026-10-08)
+
+Architecture unchanged (GitHub Actions tick, visitor fallback, claim lock, 262 s hard deadline). Added: fair weighted time slices per source (`tickPlan.ts`: starved sources first, importing sources favoured but not exclusive, 25 s minimum slice, deferred sources go first next tick, per-source loop ordered oldest-run first); a tick lease taken by every trigger and released at the end of the tick (`tickLease.ts`, `acquireTickLease`; a second trigger is a harmless `skipped`); `/api/cron/health` (503 when no successful tick for 60 minutes) plus a 15-minute watchdog workflow that fails (and so e-mails) when late; Engine page now uses successful ticks and 60 minutes. Full detail and the owner steps for a second pinger: `docs/SCHEDULER.md`, last section.
+
+**Not done:** the external pinger itself (needs the owner's account and the secret; steps are written). The old per-source AI lock is unchanged. Slices assume a source uses its whole slice; sources that finish early simply leave time unused this tick.
+

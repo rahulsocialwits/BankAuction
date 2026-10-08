@@ -1,0 +1,37 @@
+name: Scheduler watchdog
+
+# Alerts when the data-engine scheduler has not completed a successful tick for about 60 minutes.
+# /api/cron/health answers 200 when a tick succeeded within the last 60 minutes and 503 when not; this job FAILS on anything but 200,
+# and GitHub e-mails the failure to the people watching the repository's Actions.
+# (A second, independent check can be set up outside GitHub: see docs/SCHEDULER.md, "Second trigger and alert".)
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: scheduler-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check scheduler health
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET repository secret is missing"; exit 1
+          fi
+          code=$(curl -sS -o response.txt -w "%{http_code}" --max-time 30 \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "https://auction.bizsocio.com/api/cron/health")
+          echo "HTTP $code"
+          head -c 1000 response.txt
+          echo
+          if [ "$code" != "200" ]; then
+            echo "ALERT: no successful scheduler tick for about 60 minutes, or the health check could not run (HTTP $code)."
+            exit 1
+          fi

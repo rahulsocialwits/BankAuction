@@ -13,7 +13,8 @@ export const maxDuration = 300; // a visitor-triggered source tick may run in th
 export async function GET() {
   const user = await getCurrentUser();
   after(async () => {
-    if (await claimTick()) await runTick({ limit: 40, trigger: "visitor", via: "visitor traffic" }).catch(() => undefined);
+    const claimId = await claimTick();
+    if (claimId) await runTick({ limit: 40, trigger: "visitor", via: "visitor traffic", claimId }).catch(() => undefined);
   });
   return NextResponse.json(
     { user: user ? { name: user.name, email: user.email } : null },
