@@ -3,6 +3,11 @@
 > No written consent is recorded anywhere in this repository. The importer described below honours robots.txt and stops on
 > 401 / 403 / CAPTCHA, but it must not be expanded, and BAANKNET must not be described as legally cleared, until the project owner
 > confirms the authorization and records it (who granted it, when, where the record is kept) in `registry.ts`.
+>
+> **Owner decision (2026-10-08):** the project owner stated that BAANKNET use continues without written permission from BAANKNET / PSB Alliance.
+> This records the owner's choice; it is not authorization from the source, so the status above is unchanged. Conditions that stay in force:
+> no expansion of the importer, no bypassing of robots.txt / 401 / 403 / CAPTCHA, stop immediately on any refusal or request from BAANKNET,
+> and do not describe BAANKNET data as legally cleared in client or marketing material.
 
 # BAANKNET importer
 
