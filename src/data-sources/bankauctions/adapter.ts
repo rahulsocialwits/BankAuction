@@ -221,6 +221,7 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
     message: `${opts.all ? "Import all: " : ""}${summary.pagesChecked} pages checked, ${summary.newProperties} new${opts.all && summary.remaining ? `, ${summary.remaining} left` : ""}` + (summary.errors[0] ? ` — first error: ${summary.errors[0].message}` : ""),
     startedAt: runStartedAt,
     metrics: {
+      inventoryCount: !!opts.all && !summary.remaining && discoveredCount > 0 ? discoveredCount : undefined,
       discoveredCount,
       fetchedCount: summary.pagesChecked,
       parsedCount: Math.max(0, summary.pagesChecked - summary.failures),
