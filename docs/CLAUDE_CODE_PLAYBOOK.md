@@ -55,6 +55,8 @@ Merged into `main`:
 
 - **PR (Phase 3, baseline hardening):** only HEALTHY runs define a source's normal; collapses stay protected; admin "accept new baseline" on the Coverage page; BAANKNET refusals recorded.
 
+- **PR (Phase 3, last-seen tracking):** flag-only disappearance flags for BAANKNET after two consecutive HEALTHY complete passes; nothing is hidden; see the handover, "Last-seen / disappearance tracking".
+
 - **PR (Phase 3, field provenance):** append-only `obs:` observations of reserve price / auction date / address in `PropertyChange` (source, method, document, time); see the handover, "Field-level provenance".
 
 - **PR (Phase 3, dedup hardening):** a title/price/date match is no longer enough to merge or hide listings; `propertyIdentity.ts` requires an id, an address match or a distinctive title; merges are logged in `PropertyChange` (`dedup_merge`). See the handover, "Deduplication hardening".
@@ -156,7 +158,7 @@ Do these in order; each source gets its own branch and PR.
 3. ~~BAANKNET run refused at the start logs no metrics~~ DONE (Phase 3 PR 2).
 4. **Generic feeds are always evaluation-eligible** (likely noisy verdicts): review per-feed eligibility. (Zero-yield detection from Phase 3C now covers the "ok but found nothing" case; this item is about the completeness verdict itself.)
 5. ~~`autoCleanExactDuplicates` 0.4 rule~~ replaced by the evidence-based decision in `propertyIdentity.ts` (Phase 3 PR 1).
-6. **Disappearance sweeper** ("listing no longer on the source"): does not exist. If ever built it must use `allowsDisappearanceAction` and require two consecutive HEALTHY full passes.
+6. **Disappearance ACTION** (hide/remove): not built. Flags exist (Phase 3 PR 4, flag-only). Any action must be a separate, owner-approved PR using `allowsDisappearanceAction` and the flag.
 7. **ESLint:** fix the 2 known pre-existing findings in a tiny separate PR.
 8. **Sitemap cap:** WordPress sitemaps hold at most 2,000 URLs per file. If a run message shows the cap warning, check for `wp-sitemap-auctions-2.xml` and read it too.
 9. **Per-source first-seen provenance for feed sources** (`SourceRecord` is written only by the BankAuctions.in crawler): needed if "found by" attribution on the Coverage page proves too coarse. Needs an owner-approved schema change.

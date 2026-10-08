@@ -253,6 +253,7 @@ export async function runBaanknetImport(feed: FeedSource, trigger: "schedule" | 
       pagesFetched: st.pagesDone,
       paginationTotalPages: Object.values(st.totalPages).reduce((a, b) => a + (b ?? 0), 0),
       paginationComplete: st.done,
+      passStartedAt: st.startedAt, // BAANKNET reads its whole inventory in one tracked pass: lets last-seen tracking judge it once the pass is HEALTHY
       coverageComplete: st.done,
       evaluationEligible: stoppedBy !== "budget",
       failedCount: stoppedBy === "error" ? 1 : 0,
