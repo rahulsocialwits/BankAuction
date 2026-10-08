@@ -144,7 +144,26 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
         const geo = await enrichLocations(60).catch(() => null);
         tokens += geo?.tokens ?? 0;
       }
-      if (!unchanged) await logRun({ source: feed.name, kind: "feed", trigger, status: "ok", created: stats.created, duplicates: stats.skipped, rejected: stats.failed, aiTokens: tokens, message, startedAt });
+      if (!unchanged) await logRun({
+        source: feed.name,
+        kind: "feed",
+        trigger,
+        status: "ok",
+        created: stats.created,
+        duplicates: stats.skipped,
+        rejected: stats.failed,
+        aiTokens: tokens,
+        message,
+        startedAt,
+        metrics: {
+          inventoryCount: stats.created + stats.skipped + stats.failed,
+          publishedCount: stats.created,
+          duplicateCount: stats.skipped,
+          rejectedCount: stats.failed,
+          failedCount: stats.failed,
+          evaluationEligible: true,
+        },
+      });
       return { name: feed.name, message };
     }
 
@@ -242,7 +261,26 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
     }
     // Hourly "nothing changed" checks of CSV/Sheet links are not worth a history row each; they would bury the real runs.
     // AI page scans run at most 4 times a day, so even an unchanged one is recorded (status skipped, AI not called).
-    if (!unchanged) await logRun({ source: feed.name, kind: "feed", trigger, status: "ok", created: stats.created, duplicates: stats.skipped, rejected: stats.failed, aiTokens: tokens, message, startedAt });
+    if (!unchanged) await logRun({
+        source: feed.name,
+        kind: "feed",
+        trigger,
+        status: "ok",
+        created: stats.created,
+        duplicates: stats.skipped,
+        rejected: stats.failed,
+        aiTokens: tokens,
+        message,
+        startedAt,
+        metrics: {
+          inventoryCount: stats.created + stats.skipped + stats.failed,
+          publishedCount: stats.created,
+          duplicateCount: stats.skipped,
+          rejectedCount: stats.failed,
+          failedCount: stats.failed,
+          evaluationEligible: true,
+        },
+      });
     else if (aiFeed) await logRun({ source: feed.name, kind: "feed", trigger, status: "skipped", aiTokens: 0, message: `${message} · ai_called=false`, startedAt });
     return { name: feed.name, message };
   } catch (e) {

@@ -1,3 +1,9 @@
+> **COMPLIANCE FLAG — BAANKNET ACCESS AUTHORIZATION: UNKNOWN / REQUIRES BUSINESS CONFIRMATION.**
+> baanknet.com's Terms restrict copying content without written consent from PSB Alliance (`src/data-sources/registry.ts`).
+> No written consent is recorded anywhere in this repository. The importer described below honours robots.txt and stops on
+> 401 / 403 / CAPTCHA, but it must not be expanded, and BAANKNET must not be described as legally cleared, until the project owner
+> confirms the authorization and records it (who granted it, when, where the record is kept) in `registry.ts`.
+
 # BAANKNET importer
 
 BAANKNET (`https://baanknet.com`) is the public e-auction portal of the Indian public-sector banks (PSB Alliance). It is the largest source in this project:

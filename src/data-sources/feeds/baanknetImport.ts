@@ -9,6 +9,14 @@ import { UA } from "./webScan";
 import { webStateOf, withWebState } from "./siteScan";
 
 /*
+ * COMPLIANCE FLAG: BAANKNET ACCESS AUTHORIZATION: UNKNOWN / REQUIRES BUSINESS CONFIRMATION.
+ * baanknet.com's Terms restrict copying content without written consent from PSB Alliance (see src/data-sources/registry.ts).
+ * No such consent is recorded in this repository. This importer does not bypass any access control (it honours robots.txt and
+ * stops on 401 / 403 / CAPTCHA), but its use must not be expanded, and the source must not be described as legally cleared,
+ * until the project owner confirms authorization and records it in registry.ts.
+ */
+
+/*
  * BAANKNET importer: ALL public auction properties, resumable, no AI, no browser.
  *
  * baanknet.com draws its auction list from its own public listing data: the page asks
@@ -221,6 +229,35 @@ export async function runBaanknetImport(feed: FeedSource, trigger: "schedule" | 
     message = `BAANKNET import in progress: ${progressLine(st)}. Continues automatically on the next scheduler tick.${rej}`;
     await save(feed.id, st, message, { status: "ok", importAll: true });
   }
-  await logRun({ source: feed.name, kind: "feed", trigger, status: stoppedBy === "error" ? "error" : "ok", created: st.created, duplicates: st.skipped, rejected: st.rejected, message, startedAt });
+  await logRun({
+    source: feed.name,
+    kind: "feed",
+    trigger,
+    status: stoppedBy === "error" ? "error" : "ok",
+    created: st.created,
+    duplicates: st.skipped,
+    rejected: st.rejected,
+    message,
+    startedAt,
+    metrics: {
+      inventoryCount: st.records,
+      discoveredCount: Object.values(st.totalRecords).reduce((a, b) => a + (b ?? 0), 0),
+      fetchedCount: st.records,
+      parsedCount: st.records,
+      publishedCount: st.created + st.updated,
+      updatedCount: st.updated,
+      duplicateCount: st.skipped,
+      rejectedCount: st.rejected,
+      pagesDiscovered: Object.values(st.totalPages).reduce((a, b) => a + (b ?? 0), 0),
+      pagesFetched: st.pagesDone,
+      paginationTotalPages: Object.values(st.totalPages).reduce((a, b) => a + (b ?? 0), 0),
+      paginationComplete: st.done,
+      coverageComplete: st.done,
+      evaluationEligible: stoppedBy !== "budget",
+      failedCount: stoppedBy === "error" ? 1 : 0,
+      error: st.lastError,
+      blocked: refused,
+    },
+  });
   return message;
 }

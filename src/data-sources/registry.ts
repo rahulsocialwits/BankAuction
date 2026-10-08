@@ -8,12 +8,22 @@
 
 export type SourceAccessStatus = "ALLOWED" | "RESTRICTED" | "UNAVAILABLE";
 
+/**
+ * Whether the project has a recorded right to collect from this source (separate from robots.txt / technical access).
+ * CONFIRMED needs authorizationEvidence (who granted it, when, where the record is kept). Never set CONFIRMED without it.
+ */
+export type SourceAuthorization = "CONFIRMED" | "UNKNOWN_REQUIRES_BUSINESS_CONFIRMATION";
+
 export interface SourceDefinition {
   key: string;
   name: string;
   baseUrl: string;
   accessStatus: SourceAccessStatus;
   accessNotes: string;
+  /** Omitted for sources where only robots.txt / public-page access applies. */
+  authorization?: SourceAuthorization;
+  /** Required when authorization is CONFIRMED. */
+  authorizationEvidence?: string;
 }
 
 export const SOURCE_REGISTRY: SourceDefinition[] = [
@@ -71,7 +81,11 @@ export const SOURCE_REGISTRY: SourceDefinition[] = [
     baseUrl: "https://baanknet.com",
     accessStatus: "RESTRICTED",
     accessNotes:
-      "robots.txt allows crawling, but the site's Terms prohibit copying content without written consent from PSB Alliance. Not built, and blocked in link sources, unless written permission is obtained.",
+      "COMPLIANCE FLAG. robots.txt allows crawling, but the site's Terms prohibit copying content without written consent from PSB Alliance. " +
+      "A dedicated importer exists (src/data-sources/feeds/baanknetImport.ts) and calls BAANKNET's own public listing API; this note previously said 'not built', which is no longer true. " +
+      "No written consent from PSB Alliance is recorded anywhere in this repository. " +
+      "BAANKNET ACCESS AUTHORIZATION: UNKNOWN / REQUIRES BUSINESS CONFIRMATION. Do not represent this source as legally cleared and do not expand its use until the owner confirms and records the authorization here.",
+    authorization: "UNKNOWN_REQUIRES_BUSINESS_CONFIRMATION",
   },
   {
     key: "bankauction_co",

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { slugify } from "@/lib/normalization/parsers";
 import { deriveAuctionStatusFromDates } from "@/lib/domain/deriveAuctionStatus";
 import { canonicalBankKey, canonicalBankName, normalizeListing } from "./normalize";
+import { removeListingFromSource } from "@/lib/pipeline/sourceRemoval";
 
 /** Vehicles (cars, bikes, trucks, tractors …) are out of scope for this site. */
 export function isVehicleListing(title: string, category?: string | null): boolean {
@@ -497,9 +498,15 @@ export async function importRecords(
           if (out.attempted) {
             if (NOTICE_TITLE.test(title)) {
               // A notice that was imported as one empty "property": its real lots become properties, the notice itself is removed.
-              await prisma.property.update({ where: { id: hit.propertyId }, data: { status: "REMOVED" } });
-              await prisma.propertyChange.create({ data: { propertyId: hit.propertyId, field: "deep_scan", oldValue: "PUBLISHED", newValue: `Removed: this was a notice${out.records.length ? ` listing ${out.records.length} separate properties (added on their own)` : " with no property details"}` } }).catch(() => undefined);
-              queue.splice(qi + 1, 0, ...out.records.slice(0, 25));
+              // Source-driven removal goes through the data-protection gate: while this source's latest run is flagged
+              // anomalous, the notice stays published and nothing is split (it is read again after the source recovers).
+              const removal = await removeListingFromSource(statusSource, {
+                propertyId: hit.propertyId,
+                field: "deep_scan",
+                oldValue: "PUBLISHED",
+                reason: `Removed: this was a notice${out.records.length ? ` listing ${out.records.length} separate properties (added on their own)` : " with no property details"}`,
+              });
+              if (removal.applied) queue.splice(qi + 1, 0, ...out.records.slice(0, 25));
               skipped++;
               continue;
             }

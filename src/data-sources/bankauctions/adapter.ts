@@ -117,6 +117,7 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
   const runStartedAt = new Date();
   const source = await ensureSourceRow();
   const sourceDef = getSourceDefinition(SOURCE_KEY)!;
+  let discoveredCount = 0;
 
   // Paused from Admin → Data Engine: skip every run until it is resumed.
   if (source.status === "DISABLED") {
@@ -161,7 +162,9 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
     const sitemapRes = await politeFetch(sourceDef, SITEMAP_PATH);
     if (!sitemapRes.ok) throw new Error(`Sitemap fetch failed: HTTP ${sitemapRes.status}`);
     const sitemapXml = await sitemapRes.text();
-    const picked = await pickUrls(source.id, discoverListingUrls(sitemapXml), limit, !!opts.all);
+    const allListingUrls = discoverListingUrls(sitemapXml);
+    discoveredCount = allListingUrls.length;
+    const picked = await pickUrls(source.id, allListingUrls, limit, !!opts.all);
     const listingUrls = picked.urls;
     summary.remaining = picked.fresh;
 
@@ -217,6 +220,27 @@ export async function runBankAuctionsIngestion(opts: { limit?: number; triggered
     rejected: summary.failures,
     message: `${opts.all ? "Import all: " : ""}${summary.pagesChecked} pages checked, ${summary.newProperties} new${opts.all && summary.remaining ? `, ${summary.remaining} left` : ""}` + (summary.errors[0] ? ` — first error: ${summary.errors[0].message}` : ""),
     startedAt: runStartedAt,
+    metrics: {
+      inventoryCount: !!opts.all && !summary.remaining && discoveredCount > 0 ? discoveredCount : undefined,
+      discoveredCount,
+      fetchedCount: summary.pagesChecked,
+      parsedCount: Math.max(0, summary.pagesChecked - summary.failures),
+      publishedCount: summary.newProperties + summary.updatedProperties,
+      updatedCount: summary.updatedProperties,
+      duplicateCount: summary.duplicatesFound,
+      rejectedCount: summary.failures,
+      failedCount: summary.failures,
+      pagesDiscovered: discoveredCount,
+      pagesFetched: summary.pagesChecked,
+      pagesFailed: summary.failures,
+      // Pages read in ONE run depend on the tick's time budget (the last tick of an Import-all pass reads only what is left), not on the
+      // source's structure, so they are never compared with page history. The record check (sitemap size) still applies.
+      pageCountComparable: false,
+      paginationComplete: !!opts.all && !summary.remaining && discoveredCount > 0,
+      coverageComplete: !!opts.all && !summary.remaining && discoveredCount > 0,
+      evaluationEligible: !!opts.all && !summary.remaining && discoveredCount > 0,
+      error: summary.errors[0]?.message,
+    },
   });
   return summary;
 }
