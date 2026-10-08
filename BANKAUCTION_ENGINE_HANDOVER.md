@@ -474,3 +474,17 @@ No new source was added and no database schema changed.
 
 **Cost:** one extra read of a property's `obs:` rows per record, and a few small rows per new or changed value. Rollback: revert the PR; existing `obs:` rows are harmless history.
 
+## Last-seen / disappearance tracking (Phase 3, PR 4; added 2026-10-08)
+
+**FLAG-ONLY.** Flow: SOURCE HEALTHY -> LISTING NOT SEEN -> DISAPPEARANCE FLAG -> ADMIN REVIEW -> (future) controlled action. Never: SOURCE ERROR -> NOT SEEN -> REMOVE. Nothing here changes a Property or an Auction (a test enforces it).
+
+**How it works** (`lastSeen.ts` pure + `lastSeenStore.ts` Prisma; no schema change, stored as `PropertyChange` rows):
+- **Sightings:** every time `importRecords()` reads a listing (new, re-read, or re-auction) it is recorded once per call in a pointer row `seen:<source>` (detectedAt = last seen). Batched, never throws.
+- **Sweep:** `logRun` runs one sweep right after it stores a HEALTHY verdict, and only if `disappearanceGate` allows it: verdict HEALTHY, `evaluationEligible`, `paginationComplete`, not blocked/failed/structure-changed, a valid `metrics.passStartedAt`, and `allowsDisappearanceAction` on the protection re-read from the stored history (fails closed).
+- **Counting:** listings of that source that are published, still open, and were not seen since the pass started get `missing:<source>` n+1 (consecutive; a sighting resets it; the same pass is never counted twice). At `DEFAULT_MISSING_PASSES` (2) they are flagged and a `disappearance_flag` note is written to the property history. Seen again (in any run) -> flag cleared with a `disappearance_cleared` note.
+- **Mass guard:** if more than 20% of the tracked listings are missing in one pass (from 20 tracked upward), nothing is flagged: that looks like a bad read, not real removals.
+- **Who takes part:** only a source that sets `metrics.passStartedAt`. Today that is BAANKNET only (its saved pass start). Generic feeds and BankAuctions.in do not, so they never produce flags (BankAuctions.in skips unchanged pages, so "seen" is not reliable for it yet).
+- **Visibility:** Admin -> Engine -> Coverage -> "Listings no longer on their source (flag only)"; History shows a `<source> · disappearance check` row (status "skipped") after each judged pass.
+
+**Notes:** BAANKNET's first full pass is RECOVERING and the second is the first HEALTHY one, so the earliest flag needs three complete passes (about 18 hours apart at the 6-hour refresh). A listing another source still shows is only flagged for the source that stopped showing it. A future removal action must use `allowsDisappearanceAction` and the flag; it is not built.
+

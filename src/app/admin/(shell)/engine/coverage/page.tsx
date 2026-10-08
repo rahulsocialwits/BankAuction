@@ -133,6 +133,12 @@ export default async function CoveragePage() {
     }
   }
 
+  // Listings a healthy full pass of their source no longer showed, twice in a row. FLAG ONLY: nothing is hidden because of this.
+  const flaggedRaw = (await prisma.propertyChange
+    .findMany({ where: { field: { startsWith: "missing:" }, newValue: { contains: '"flagged":true' } }, orderBy: { detectedAt: "desc" }, take: 50, select: { field: true, property: { select: { id: true, title: true, slug: true, status: true } } } })
+    .catch(() => [])) as unknown as { field: string; property: { id: string; title: string; slug: string; status: string } | null }[];
+  const flaggedListings = flaggedRaw.filter((r) => r.property);
+
   const funnel: [string, number, string][] = [
     ["Total auction rounds", overall.total, "Every auction row in the database."],
     ["Duplicate", overall.duplicate, "Marked as a duplicate of another listing."],
@@ -188,6 +194,28 @@ export default async function CoveragePage() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      <h2 className="text-lg font-semibold text-brand mb-1">Listings no longer on their source (flag only)</h2>
+      <p className="text-xs text-brand-muted mb-3">
+        Only a complete, healthy pass of a source counts, and a listing must be missing from two of them in a row. Nothing is hidden or removed because of this; it is a list to look at. A listing that reappears drops off by itself. Today only BAANKNET reports this.
+      </p>
+      {flaggedListings.length === 0 ? (
+        <div className="bg-green-50 text-green-700 text-sm rounded-xl px-4 py-3 mb-6">No listing is currently flagged.</div>
+      ) : (
+        <div className="bg-white border border-brand-border rounded-xl overflow-x-auto mb-6">
+          <table className="w-full text-xs">
+            <thead className="bg-brand-bg text-brand-muted"><tr><th className="px-3 py-2 text-left">Listing</th><th className="px-3 py-2 text-left">No longer shown by</th></tr></thead>
+            <tbody>
+              {flaggedListings.map((r) => (
+                <tr key={r.property!.id + r.field} className="border-t border-brand-border">
+                  <td className="px-3 py-2"><a className="text-brand hover:underline" href={`/property/${r.property!.slug}`}>{r.property!.title}</a></td>
+                  <td className="px-3 py-2">{r.field.slice("missing:".length)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

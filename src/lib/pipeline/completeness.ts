@@ -49,6 +49,11 @@ export interface SourceRunMetrics {
   error?: string;
   /** Set only by the admin "accept new baseline" action: this run is the new reference size; older runs no longer count. */
   baselineAccepted?: boolean;
+  /**
+   * Only a collector that reads its WHOLE inventory in one tracked pass sets this (ISO time the pass started). It is what lets
+   * last-seen tracking judge "not seen in this pass" (see lastSeen.ts). Without it a source never produces disappearance flags.
+   */
+  passStartedAt?: string;
   /** The verdict the accepted run had before an administrator accepted it (audit trail). */
   acceptedFromStatus?: DataHealthStatus;
 }

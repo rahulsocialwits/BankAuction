@@ -6,7 +6,9 @@ import { auctionDateChanged, detectExplicitStatus, resolveAuctionStatus } from "
 import { recordAuctionStatusChange } from "@/lib/pipeline/auctionEvents";
 import { decideSameProperty, formatMergeNote, titleOverlap, titleTokens, titlesSimilar, type MatchDecision } from "@/lib/pipeline/propertyIdentity";
 import { observeListing } from "@/lib/pipeline/fieldObservations";
-import type { ExtractionMethod } from "@/lib/pipeline/fieldProvenance";
+import { markSeen } from "@/lib/pipeline/lastSeen";
+import { prismaLastSeenStore } from "@/lib/pipeline/lastSeenStore";
+import { sourceLabelOf, type ExtractionMethod } from "@/lib/pipeline/fieldProvenance";
 import { recordMerge } from "@/lib/pipeline/mergeLog";
 import { canonicalBankKey, canonicalBankName, normalizeListing } from "./normalize";
 import { removeListingFromSource } from "@/lib/pipeline/sourceRemoval";
@@ -392,6 +394,8 @@ export async function importRecords(
   let reauctions = 0;
   let held = 0; // stored but not shown: the source does not state a borrower name (status DRAFT, needs_enrichment)
   const rejections: { title: string; reasons: string[] }[] = [];
+  /** Listings this source showed in this call (last-seen tracking; flushed once at the end). */
+  const seenIds = new Set<string>();
   /** A listing that is not imported always says exactly why. */
   const reject = (title: string, ...reasons: string[]) => {
     failed++;
@@ -483,6 +487,7 @@ export async function importRecords(
           return d.match;
         });
       if (hit) {
+        seenIds.add(hit.propertyId);
         // A match made by evidence other than the source's own id is written to the property's history (rule, source, time).
         if (hit !== sameId && matched.d?.match && matched.d.rule !== "same_source_id") await recordMerge(hit.propertyId, "listing matched", formatMergeNote(matched.d.rule!, statusSource, `\"${title.slice(0, 120)}\" matched this property: ${matched.d.reason}`));
         // Same property listed again for a later date (it did not sell): add a new auction round instead of skipping or overwriting the old one.
@@ -616,6 +621,7 @@ export async function importRecords(
         await prisma.propertyAttribute.create({ data: { propertyId: property.id, key: "borrower_status", value: "not_available_from_source" } });
       }
       orphan = null;
+      seenIds.add(property.id);
       await observeListing({ propertyId: property.id, auctionId: auction.id }, { reserve: reservePrice, start: validStart, address: col("location") }, { statusSource, method: opts.method, document: col("source_url") || sourceUrl });
       list.push({ tokens: titleTokens, reserve: reservePrice > 0 ? reservePrice : null, start: validStart, auctionId: auction.id, propertyId: property.id, ext: col("external_id") || null });
       created++;
@@ -630,5 +636,6 @@ export async function importRecords(
       }
     }
   }
+  await markSeen(prismaLastSeenStore, sourceLabelOf(statusSource), seenIds); // never throws
   return { created, skipped, failed, updated, stale, reauctions, held, rejections };
 }

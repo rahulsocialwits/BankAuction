@@ -10,6 +10,8 @@ import {
   type HistoricalRun,
   type SourceRunMetrics,
 } from "./completeness";
+import { runDisappearanceSweep } from "./lastSeen";
+import { prismaLastSeenStore } from "./lastSeenStore";
 import { protectionFromRuns, unreadableProtection, type SourceProtection } from "./sourceProtection";
 import { formatYieldMarker, type YieldMarker } from "./zeroYield";
 
@@ -129,6 +131,7 @@ export async function logRun(input: RunLogInput) {
   const startedAt = input.startedAt ?? new Date();
   try {
     let message = input.message?.slice(0, 2000);
+    let verdict: DataHealthStatus | null = null;
     // The marker goes FIRST so truncation never cuts it; the admin strips it before showing the text.
     if (input.yield) message = `${formatYieldMarker(input.yield)}\n${(input.message ?? "").slice(0, 1600)}`;
     if (input.metrics) {
@@ -137,6 +140,7 @@ export async function logRun(input: RunLogInput) {
       const baseline = buildSourceBaseline(historical, startedAt);
       const result = evaluateCompleteness(input.metrics, baseline);
       message = formatMetricsMessage(input.metrics, result, input.yield ? message : input.message);
+      verdict = result.status;
     }
 
     await prisma.sourceRunLog.create({
@@ -155,6 +159,16 @@ export async function logRun(input: RunLogInput) {
         durationMs: Date.now() - startedAt.getTime(),
       },
     });
+    // A COMPLETE, HEALTHY pass of a source that tracks its passes: look for listings it no longer shows (FLAG ONLY, see lastSeen.ts).
+    // The protection is re-read from the stored history (which now holds this verdict) and the gate fails closed.
+    if (verdict && input.metrics) {
+      const protection = await getSourceProtection(input.source);
+      const sweep = await runDisappearanceSweep(prismaLastSeenStore, input.source, { metrics: input.metrics, dataStatus: verdict, protection });
+      if (sweep.evaluated) {
+        const text = `${sweep.flagged} newly flagged, ${sweep.cleared} cleared, ${sweep.missing} not seen of ${sweep.candidates} tracked.${sweep.skippedReason ? ` ${sweep.skippedReason}.` : ""} Flag only: nothing was hidden or removed.`;
+        await prisma.sourceRunLog.create({ data: { source: `${input.source} · disappearance check`, kind: input.kind, trigger: input.trigger, status: "skipped", created: 0, updated: 0, duplicates: 0, rejected: 0, aiTokens: 0, message: text, startedAt, durationMs: 0 } });
+      }
+    }
     // Keep the table small: drop entries older than 60 days occasionally.
     if (Math.random() < 0.02) {
       await prisma.sourceRunLog.deleteMany({ where: { startedAt: { lt: new Date(Date.now() - 60 * 864e5) } } });
