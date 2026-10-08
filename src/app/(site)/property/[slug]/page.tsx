@@ -11,6 +11,7 @@ import { clip, dayLabel, inr } from "@/lib/seo";
 import { titleCase } from "@/lib/pipeline/locations";
 import PropertyCarousel from "@/components/PropertyCarousel";
 import { toPropertyCardData } from "@/lib/queries/listProperties";
+import { effectiveAuctionStatus } from "@/lib/domain/auctionLifecycle";
 
 export const revalidate = 120;
 
@@ -108,6 +109,8 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
   const similar = [...sameCity, ...topUp];
 
   const auction = property.auctions[0];
+  // stored status, except that an open auction whose date is over is shown as completed (nothing is written)
+  const shownStatus = auction ? effectiveAuctionStatus(auction) : null;
   // Earlier auction rounds of this very property (it did not sell, the bank listed it again). Public facts only: no borrower, no officer.
   const earlier = auction
     ? await prisma.auction.findMany({ where: { propertyId: property.id, id: { not: auction.id } }, orderBy: { auctionStart: "desc" }, select: { id: true, auctionStart: true, auctionEnd: true, reservePrice: true, emd: true, status: true, externalAuctionId: true } })
@@ -136,8 +139,8 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
           <div className="relative h-52 sm:h-72 rounded-2xl overflow-hidden mb-6 bg-[#E8EDF5]">
             <Image src={PLACEHOLDER_IMAGE_URL} alt={property.title} fill unoptimized priority className="object-contain" />
           </div>
-          <span className={`inline-block text-xs font-semibold px-3 py-1 rounded-full mb-3 ${STATUS_STYLES[auction?.status ?? ""] ?? "bg-gray-100 text-gray-600"}`}>
-            {auction?.status ? auction.status.charAt(0) + auction.status.slice(1).toLowerCase().replace("_", " ") : "Status unknown"}
+          <span className={`inline-block text-xs font-semibold px-3 py-1 rounded-full mb-3 ${STATUS_STYLES[shownStatus ?? ""] ?? "bg-gray-100 text-gray-600"}`}>
+            {shownStatus ? shownStatus.charAt(0) + shownStatus.slice(1).toLowerCase().replace("_", " ") : "Status unknown"}
           </span>
           {earlier.length > 0 && <span className="ml-2 inline-block text-xs font-semibold px-3 py-1 rounded-full mb-3 bg-amber-50 text-amber-800">Re-auction · attempt {earlier.length + 1}</span>}
           <h1 className="text-2xl font-semibold mb-1">{property.title}</h1>
@@ -215,7 +218,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
                         <td className="py-2 pr-3 whitespace-nowrap">{r.auctionStart ? formatDate(r.auctionStart) : "—"}</td>
                         <td className="py-2 pr-3 whitespace-nowrap">{r.reservePrice != null ? formatMoney(r.reservePrice) : "—"}</td>
                         <td className="py-2 pr-3 whitespace-nowrap">{r.emd != null ? formatMoney(r.emd) : "—"}</td>
-                        <td className="py-2 text-brand-muted">{r.status === "COMPLETED" || r.status === "EXPIRED" ? "Not sold — listed again" : r.status.charAt(0) + r.status.slice(1).toLowerCase().replace("_", " ")}</td>
+                        <td className="py-2 text-brand-muted">{(() => { const rs = effectiveAuctionStatus(r); return rs === "COMPLETED" || rs === "EXPIRED" ? "Not sold — listed again" : rs.charAt(0) + rs.slice(1).toLowerCase().replace("_", " "); })()}</td>
                       </tr>
                     ))}
                     <tr className="border-t border-brand-border bg-brand-bg/60 font-medium">
@@ -223,7 +226,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
                       <td className="py-2 pr-3 whitespace-nowrap">{auction?.auctionStart ? formatDate(auction.auctionStart) : "—"}</td>
                       <td className="py-2 pr-3 whitespace-nowrap">{auction?.reservePrice != null ? formatMoney(auction.reservePrice) : "—"}</td>
                       <td className="py-2 pr-3 whitespace-nowrap">{auction?.emd != null ? formatMoney(auction.emd) : "—"}</td>
-                      <td className="py-2">{auction?.status ? auction.status.charAt(0) + auction.status.slice(1).toLowerCase().replace("_", " ") : "—"}</td>
+                      <td className="py-2">{shownStatus ? shownStatus.charAt(0) + shownStatus.slice(1).toLowerCase().replace("_", " ") : "—"}</td>
                     </tr>
                   </tbody>
                 </table>

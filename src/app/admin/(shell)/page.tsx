@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { isMasterAdmin } from "@/lib/auth/adminAuth";
+import { auctionStatusWhere } from "@/lib/domain/auctionLifecycle";
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
@@ -12,9 +13,9 @@ export default async function AdminDashboardPage() {
     prisma.property.count({ where: { status: { notIn: ["DUPLICATE", "REMOVED"] } } }),
     prisma.property.count({ where: { status: "PUBLISHED" } }),
     prisma.property.count({ where: { status: "PENDING_REVIEW" } }),
-    prisma.auction.count({ where: { status: "UPCOMING", property: { status: "PUBLISHED" } } }),
-    prisma.auction.count({ where: { status: { in: ["LIVE", "AUCTION_TODAY"] }, property: { status: "PUBLISHED" } } }),
-    prisma.auction.count({ where: { status: "COMPLETED", property: { status: "PUBLISHED" } } }),
+    prisma.auction.count({ where: { AND: [auctionStatusWhere(["UPCOMING"])], property: { status: "PUBLISHED" } } }),
+    prisma.auction.count({ where: { AND: [auctionStatusWhere(["LIVE", "AUCTION_TODAY"])], property: { status: "PUBLISHED" } } }),
+    prisma.auction.count({ where: { AND: [auctionStatusWhere(["COMPLETED"])], property: { status: "PUBLISHED" } } }),
     prisma.property.count({ where: { createdAt: { gte: startOfToday }, status: { notIn: ["DUPLICATE", "REMOVED"] } } }),
     prisma.property.findMany({
       where: { status: { notIn: ["DUPLICATE", "REMOVED"] } },

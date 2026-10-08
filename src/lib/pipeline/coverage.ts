@@ -11,14 +11,17 @@
  *   removed      its Property is REMOVED (hidden by an admin or a safe clean-up)
  *   unique       total - duplicate - removed
  *   published    unique AND Property is PUBLISHED
- *   current      published AND still open: UPCOMING / LIVE / AUCTION_TODAY with a date that has not passed, or POSTPONED
- *   stale        published AND marked open (UPCOMING / LIVE / AUCTION_TODAY) but its date passed more than STALE_GRACE_MS ago,
- *                i.e. the data has not caught up with the calendar
+ *   current      published AND still open: UPCOMING / LIVE / AUCTION_TODAY with a date that is not over, or POSTPONED
+ *   stale        published AND stored as open (UPCOMING / LIVE / AUCTION_TODAY) but its date is over (see auctionLifecycle.ts).
+ *                The website already shows these as ended; the stored value just has not been refreshed by an import.
  *   actionable   current AND reserve price AND auction date AND an address are all present
  * "Source" of an auction is the source that CREATED it (host of its source-qualified id or source URL). Later enrichments by other
  * sources are not tracked (there is no per-field provenance yet), so "unique contribution" means "first to find it".
  */
 
+import { isAuctionOver } from "@/lib/domain/auctionLifecycle";
+
+/** Kept for callers and tests; "over" now uses the shared rule in auctionLifecycle.ts (after auctionEnd, else after the auction's IST day). */
 export const STALE_GRACE_MS = 24 * 3_600_000;
 
 export interface CoverageAuctionRow {
@@ -63,8 +66,7 @@ export function classifyAuction(row: CoverageAuctionRow, now: Date = new Date())
   const removed = row.propertyStatus === "REMOVED";
   const unique = !duplicate && !removed;
   const published = unique && row.propertyStatus === "PUBLISHED";
-  const end = row.auctionEnd ?? row.auctionStart;
-  const datePassed = !!end && end.getTime() < now.getTime() - STALE_GRACE_MS;
+  const datePassed = isAuctionOver(row.auctionStart, row.auctionEnd, now);
   const open = OPEN.has(row.auctionStatus);
   const current = published && ((open && !datePassed) || row.auctionStatus === "POSTPONED");
   const stale = published && open && datePassed;

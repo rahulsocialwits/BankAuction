@@ -1,5 +1,6 @@
 import { SITE_URL } from "@/lib/seo";
 import type { Prisma } from "@prisma/client";
+import { effectiveAuctionStatus } from "@/lib/domain/auctionLifecycle";
 
 export const apiPropertyInclude = {
   auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 },
@@ -27,7 +28,7 @@ export function toApiProperty(p: ApiProperty, detail = false) {
     bank: a?.bank ? { name: a.bank.name, slug: a.bank.slug } : null,
     auction: a
       ? {
-          status: a.status,
+          status: effectiveAuctionStatus(a),
           reservePrice: num(a.reservePrice),
           emd: num(a.emd),
           minimumBidIncrement: num(a.minimumIncrement),

@@ -10,6 +10,7 @@ import AuctionCountdownTable, { CountdownRow } from "@/components/AuctionCountdo
 import { getCityCounts, citySlug } from "@/lib/queries/cities";
 import { getHomeConfig } from "@/lib/queries/homeConfig";
 import { canonCity } from "@/lib/pipeline/locations";
+import { activeAuctionWhere } from "@/lib/domain/auctionLifecycle";
 import { bankKey, cityKey, getImageVersions, heroKey, imageUrl, typeKey } from "@/lib/siteImages";
 
 export const revalidate = 120;
@@ -28,9 +29,9 @@ export default async function Home() {
   const [activeListings, banksCovered, upcomingAuctions, featured, cityCounts, topBanks, countdownAuctions, config, versions, typeGroups] = await Promise.all([
     prisma.property.count({ where: { status: "PUBLISHED" } }),
     prisma.bank.count({ where: { auctions: { some: { property: { status: "PUBLISHED" } } } } }),
-    prisma.auction.count({ where: { status: { in: ["UPCOMING", "LIVE", "AUCTION_TODAY"] }, property: { status: "PUBLISHED" } } }),
+    prisma.auction.count({ where: { AND: [activeAuctionWhere()], property: { status: "PUBLISHED" } } }),
     prisma.property.findMany({
-      where: { status: "PUBLISHED", auctions: { some: { status: { in: ["UPCOMING", "LIVE", "AUCTION_TODAY"] } } } },
+      where: { status: "PUBLISHED", auctions: { some: { AND: [activeAuctionWhere()] } } },
       orderBy: { createdAt: "desc" },
       take: 12,
       include: { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 } },
@@ -45,7 +46,7 @@ export default async function Home() {
     Promise.all(
       COUNTDOWN_CATEGORIES.map((category) =>
         prisma.auction.findMany({
-          where: { status: { in: ["UPCOMING", "LIVE", "AUCTION_TODAY"] }, property: { status: "PUBLISHED", category } },
+          where: { AND: [activeAuctionWhere()], property: { status: "PUBLISHED", category } },
           orderBy: { auctionStart: "asc" },
           take: 24,
           include: { bank: true, property: true },
