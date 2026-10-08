@@ -23,7 +23,7 @@ Tick each item with the **outgoing owner present**. Never write passwords, API k
 - [ ] Authenticated scheduler call returns HTTP 200 `{"ok":true,…}` (see [SCHEDULER.md](SCHEDULER.md))
 - [ ] Data Engine: every source card understood (Live / Paused / Blocked / Disabled by configuration); BAANKNET cursor and "Import all completed" state read
 - [ ] `/admin/ai` shows a valid AI key; History shows no repeating errors
-- [ ] Do-not-fetch policy understood: `feeds/blockedHosts.ts` (`auctionbazaar.com`, `bankauction.co`) is the owner's policy; `baanknet.com` was removed on the owner's instruction (commit `6c3a504`)
+- [ ] Do-not-fetch policy understood: `feeds/blockedHosts.ts` (`auctionbazaar.com`, `bankauction.co`, `findauction.in`) is the owner's policy; `baanknet.com` was removed on the owner's instruction (commit `6c3a504`)
 
 ## Operations
 - [ ] Backup procedure agreed and tested (restore drill); retention known

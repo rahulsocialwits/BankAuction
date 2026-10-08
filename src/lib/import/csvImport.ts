@@ -6,6 +6,7 @@ import { auctionDateChanged, detectExplicitStatus, resolveAuctionStatus } from "
 import { recordAuctionStatusChange } from "@/lib/pipeline/auctionEvents";
 import { canonicalBankKey, canonicalBankName, normalizeListing } from "./normalize";
 import { removeListingFromSource } from "@/lib/pipeline/sourceRemoval";
+import { isBlockedRecord } from "@/data-sources/feeds/blockedHosts";
 
 /** Vehicles (cars, bikes, trucks, tractors …) are out of scope for this site. */
 export function isVehicleListing(title: string, category?: string | null): boolean {
@@ -461,6 +462,8 @@ export async function importRecords(
     let orphan: string | null = null; // a property whose auction could not be saved must not stay behind as an empty listing
     try {
       const title = col("title");
+      // The project's do-not-fetch list applies to EVERY route into the database (link source, sheet, CSV, bulk import): such a listing is never stored.
+      if (isBlockedRecord(rec, sourceUrl)) { reject(title, "source_on_do_not_fetch_list"); continue; }
       // Quality gate: a listing needs a title plus a bank or a location, otherwise it is noise.
       if (!title || title.length < 8 || (!col("bank") && !col("location"))) {
         reject(title, ...[!title || title.length < 8 ? "title_missing" : "", !col("bank") && !col("location") ? "address_missing" : ""].filter(Boolean));

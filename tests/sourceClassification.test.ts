@@ -108,3 +108,61 @@ test("network error is its own status (not blocked)", async () => {
   assert.equal(isRefusal(out.status), false);
   assert.match(describeStatus(out.status, out.http), /^Network error/);
 });
+
+// ---- FindAuction.in: forbidden as a source of any kind --------------------------------------------------------------------
+
+import { isBlockedRecord, isBlockedUrl } from "../src/data-sources/feeds/blockedHosts";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+test("REGRESSION: findauction.in and its sub-domains are on the do-not-fetch list", () => {
+  assert.ok(BLOCKED_HOSTS.includes("findauction.in"));
+  for (const h of ["findauction.in", "www.findauction.in", "api.findauction.in", "WWW.FINDAUCTION.IN".toLowerCase()]) assert.equal(denylistMatch(h), "findauction.in", h);
+});
+
+test("REGRESSION: a FindAuction link can never be added as a link source (any page, any case, with or without www)", () => {
+  for (const url of ["https://findauction.in/", "https://www.findauction.in/auction/123", "https://FindAuction.in/search?city=pune", "https://sub.findauction.in/x", "  https://findauction.in/  "]) {
+    const r = checkSourceUrl(url);
+    assert.equal(r.ok, false, url);
+    if (!r.ok) {
+      assert.equal(r.status, "internal_policy_block", url);
+      assert.ok(r.reason.startsWith(POLICY_PREFIX), r.reason);
+    }
+  }
+});
+
+test("lookalike hosts are not caught by mistake", () => {
+  for (const h of ["notfindauction.in", "findauction.in.example.com", "findauctions.in", "bankauctions.in"]) assert.equal(denylistMatch(h), null, h);
+  assert.equal(checkSourceUrl("https://findauction.in.example.com/").ok, true);
+});
+
+test("REGRESSION: a record that comes from FindAuction is blocked however it arrives", () => {
+  assert.equal(isBlockedRecord({ source_url: "https://www.findauction.in/auction/9" }), true, "own source address");
+  assert.equal(isBlockedRecord({ external_id: "src:findauction.in:9" }), true, "source-qualified id");
+  assert.equal(isBlockedRecord({ external_id: "src:FindAuction.in:9" }), true, "id in another case");
+  assert.equal(isBlockedRecord({ source_url: "https://example-bank.in/a" }, "https://findauction.in/list"), true, "the import was started from FindAuction");
+  assert.equal(isBlockedRecord({ source_url: "https://auctionbazaar.com/x" }), true, "the older entries keep working");
+});
+
+test("ordinary records are not blocked", () => {
+  assert.equal(isBlockedRecord({ source_url: "https://bankauctions.in/auction/1", external_id: "src:bankauctions.in:1" }), false);
+  assert.equal(isBlockedRecord({ source_url: "https://baanknet.com/x", external_id: "src:baanknet.com:7" }, "https://docs.google.com/spreadsheets/d/abc"), false);
+  assert.equal(isBlockedRecord({}), false);
+  assert.equal(isBlockedRecord({ source_url: 42, external_id: null }, null), false);
+  assert.equal(isBlockedUrl("not a url"), false);
+});
+
+test("the shared write path (importRecords) applies the do-not-fetch list before anything else is stored", () => {
+  const src = readFileSync(join(__dirname, "..", "src/lib/import/csvImport.ts"), "utf8");
+  const gate = src.indexOf("isBlockedRecord(rec, sourceUrl)");
+  assert.ok(gate > 0, "gate present");
+  assert.ok(gate < src.indexOf("Quality gate:"), "gate runs before the quality gate, the bank lookup and every write");
+  assert.ok(gate < src.indexOf("resolveBank(bankName)"), "no bank row is created for a blocked record");
+});
+
+test("the existing record-level and fetch-level checks are still in place", () => {
+  const read = (p: string) => readFileSync(join(__dirname, "..", p), "utf8");
+  assert.match(read("src/lib/import/tabular.ts"), /isBlockedUrl\(u\)/);
+  assert.match(read("src/data-sources/feeds/deepScan.ts"), /isBlockedUrl\(url\)\) return fail\("internal_policy_block"\)/);
+  assert.match(read("src/data-sources/feeds/run.ts"), /checkSourceUrl\(raw\)/);
+});

@@ -289,6 +289,7 @@ Duplicate false positives (section 15); AI-extracted fields on generic sources a
 | BankEAuctions.com | none | RESTRICTED (ambiguous robots) | not built |
 | AuctionBazaar.com | blocked | disallows our crawler | in `BLOCKED_HOSTS` |
 | bankauction.co | blocked | own brand/reference site | in `BLOCKED_HOSTS` |
+| FindAuction.in | blocked | forbidden by the owner; never a source (benchmark in conversation only) | in `BLOCKED_HOSTS` since 2026-10-08 |
 | Direct bank, NBFC/HFC, ARC, IBBI/NCLT sources | none | n/a | **no adapters exist**: 0 of the brief's P0 banks are monitored directly |
 
 ## 30. Source onboarding playbook
@@ -305,7 +306,7 @@ Use only after Phase 2.1 is merged. Based on the actual architecture:
 10. **Schedule** (add the `FeedSource` or wire the adapter into `runAllFeeds`), **monitor 7 days**, then declare healthy per section 32.
 
 ## 31. Source priority roadmap
-Keep the brief's order, but reorder by measured volume and access once data exists: (1) fix Phase 2 and the BAANKNET question; (2) official sites of the PSU banks that publish notices (SBI, PNB, BoB, Canara, Union first) as reconciliation sources alongside BAANKNET; (3) private banks; (4) NBFC/HFC; (5) ARCs; (6) DRT; (7) IBBI/NCLT; (8) long tail. **FindAuction.in is not in `BLOCKED_HOSTS`; the owner should consider adding it** so that nobody can add it as a link source by accident (policy decision, not made here).
+Keep the brief's order, but reorder by measured volume and access once data exists: (1) fix Phase 2 and the BAANKNET question; (2) official sites of the PSU banks that publish notices (SBI, PNB, BoB, Canara, Union first) as reconciliation sources alongside BAANKNET; (3) private banks; (4) NBFC/HFC; (5) ARCs; (6) DRT; (7) IBBI/NCLT; (8) long tail. **FindAuction.in is in `BLOCKED_HOSTS` (added 2026-10-08, see "FindAuction.in block" below).**
 
 ## 32. Production safety rules / Definition of done
 Rules: never delete or hide listings because a source returned less; a run is a candidate for expiry decisions only when `evaluationEligible` is true **and** status is HEALTHY; technical success ≠ data completeness; never overwrite auction history; hide, do not delete; never run scripts against the production database by accident.
@@ -409,6 +410,14 @@ No new source was added and no database schema changed.
 - Run-log rows carry a `[YIELD_V1] {json}` first line (history page shows ZERO_YIELD / DROPPED / ALL_REJECTED badges and the "Problems only" filter includes them).
 - It is an **alert only**: it never pauses a source, removes a listing, or changes protection. Pausing a dead source stays a human decision.
 - Tests: `tests/zeroYield.test.ts`, `tests/coverage.test.ts`, `tests/yieldWiring.test.ts` (source-level guards, including that the BAANKNET importer is untouched and the coverage page never writes).
+- **Correction (found on the first real Coverage page):** the BAANKNET importer writes the running totals of its current pass into `created / duplicates / rejected` on every tick, not per-tick amounts. Summing its run-log rows over 30 days overstated it (20,677 "new" against 5,325 BAANKNET auctions in the database). The overlap table therefore shows one pass (the largest in the window) for BAANKNET feeds and sums the rows of all other sources. The importer itself was not changed. Any future per-run arithmetic on `SourceRunLog.created` must keep this in mind.
+
+## FindAuction.in block (added 2026-10-08)
+
+- **Why:** FindAuction.in is forbidden as a source. The Coverage page showed 237 auctions created by findauction.in (none published) and a paused "Find Auction" link source that had created 127 listings in the previous 30 days, because the host was not on the do-not-fetch list.
+- **What changed (prevention only):** `findauction.in` (and any sub-domain, e.g. `www.`) is in `BLOCKED_HOSTS`. Effects: it cannot be added as a link source (`checkSourceUrl`); an existing source on it cannot run (it is refused as an "internal policy block" and deactivated); sheet rows and fetches that point to it were already refused (`tabular.ts`, `deepScan.ts`); and, new, the shared write path `importRecords()` now rejects any record whose `source_url`, `src:<host>:` id, or import address is on the list (`isBlockedRecord`), so no route (link source, sheet, CSV, bulk import) can store such a listing. Rejection reason: `source_on_do_not_fetch_list`.
+- **What was NOT changed:** no existing record was deleted, hidden, or re-published, and no clean-up was run. The 237 existing rows and the paused "Find Auction" source are untouched; what to do with them is the owner's decision (a separate, deliberate step).
+- Tests: `tests/sourceClassification.test.ts` (FindAuction URLs rejected in every spelling, lookalike hosts not caught, record-level gate, gate runs before any write).
 
 ## Ended auctions shown as upcoming: read-time lifecycle (added 2026-10-08)
 

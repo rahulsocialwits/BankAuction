@@ -40,21 +40,43 @@ interface FeedQueryRow {
   sheetState: string | null;
 }
 
+/**
+ * The BAANKNET importer logs the running totals of its current pass on every tick (not per-tick amounts), so adding up its
+ * rows would count the same listings many times. For such sources the table shows ONE pass (the largest in the window) instead.
+ */
+const isCumulativeLogger = (url: string) => {
+  try {
+    return /(^|\.)baanknet\.com$/i.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+};
+
 export default async function CoveragePage() {
   const now = new Date();
   const since = new Date(now.getTime() - 30 * 864e5);
-  const [auctionsRaw, runsRaw, feedsRaw] = await Promise.all([
+  const feedsFirst = (await prisma.feedSource.findMany({ select: { name: true, url: true } })) as unknown as { name: string; url: string }[];
+  const cumulativeNames = feedsFirst.filter((f) => isCumulativeLogger(f.url)).map((f) => f.name);
+  const [auctionsRaw, runsRaw, feedsRaw, cumulativeRaw] = await Promise.all([
     prisma.auction.findMany({
       take: MAX_ROWS,
       select: { externalAuctionId: true, sourceUrl: true, status: true, auctionStart: true, auctionEnd: true, reservePrice: true, property: { select: { status: true, addressText: true, geoCity: true } } },
     }),
     prisma.sourceRunLog.groupBy({
       by: ["source"],
-      where: { startedAt: { gte: since }, kind: { in: ["builtin", "feed", "csv"] }, status: "ok" },
+      where: { startedAt: { gte: since }, kind: { in: ["builtin", "feed", "csv"] }, status: "ok", source: { notIn: cumulativeNames } },
       _sum: { created: true, duplicates: true, rejected: true },
       _count: { _all: true },
     }),
     prisma.feedSource.findMany({ select: { id: true, name: true, url: true, active: true, lastRunAt: true, lastStatus: true, sheetState: true }, orderBy: { name: "asc" } }),
+    cumulativeNames.length
+      ? prisma.sourceRunLog.findMany({
+          where: { startedAt: { gte: since }, kind: "feed", status: "ok", source: { in: cumulativeNames } },
+          select: { source: true, created: true, duplicates: true, rejected: true },
+          orderBy: { startedAt: "desc" },
+          take: 2000,
+        })
+      : Promise.resolve([]),
   ]);
 
   // typed explicitly so the page type-checks the same with or without generated Prisma types
@@ -75,9 +97,16 @@ export default async function CoveragePage() {
   const { overall, bySource } = summarizeCoverage(rows, now);
   const truncated = auctions.length >= MAX_ROWS;
 
-  const runRows = runs
-    .map((r) => ({ source: r.source, runs: r._count._all, ...overlapOf([{ created: r._sum.created ?? 0, duplicates: r._sum.duplicates ?? 0, rejected: r._sum.rejected ?? 0 }]) }))
-    .sort((a, b) => b.created - a.created || b.discovered - a.discovered);
+  const cumulative = cumulativeRaw as unknown as { source: string; created: number; duplicates: number; rejected: number }[];
+  const largestPass = new Map<string, { source: string; created: number; duplicates: number; rejected: number }>();
+  for (const r of cumulative) {
+    const best = largestPass.get(r.source);
+    if (!best || r.created + r.duplicates > best.created + best.duplicates) largestPass.set(r.source, r);
+  }
+  const runRows = [
+    ...runs.map((r) => ({ source: r.source, runs: r._count._all, onePass: false, ...overlapOf([{ created: r._sum.created ?? 0, duplicates: r._sum.duplicates ?? 0, rejected: r._sum.rejected ?? 0 }]) })),
+    ...[...largestPass.values()].map((r) => ({ source: r.source, runs: cumulative.filter((c) => c.source === r.source).length, onePass: true, ...overlapOf([r]) })),
+  ].sort((a, b) => b.created - a.created || b.discovered - a.discovered);
 
   const feedRows = feeds
     .map((f) => ({ ...f, state: yieldStateOf(f.sheetState), verdict: overallYield(yieldStateOf(f.sheetState), now) }))
@@ -210,7 +239,7 @@ export default async function CoveragePage() {
           <tbody>
             {runRows.map((r) => (
               <tr key={r.source} className="border-t border-brand-border">
-                <td className="px-3 py-2 font-medium">{r.source}</td>
+                <td className="px-3 py-2 font-medium">{r.source}{r.onePass && <div className="font-normal text-brand-muted">largest single pass (this source logs running totals)</div>}</td>
                 <td className="px-3 py-2 text-right">{n(r.runs)}</td>
                 <td className="px-3 py-2 text-right">{n(r.valid)}</td>
                 <td className="px-3 py-2 text-right font-semibold">{n(r.created)}</td>

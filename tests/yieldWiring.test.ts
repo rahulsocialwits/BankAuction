@@ -36,3 +36,9 @@ test("the coverage admin page is read-only: it never writes", () => {
   assert.doesNotMatch(page, /\.(create|update|delete|upsert|deleteMany|updateMany|createMany)\(/);
   assert.doesNotMatch(page, /["']use server["']/);
 });
+
+test("the overlap table does not add up the running totals that the BAANKNET importer logs on every tick", () => {
+  const page = read("src/app/admin/(shell)/engine/coverage/page.tsx");
+  assert.match(page, /isCumulativeLogger/);
+  assert.match(page, /source: \{ notIn: cumulativeNames \}/);
+});
