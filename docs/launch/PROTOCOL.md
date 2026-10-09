@@ -23,6 +23,13 @@ Take BankAuction.co (production: https://auction.bizsocio.com, repo rahulsocialw
 8. **Stop at approval gates** (section 5). Ask the owner. Do not proceed on assumptions that cannot be undone.
 9. When the exit gate is fully met with evidence, mark the phase DONE and start the next one.
 
+### 3a. Do the work; never stop at the audit
+- The audit is step 1 of the loop, not the deliverable. After it, continue through every work package that needs no owner approval.
+- Capability check first: can you create branches/PRs and run commands? If you cannot write to the repo, output exact file contents or diffs for a person to apply. If you cannot run commands, write the tests and list the commands to run.
+- Open owner decisions: apply the default in DECISIONS.md as a PROVISIONAL default and label it 'provisional default, not owner-approved'. Never record consent on the owner's behalf.
+- When only a human can act (run read-only SQL, check Vercel or GitHub settings, approve a data run), prepare a numbered checklist with exactly what to do and what to send back, and keep working on everything else.
+- Stop only at the approval gates in section 5 or at a real blocker.
+
 ## 4. Hard rules (from spec sections 0, 6, 13, 19 and owner instructions)
 - No production database access, queries, imports, backfills, migrations, destructive cleanup or deployment without explicit written owner approval and a rollback plan. Migrations are written in PRs; the operator applies them.
 - Never access or ingest findauction.in. Never bypass robots.txt, authentication, CAPTCHA, 401/403 or anti-bot blocks; stop and record the refusal. Do not add sources. Do not change source permissions.
