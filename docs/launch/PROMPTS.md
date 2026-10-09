@@ -5,7 +5,7 @@ One self-contained prompt per phase. Paste the whole fenced block into any LLM t
 ## Master prompt (resume from wherever the project is)
 
 ```text
-You are working on BankAuction.co in this repository (rahulsocialwits/BankAuction). Read docs/launch/PROTOCOL.md and follow it exactly. Open docs/launch/PHASE_STATUS.md and find the first phase that is not DONE whose dependencies are DONE. Run that phase's entry audit (docs/launch/phases/Pxx-*.md) BEFORE changing anything, post the audit table, then decide, plan, implement in small PRs, verify, and report using the template in PROTOCOL.md section 9. Stop at every approval gate. Never merge, deploy, run production SQL, apply migrations, or change production data. When the phase's exit gate is met with evidence, update PHASE_STATUS.md and stop for my review.
+You are working on BankAuction.co in this repository (rahulsocialwits/BankAuction). Read docs/launch/PROTOCOL.md and follow it exactly. Open docs/launch/PHASE_STATUS.md and find the first phase that is not DONE whose dependencies are DONE. Run that phase's entry audit (docs/launch/phases/Pxx-*.md) BEFORE changing anything, post the audit table, then decide, plan, implement in small PRs, verify, and report using the template in PROTOCOL.md section 9. Do the work: after the audit continue through every work package that needs no approval, and stop only at approval gates or real blockers. If you cannot write to the repo, output exact file contents or diffs instead of stopping. Label unanswered decisions as provisional defaults. Never merge, deploy, run production SQL, apply migrations, or change production data. When the phase's exit gate is met with evidence, update PHASE_STATUS.md and stop for my review.
 ```
 
 | Phase | Title | File |
@@ -66,7 +66,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 5. What does DECISIONS.md already say?  -> look at: docs/launch/DECISIONS.md
 6. Are the test suite and type-check healthy?  -> look at: npm test, npx tsc --noEmit (needs generated Prisma client; if the sandbox cannot generate it, say so)
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - If a number cannot be obtained without touching production data, do NOT guess: write it as NOT VERIFIED and ask the owner or operator for the read-only query result.
@@ -74,6 +74,17 @@ Post the filled audit table before you change anything.
 - Every open decision gets a recommended default so the owner can answer 'defaults'.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p01-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -123,7 +134,8 @@ Documentation only. Nothing to roll back.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P02 - Engineering foundation and release process
@@ -159,7 +171,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 4. What are the documented deploy/rollback steps?  -> look at: docs/DEPLOYMENT.md, docs/OPERATIONS.md
 5. How are Prisma migrations applied in production, and by whom?  -> look at: prisma/migrations; docs/DATABASE.md
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - If CI already runs lint+type-check+test+build, do not rebuild it; only fill gaps.
@@ -167,6 +179,17 @@ Post the filled audit table before you change anything.
 - Migrations are written in a PR but NEVER applied by the LLM. The operator applies them after approval with a backup noted.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p02-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -217,7 +240,8 @@ Revert the PR. Flags default to current behaviour.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P03 - Data model and provenance design
@@ -253,7 +277,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 3. Is there already an evidence/review model in use (fieldObservations, mergeLog, review.ts)?  -> look at: src/lib/pipeline/*
 4. Which indexes support the filters the product needs (geoCity, auctionStart, reservePrice, bankId)?  -> look at: schema @@index lines
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - Additive migrations only: new tables/columns, nullable or defaulted. No drops, renames or rewrites of existing data.
@@ -261,6 +285,17 @@ Post the filled audit table before you change anything.
 - One ADR file per significant decision in docs/launch/adr/.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p03-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -310,7 +345,8 @@ Each migration ships with a down-script note. Additive changes can stay unused s
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P04 - Lifecycle and counting core
@@ -346,7 +382,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 3. Are IST day boundaries tested?  -> look at: tests/auctionLifecycle.test.ts, resolveAuctionStatus.test.ts
 4. Which pages count properties and do they all use publishedWhere/activeAuctionWhere?  -> look at: grep -rn count src/app src/lib/queries
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - If D01 is OPEN, use the default (exclude undated from the active headline) but ship it behind a flag and state it in the PR.
@@ -354,6 +390,17 @@ Post the filled audit table before you change anything.
 - Report counts for: active, completed, cancelled, postponed, undated, no-round, unassigned city.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p04-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -405,7 +452,8 @@ Revert PR; flag off restores previous counting.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P05 - Location data quality and city pages' foundation
@@ -443,7 +491,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 4. Where is unassignedActive computed and shown?  -> look at: src/lib/domain/cityCounts.ts, src/lib/queries/cities.ts, city and cities pages
 5. Is there an admin screen for the location backlog?  -> look at: src/app/admin/(shell)/localities, engine pages
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - If the AI job is not running: fix scheduling/provider FIRST. Do not write a new geocoder.
@@ -454,6 +502,17 @@ Post the filled audit table before you change anything.
 - If D02 says restore text fallback instead, implement it with an explicit 'unverified' label, never silently.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p05-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -509,7 +568,8 @@ Restore geo* columns from the snapshot for the affected ids. Keep snapshot until
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P06 - Source compliance and ingestion health
@@ -546,7 +606,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 4. What provenance is stored (source URL, retrieval time, extraction version)?  -> look at: SourceRecord, fieldProvenance.ts, fieldObservations.ts
 5. How are duplicates handled?  -> look at: src/lib/deduplication, pipeline/duplicates.ts, admin duplicates page, tests/dedupe.test.ts
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - Never add a source. Only document and gate existing ones.
@@ -554,6 +614,17 @@ Post the filled audit table before you change anything.
 - Refusals are final: record and stop; never retry as transient.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p06-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -603,7 +674,8 @@ Revert PR. Register fields are additive.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P07 - Search, filters, sort and pagination everywhere
@@ -639,7 +711,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 3. Is ordering deterministic (tiebreak by id)?  -> look at: listProperties.ts
 4. Is pinCode stored anywhere queryable?  -> look at: prisma Property fields and addressText parsing
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - Prefer redirecting /auctions/* to /properties with the matching status filter over maintaining two list implementations. If the auctions pages have unique UX value, reuse the shared query and pager component.
@@ -647,6 +719,17 @@ Post the filled audit table before you change anything.
 - Unknown params are ignored visibly or aliased, never silently return everything.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p07-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -699,7 +782,8 @@ Revert PR.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P08 - Property cards and detail page to spec
@@ -735,13 +819,24 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 3. Is media shown only when permitted?  -> look at: src/lib/media.ts, api/media, api/img routes, Media model fields
 4. What freshness data exists per property?  -> look at: lib/pipeline/lastSeen*.ts (from P06)
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - Build in this order: freshness line, honest missing-data labels, disclaimer block, similar-by-area, save/share, then compare/alert hooks (stubs gated by P12-P15).
 - If media permission fields do not exist, use neutral placeholders everywhere until P17.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p08-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -794,7 +889,8 @@ Revert PR.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P09 - Coordinates and map discovery
@@ -829,7 +925,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 3. Is a geocoder configured anywhere?  -> look at: grep -ri geocode src; env vars
 4. What does the map UI do today in each state?  -> look at: src/components/PropertyMapView.tsx, ViewToggle.tsx; tests/propertyMap.test.ts
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - Coordinates come from source data first. Geocoding addresses to pins is allowed ONLY from a provider the owner approved, with a precision flag, and never for uncertain addresses.
@@ -837,6 +933,17 @@ Post the filled audit table before you change anything.
 - Provider choice is D04. Without approval keep OSM and note quotas and attribution.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p09-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -890,7 +997,8 @@ Flag off; restore coordinates from snapshot if a run was bad.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P10 - Homepage, city/region/institution pages and SEO
@@ -927,7 +1035,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 3. How many cities exceed the minimum-count threshold?  -> look at: cities.ts output; owner threshold in DECISIONS
 4. Is structured data accurate (no fabricated fields)?  -> look at: JsonLd.tsx and property page output
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - Index a city page only if it has at least N verified properties (default N=5, owner can change).
@@ -935,6 +1043,17 @@ Post the filled audit table before you change anything.
 - Coverage counters must come from defined metrics with an as-of time or stay hidden.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p10-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -987,7 +1106,8 @@ Revert PR; sitemap regenerates.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P11 - Security and privacy baseline
@@ -1023,7 +1143,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 3. Where is borrower data stored and displayed?  -> look at: grep -ri borrower src prisma; tests/borrowerExposure.test.ts
 4. Which secrets and keys are used and how are they redacted in logs?  -> look at: docs/SECURITY.md; src/lib/apiKeys.ts
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - Add headers in next.config with a CSP that works with Leaflet tiles and analytics; test in preview before production.
@@ -1031,6 +1151,17 @@ Post the filled audit table before you change anything.
 - Rate limit by IP+route with a small in-DB or edge counter; no new paid service without approval.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p11-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -1083,7 +1214,8 @@ Revert PR; headers in config only.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P12 - Accounts, consent and preferences
@@ -1117,13 +1249,24 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 2. What do SavedProperty and SavedSearch store?  -> look at: prisma models; saved-properties and my-alerts pages
 3. Is there any email sending capability?  -> look at: grep for mail providers; env vars (none found on 9 Oct)
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - Choose the simplest secure recovery path (email link). Phone OTP only if the owner approves a provider.
 - Consent is per channel and purpose with timestamp and source; opt-out is one click.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p12-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -1173,7 +1316,8 @@ Revert PR; new tables unused.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P13 - Plans, entitlements and premium access control
@@ -1207,7 +1351,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 2. Which plan prices are approved?  -> look at: DECISIONS.md D03
 3. How is caching configured for pages that vary by user?  -> look at: unstable_cache usage, route segment config, Cache-Control headers
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - No plan goes live without D03 (prices, GST wording). Build plans as data, not code.
@@ -1215,6 +1359,17 @@ Post the filled audit table before you change anything.
 - Cache: any response that varies by entitlement is not shared-cached.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p13-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -1264,7 +1419,8 @@ Flag off entitlements; public content stays visible.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P14 - Payments, invoices and refunds
@@ -1298,7 +1454,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 2. Is there any order-creation or verification code?  -> look at: grep -rn razorpay src; api routes
 3. Which gateway and test keys does the owner have?  -> look at: ENVIRONMENT.md; ask owner
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - Use test/sandbox keys only. Never charge a real customer during build.
@@ -1307,6 +1463,17 @@ Post the filled audit table before you change anything.
 - Invoices and GST per CA rules; do not invent numbering.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p14-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -1358,7 +1525,8 @@ Disable checkout flag; entitlements granted in sandbox are removed by a document
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P15 - Alerts and notifications
@@ -1391,7 +1559,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 2. Is there a job runner for scheduled work?  -> look at: api/cron/*, .github/workflows/tick.yml, SCHEDULER.md
 3. Which channels and providers are approved?  -> look at: DECISIONS.md D10 (providers)
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - Email first. WhatsApp/push only when providers, templates and consent are approved.
@@ -1399,6 +1567,17 @@ Post the filled audit table before you change anything.
 - Never expose masked premium fields in free-tier alerts.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p15-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -1447,7 +1626,8 @@ Flag off; stop job.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P16 - Admin operations, audit log and support
@@ -1482,7 +1662,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 3. Is there any action logging?  -> look at: grep -ri audit; PropertyChange model
 4. Does the contact form create a Lead only?  -> look at: contact page action; Lead model
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - Reuse existing admin shell and components.
@@ -1490,6 +1670,17 @@ Post the filled audit table before you change anything.
 - Exports are role-protected, minimised and logged.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p16-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -1541,7 +1732,8 @@ Revert PR; tables unused.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P17 - Risk intelligence, compare, client reports and media rights
@@ -1574,7 +1766,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 2. Which media exist and with what permission fields?  -> look at: Media, MediaAsset, SourceMedia models; MediaLibrary admin
 3. Which decisions are answered?  -> look at: DECISIONS.md D05 (risk rubric), D07 (media policy), D12 (legal boundary)
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - Show only flags with cited evidence and a review state; unknown is never displayed as clear.
@@ -1583,6 +1775,17 @@ Post the filled audit table before you change anything.
 - Reports carry timestamp, source links and missing-data markers; never claim legal opinion.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p17-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -1634,7 +1837,8 @@ Flag off each feature.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P18 - Analytics, content and localisation
@@ -1668,7 +1872,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 2. What content types does the admin manage?  -> look at: admin blog, pages, home config
 3. Which languages are approved for wave 1?  -> look at: DECISIONS.md D08
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - No analytics before a consent banner works. Choose one tool (owner approval).
@@ -1676,6 +1880,17 @@ Post the filled audit table before you change anything.
 - Start with one extra language only after D08.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p18-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -1724,7 +1939,8 @@ Flags off.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P19 - Partner programme and team features
@@ -1755,7 +1971,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 1. Is D09/D11 (commission schedule, team scope) answered?  -> look at: DECISIONS.md
 2. Do payments (P14) support refunds and clawback data?  -> look at: P14 gate evidence
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - Commission on money actually collected; pay after refund window; claw back refunds.
@@ -1763,6 +1979,17 @@ Post the filled audit table before you change anything.
 - Never pay bank/NBFC/ARC officers.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p19-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -1812,7 +2039,8 @@ Flags off; tables unused.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
 
 ## P20 - Hardening, full acceptance and launch readiness
@@ -1844,7 +2072,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 2. Which acceptance tests AT-01..AT-20 already pass, with evidence?  -> look at: data/acceptance_tests.csv; CI; live smoke results
 3. When was the last backup restore test?  -> look at: OPERATIONS.md; owner
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - A feature is 'live' only if it is deployed AND production-smoke-tested.
@@ -1852,6 +2080,17 @@ Post the filled audit table before you change anything.
 - Do not deploy; prepare the release and ask for explicit owner approval.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p20-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -1904,5 +2143,6 @@ Documented rollback tested in WP20.4.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````

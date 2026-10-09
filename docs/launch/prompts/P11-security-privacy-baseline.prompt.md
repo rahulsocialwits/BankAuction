@@ -33,7 +33,7 @@ Answer each question from evidence (code, tests, read-only GET requests to the l
 3. Where is borrower data stored and displayed?  -> look at: grep -ri borrower src prisma; tests/borrowerExposure.test.ts
 4. Which secrets and keys are used and how are they redacted in logs?  -> look at: docs/SECURITY.md; src/lib/apiKeys.ts
 
-Post the filled audit table before you change anything.
+Post the filled audit table, then CONTINUE to Step 2 in the same session. Do not wait for me unless you are blocked by something listed in section 10.
 
 ## 5. Step 2 - DECIDE (use these rules)
 - Add headers in next.config with a CSP that works with Leaflet tiles and analytics; test in preview before production.
@@ -41,6 +41,17 @@ Post the filled audit table before you change anything.
 - Rate limit by IP+route with a small in-DB or edge counter; no new paid service without approval.
 - Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
 - If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+    ## 5b. Operating mode (read carefully)
+    - You are expected to DO the work, not only report. After the audit, carry on through every work package that does not need owner approval. Stop only at the approval gates in section 10, or when a real blocker stops you.
+    - Capability check (do this once, right after reading): can you read the repo, create a branch, commit, push and open a PR? Can you run commands (tests, type-check)? State the answer in one line.
+      - If you CAN write: do the work in branches and PRs as described.
+      - If you CANNOT write: do not stop. Produce the exact file contents or a unified diff for every change, with the target path and branch/PR title, so a person can apply it in minutes.
+      - If you CANNOT run commands: say so, write the tests anyway, and list the exact commands to run.
+    - Open owner decisions: use the default in DECISIONS.md as a PROVISIONAL default. Label it 'provisional default, not owner-approved' everywhere. Never write 'approved' or 'decided' on the owner's behalf. Keep the work reversible.
+    - Things only a human can do (run read-only SQL, check Vercel or GitHub settings, approve a data run): do not wait idle. Prepare a short numbered checklist for that person with the exact query or click path and what to send back, and continue with everything else.
+    - Never stop after the audit alone. If you did nothing but audit, you have failed this task.
+    
 
 ## 6. Step 3 - PLAN
 List the work packages you will do, in order, each as its own branch and PR (branch name like `p11-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
@@ -93,5 +104,6 @@ Revert PR; headers in config only.
 6. Risks, rollback, monitoring signal
 7. Needs from owner (approvals and decisions)
 8. PHASE_STATUS.md updated in your PR: yes/no
-Then stop. Do not start the next phase until I say so.
+9. Human checklist: the exact things a person must do next (queries to run, settings to check, approvals to give), each with what to send back
+Then stop at the end of THIS phase (not earlier). Do not start the next phase until I say so.
 ````
