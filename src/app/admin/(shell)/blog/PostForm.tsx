@@ -38,7 +38,7 @@ export default function PostForm({ post, action, error }: { post?: BlogPost; act
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium mb-1">Body <span className="font-normal text-brand-muted">(blank line = new paragraph, "- " = bullet, **bold**)</span></label>
+        <label className="block text-sm font-medium mb-1">Body <span className="font-normal text-brand-muted">(blank line = new paragraph, &quot;- &quot; = bullet, **bold**)</span></label>
         <textarea name="body" defaultValue={post?.body} required rows={10} className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
       </div>
       <fieldset className="border border-brand-border rounded-lg p-4 space-y-3">

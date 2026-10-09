@@ -24,6 +24,7 @@ export default async function AiAdminPage() {
   const [cfg, row, usage] = await Promise.all([
     getAiConfig(),
     prisma.aiSettings.findUnique({ where: { id: "default" } }),
+    // eslint-disable-next-line react-hooks/purity -- server component, evaluated once per request
     prisma.sourceRunLog.aggregate({ where: { startedAt: { gte: new Date(Date.now() - 7 * 864e5) } }, _sum: { aiTokens: true }, _count: { _all: true } }),
   ]);
 

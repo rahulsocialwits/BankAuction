@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { buildSettings } from "@/lib/queries/siteSettings";
 import SettingsForm from "@/components/admin/SettingsForm";
@@ -106,7 +107,7 @@ export default async function AdminSettingsPage() {
         <section className="bg-white border border-brand-border rounded-xl p-5">
           <h2 className="font-semibold">Policy pages</h2>
           <p className="text-sm text-brand-muted mt-1">
-            Privacy Policy, Terms and Conditions, Disclaimer, About Us and FAQ are now edited under <a href="/admin/pages" className="text-brand underline">Pages</a>.
+            Privacy Policy, Terms and Conditions, Disclaimer, About Us and FAQ are now edited under <Link href="/admin/pages" className="text-brand underline">Pages</Link>.
           </p>
         </section>
 

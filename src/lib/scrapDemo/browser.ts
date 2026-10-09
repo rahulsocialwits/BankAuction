@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- demo-only Puppeteer helper, untyped page objects */
 import { existsSync } from "node:fs";
 import { UA } from "@/data-sources/feeds/webScan";
 

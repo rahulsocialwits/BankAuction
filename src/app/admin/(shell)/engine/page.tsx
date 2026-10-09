@@ -49,6 +49,7 @@ function Badge({ tone, children }: { tone: Tone; children: React.ReactNode }) {
 const btn = "text-xs border border-brand-border rounded-lg px-3 py-1.5 hover:bg-brand-bg";
 
 export default async function DataEnginePage() {
+  // eslint-disable-next-line react-hooks/purity -- server component, evaluated once per request
   const since24h = new Date(Date.now() - 864e5);
   const [builtIn, lastJob, feedsRaw, published, pending, lastTick, lastRuns, tokens24, ai, aiSchedule] = await Promise.all([
     prisma.source.findUnique({ where: { name: BUILT_IN_NAME } }),

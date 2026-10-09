@@ -392,7 +392,7 @@ export async function importRecords(
   let updated = 0;
   let stale = 0;
   let reauctions = 0;
-  let held = 0; // stored but not shown: the source does not state a borrower name (status DRAFT, needs_enrichment)
+  const held = 0; // stored but not shown: the source does not state a borrower name (status DRAFT, needs_enrichment)
   const rejections: { title: string; reasons: string[] }[] = [];
   /** Listings this source showed in this call (last-seen tracking; flushed once at the end). */
   const seenIds = new Set<string>();

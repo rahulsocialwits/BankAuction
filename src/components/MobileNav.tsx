@@ -18,6 +18,7 @@ export default function MobileNav({
   const pathname = usePathname();
 
   // Close the menu whenever the page changes (a search or a link was used).
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset on route change
   useEffect(() => setOpen(false), [pathname]);
 
   return (
