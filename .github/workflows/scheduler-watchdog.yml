@@ -1,12 +1,16 @@
 name: Scheduler watchdog
 
 # Alerts when the data-engine scheduler has not completed a successful tick for about 60 minutes.
-# /api/cron/health answers 200 when a tick succeeded within the last 60 minutes and 503 when not; this job FAILS on anything but 200,
-# and GitHub e-mails the failure to the people watching the repository's Actions.
-# (A second, independent check can be set up outside GitHub: see docs/SCHEDULER.md, "Second trigger and alert".)
+# /api/cron/health answers 200 when a tick succeeded within the last 60 minutes and 503 when not. This job FAILS on anything but
+# 200 (GitHub e-mails the failure) and says which of three different problems it is:
+#   - the scheduler is LATE            (HTTP 503 with state late/never)  -> look at the tick workflow and Engine > History
+#   - a CONFIGURATION problem          (HTTP 401 / 500)                  -> the CRON_SECRET values do not match / are missing
+#   - the check COULD NOT RUN          (network error, other HTTP codes) -> says nothing about the scheduler itself
+# It runs on GitHub's best-effort schedule too, so it is not an independent monitor: if GitHub skips runs, this is silent as well.
+# (A second, independent check outside GitHub is described in docs/SCHEDULER.md.) Never print the secret; GitHub also masks it.
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -23,15 +27,44 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           if [ -z "$CRON_SECRET" ]; then
-            echo "CRON_SECRET repository secret is missing"; exit 1
-          fi
-          code=$(curl -sS -o response.txt -w "%{http_code}" --max-time 30 \
-            -H "x-cron-secret: $CRON_SECRET" \
-            "https://auction.bizsocio.com/api/cron/health")
-          echo "HTTP $code"
-          head -c 1000 response.txt
-          echo
-          if [ "$code" != "200" ]; then
-            echo "ALERT: no successful scheduler tick for about 60 minutes, or the health check could not run (HTTP $code)."
+            echo "::error title=Watchdog could not run::CRON_SECRET repository secret is missing (Settings > Secrets and variables > Actions)"
             exit 1
           fi
+          set +e
+          code=$(curl -sS -o response.txt -w "%{http_code}" --connect-timeout 10 --max-time 30 \
+            --retry 2 --retry-delay 5 --retry-all-errors \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "https://auction.bizsocio.com/api/cron/health")
+          rc=$?
+          set -e
+          echo "curl exit code: $rc, HTTP status: ${code:-none}"
+          if [ -s response.txt ]; then head -c 1000 response.txt; echo; fi
+          summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
+          if [ "$rc" -ne 0 ]; then
+            why="CHECK COULD NOT RUN: the health endpoint was not reachable after 3 attempts (curl exit $rc). This says nothing about whether the scheduler is late."
+            echo "::error title=Health check unreachable::$why"
+            echo "$why" >> "$summary"
+            exit 1
+          fi
+          case "$code" in
+            200)
+              minutes=$(sed -n 's/.*"minutesSinceLastSuccessfulTick":\([0-9]*\).*/\1/p' response.txt)
+              echo "Scheduler healthy: last successful tick ${minutes:-?} minute(s) ago."
+              echo "Scheduler healthy (last successful tick ${minutes:-?} min ago)." >> "$summary"
+              exit 0
+              ;;
+            503)
+              if grep -q '"error"' response.txt; then
+                why="CHECK COULD NOT RUN: the health endpoint could not read the database (see the response text above)."
+              else
+                minutes=$(sed -n 's/.*"minutesSinceLastSuccessfulTick":\([0-9]*\).*/\1/p' response.txt)
+                why="SCHEDULER LATE: no successful tick for ${minutes:-an unknown number of} minute(s) (limit 60). Check the Scheduler tick workflow and Admin > Engine > History."
+              fi
+              ;;
+            401) why="CONFIGURATION: HTTP 401. The GitHub secret CRON_SECRET does not match the one in Vercel." ;;
+            500) why="CONFIGURATION: HTTP 500. CRON_SECRET is probably not set on the server (see the response text above)." ;;
+            *) why="CHECK COULD NOT RUN: unexpected HTTP $code from the health endpoint." ;;
+          esac
+          echo "::error title=Scheduler watchdog::$why"
+          echo "$why" >> "$summary"
+          exit 1

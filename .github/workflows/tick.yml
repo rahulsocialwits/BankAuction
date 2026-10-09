@@ -1,11 +1,15 @@
 name: Scheduler tick
 
-# Calls the site's own /api/cron/ingest every 5 minutes.
+# Calls the site's own /api/cron/ingest roughly every 5 minutes.
 # The endpoint runs the whole tick INSIDE the request and answers only when it is finished:
-# HTTP 200 + {"ok":true,...} = the work was done; anything else (401 wrong secret, 500 with the real error) fails this job.
+#   HTTP 200 {"ok":true,...}            = the work was done
+#   HTTP 200 {"ok":true,"skipped":true} = another trigger already ran (or is running) a tick: harmless, NOT a failure
+#   anything else                       = this job fails and says why (curl exit code, HTTP status, response text)
+# GitHub's `schedule` event is best-effort: runs can be late or dropped. The minutes are offset (3,8,13 ... 58) to stay off the
+# busiest :00/:05 marks. Never print the secret here; GitHub also masks it.
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "3-58/5 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -22,16 +26,47 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           if [ -z "$CRON_SECRET" ]; then
-            echo "CRON_SECRET repository secret is missing"; exit 1
-          fi
-          code=$(curl -sS -o response.txt -w "%{http_code}" --max-time 295 \
-            -H "x-cron-secret: $CRON_SECRET" \
-            "https://auction.bizsocio.com/api/cron/ingest?limit=100")
-          echo "HTTP $code"
-          head -c 3000 response.txt
-          echo
-          if [ "$code" != "200" ]; then
-            echo "Scheduler endpoint did not complete successfully (HTTP $code)."
+            echo "::error title=Tick not sent::CRON_SECRET repository secret is missing (Settings > Secrets and variables > Actions)"
             exit 1
           fi
-          grep -q '"ok":true' response.txt || { echo "Response did not contain ok:true"; exit 1; }
+          set +e
+          code=$(curl -sS -o response.txt -w "%{http_code}" --connect-timeout 30 --max-time 295 \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "https://auction.bizsocio.com/api/cron/ingest?limit=100")
+          rc=$?
+          set -e
+          echo "curl exit code: $rc, HTTP status: ${code:-none}"
+          if [ -s response.txt ]; then head -c 3000 response.txt; echo; fi
+          summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
+          if [ "$rc" -ne 0 ]; then
+            if [ "$rc" -eq 28 ]; then
+              why="curl gave up: no complete answer within the time limit (exit 28). The tick may still have finished on the server: check Engine > History."
+            else
+              why="curl could not complete the request (exit $rc; 6/7 = could not reach the site, 35/60 = TLS problem)."
+            fi
+            echo "::error title=Tick not confirmed::$why"
+            echo "Tick FAILED: $why" >> "$summary"
+            exit 1
+          fi
+          if [ "$code" != "200" ]; then
+            case "$code" in
+              401) why="HTTP 401: the GitHub secret CRON_SECRET does not match the one in Vercel." ;;
+              500) why="HTTP 500: the tick threw an error or CRON_SECRET is not set on the server (see the response text above)." ;;
+              502|503|504) why="HTTP $code: the platform could not run the function (overloaded, timed out or unavailable)." ;;
+              *) why="HTTP $code: unexpected answer." ;;
+            esac
+            echo "::error title=Tick failed::$why"
+            echo "Tick FAILED: $why" >> "$summary"
+            exit 1
+          fi
+          if grep -q '"skipped":true' response.txt; then
+            echo "::notice title=Tick skipped::Another trigger ran or is running a tick. Nothing to do."
+            echo "Tick skipped (another trigger had it covered)." >> "$summary"
+            exit 0
+          fi
+          if ! grep -q '"ok":true' response.txt; then
+            echo "::error title=Tick failed::HTTP 200 but the answer did not contain ok:true."
+            echo "Tick FAILED: HTTP 200 without ok:true." >> "$summary"
+            exit 1
+          fi
+          echo "Tick completed." >> "$summary"
