@@ -1,0 +1,95 @@
+# Prompt for P02 - Engineering foundation and release process
+
+Paste everything inside the fence.
+
+````text
+You are an engineer working on BankAuction.co (GitHub repo rahulsocialwits/BankAuction, production https://auction.bizsocio.com). You are doing **P02 - Engineering foundation and release process** of a 20-phase launch plan.
+
+## 0. Read first, in this order
+1. docs/launch/PROTOCOL.md (operating manual and hard rules)
+2. AGENTS.md (this repo's Next.js has breaking changes; read the relevant guide in node_modules/next/dist/docs/ before writing Next.js code)
+3. docs/launch/PHASE_STATUS.md, docs/launch/DECISIONS.md, docs/launch/BASELINE.md
+4. docs/launch/phases/P02-engineering-foundation.md (this phase's full spec)
+5. docs/launch/data/requirements.csv rows where phase = P02, and docs/launch/data/issues_2026-10-09.csv rows where phase = P02
+6. Spec sections 13 (last bullet), 19 in docs/launch/spec/PRD_v1.0.txt
+
+## 1. Preconditions
+Depends on: P01. Check PHASE_STATUS.md. If a dependency is not DONE, stop and tell me which one and why. Do not work around it.
+
+## 2. Goal
+Make every later change safe: reliable CI, tests runnable by any contributor, feature flags, migration and rollback rules, and a release checklist.
+
+## 3. Known problems (from the 9 Oct 2026 audit). Verify each still exists before acting.
+- Sandbox could not generate Prisma client or run next build; 4 test files fail only because of that.
+- No documented feature-flag mechanism for hiding unfinished features (for example the Map toggle).
+- Backups and restore are undocumented.
+
+## 4. Step 1 - AUDIT FIRST (change nothing yet)
+Answer each question from evidence (code, tests, read-only GET requests to the live site, BASELINE.md). Classify each as DONE / PARTIAL / MISSING / WRONG / UNKNOWN and cite the file, test or URL. Resolve UNKNOWN by checking.
+
+1. What does .github/workflows/ci.yml run (lint, type-check, test, build)?  -> look at: ci.yml
+2. Do tests run without a database? Which need the Prisma client?  -> look at: tests/*.test.ts; package.json scripts
+3. Is there a feature-flag or env-switch pattern already (NEXT_PUBLIC_*, SiteSettings)?  -> look at: src/lib/constants.ts; prisma model SiteSettings; docs/ENVIRONMENT.md
+4. What are the documented deploy/rollback steps?  -> look at: docs/DEPLOYMENT.md, docs/OPERATIONS.md
+5. How are Prisma migrations applied in production, and by whom?  -> look at: prisma/migrations; docs/DATABASE.md
+
+Post the filled audit table before you change anything.
+
+## 5. Step 2 - DECIDE (use these rules)
+- If CI already runs lint+type-check+test+build, do not rebuild it; only fill gaps.
+- If a flag mechanism exists, reuse it. Otherwise add ONE small helper (src/lib/flags.ts) backed by env vars; no new service.
+- Migrations are written in a PR but NEVER applied by the LLM. The operator applies them after approval with a backup noted.
+- Only work on PARTIAL, MISSING or WRONG items. For DONE items add a regression test, do not rebuild.
+- If a decision you need is OPEN in DECISIONS.md, use the stated default, keep the change reversible (flag), and say so in the PR.
+
+## 6. Step 3 - PLAN
+List the work packages you will do, in order, each as its own branch and PR (branch name like `p02-wpX.Y-short-name`). Mark any that need owner approval and do those last or prepare them without executing.
+
+Work packages available in this phase:
+- WP2.1 Close CI gaps (type-check and build must run in CI).
+- WP2.2 Add src/lib/flags.ts with documented flags and tests.
+- WP2.3 Write docs/launch/RELEASE_CHECKLIST.md (PR, CI, preview review, owner approval, deploy, smoke test, rollback).
+- WP2.4 Document backup and restore procedure with the hosting provider's real facts (ask owner).
+
+## 7. Step 4 - IMPLEMENT
+Smallest change that fits the existing patterns. Extend central helpers (src/lib/domain/auctionLifecycle.ts, src/lib/queries/publishedWhere.ts, src/lib/pipeline/locations.ts) instead of duplicating logic. Add or update tests in the same PR. Commit with clear messages. Open a PR per work package with the report template from PROTOCOL.md section 9.
+
+## 8. Step 5 - TESTS REQUIRED
+- Unit tests for flags helper.
+- CI run showing all stages green (link it).
+Run tests, lint, type-check and build where the environment allows. Paste real output. If something cannot run (for example Prisma client generation in a sandbox), say exactly that. A test not run is not a test passed.
+
+## 9. Step 6 - EXIT GATE (all must be true, with evidence)
+- [ ] CI runs lint, type-check, tests and build on every PR.
+- [ ] Flags helper merged and used by at least one feature.
+- [ ] RELEASE_CHECKLIST.md approved by owner.
+
+## 10. STOP AND ASK the owner before
+- Owner approves checklist. Operator confirms backup facts.
+- applying any migration, writing production data, adding a paid service, enabling real payments or messaging, merging, or deploying.
+Ask in plain language: what, why, risk, rollback, recommended default.
+
+## 11. DO NOT
+- Do not change application behaviour. Do not apply migrations.
+- Do not add paid services.
+- Do not merge any PR or deploy.
+- Do not access findauction.in or bypass any site restriction.
+- Do not connect to or change the production database, settings or data.
+- Do not add sources, change source permissions, or change unrelated features.
+- Do not invent data. Say NOT VERIFIED when you did not check.
+- Do not create another audit/verification framework; use the phase file and tests.
+
+## 12. Rollback for this phase
+Revert the PR. Flags default to current behaviour.
+
+## 13. Final output (exactly this structure)
+1. Entry audit table (question | evidence | classification)
+2. Decisions taken and why (cite rules and any OPEN decision you defaulted)
+3. What changed (files, PR links) and what you deliberately did not change
+4. Tests: added / run / result (paste output) / NOT RUN
+5. Stages, stated separately: implemented | tested | merged | deployed | production smoke-tested (yes / no / NOT VERIFIED)
+6. Risks, rollback, monitoring signal
+7. Needs from owner (approvals and decisions)
+8. PHASE_STATUS.md updated in your PR: yes/no
+Then stop. Do not start the next phase until I say so.
+````

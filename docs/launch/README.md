@@ -2,6 +2,7 @@
 
 Start with `PROTOCOL.md`. Files:
 - `PROTOCOL.md` operating manual for any LLM or developer (rules, loop, report template, starter prompt)
+- `PROMPTS.md` and `prompts/` copy-paste prompt for each of the 20 phases, plus a master 'resume' prompt
 - `PHASE_STATUS.md` progress tracker (update in every PR)
 - `DECISIONS.md` owner decisions with defaults
 - `BASELINE.md` numbers to establish in P01
