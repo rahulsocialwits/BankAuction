@@ -19,6 +19,7 @@ interface Props {
     status?: string;
     priceMin?: string;
     priceMax?: string;
+    view?: string;
   };
 }
 
@@ -40,6 +41,7 @@ export default function PropertyFilterForm({ localities, places, banks, categori
 
   return (
     <form action="/properties" className="bg-white border border-brand-border rounded-2xl p-4 sm:p-5 mb-6 shadow-sm">
+      {initial.view === "map" && <input type="hidden" name="view" value="map" />}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
