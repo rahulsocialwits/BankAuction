@@ -157,7 +157,7 @@ export const DEFAULT_TERMS: PolicyContent = {
     ),
     sec(
       "Accounts and premium plans",
-      "You are responsible for keeping your login details safe and for activity under your account. Premium plans unlock extra information such as borrower details and document links for the period you have paid for. Fees, if any, are shown at the time of purchase; refund rules, where they apply, are stated on the pricing page.",
+      "You are responsible for keeping your login details safe and for activity under your account. Premium plans unlock extra information such as borrower details and document links for the period you have paid for. Fees, if any, are shown at the time of purchase, together with any refund terms that apply.",
     ),
     sec(
       "Acceptable use",
@@ -234,7 +234,7 @@ export const DEFAULT_FAQ: FaqContent = {
       name: "Getting started",
       items: [
         fq("What is BankAuction.co?", "BankAuction.co is a free-to-search platform that gathers bank-auction property notices from across India into one place, so you can search by state, city, bank, property type and price."),
-        fq("Is it free to use?", "Searching and viewing listings is free. A paid premium plan unlocks extra information such as borrower details and links to the official documents."),
+        fq("Is it free to use?", "Searching and viewing listings is free. Premium plans are planned to unlock extra information such as borrower details; they are not fully available yet. See the Pricing page."),
         fq("How often are listings updated?", "Listings are refreshed automatically several times a day. Banks can still change or cancel an auction, so always confirm with the bank."),
         fq("Do you sell the properties?", "No. We are not an auctioneer or a broker. We show the information; bidding and payment happen with the bank or its authorised auction portal."),
       ],
@@ -263,7 +263,7 @@ export const DEFAULT_FAQ: FaqContent = {
       id: "account-premium",
       name: "Account and premium",
       items: [
-        fq("What does the premium plan include?", "Premium shows full borrower details and opens the official documents attached to each listing, along with alerts. See the Pricing page for the current plans."),
+        fq("What does the premium plan include?", "Premium is planned to show full borrower details and document links where available. Personalised auction alerts are planned and are not yet available. See the Pricing page for the current plans."),
         fq("How do I pay for a plan?", "Plans are paid online through our payment partner. If online payment is not yet available for you, contact us and we will activate a plan manually."),
         fq("How do I contact support?", "Use the Contact page or the phone number and email shown in the footer. We reply during working hours."),
       ],

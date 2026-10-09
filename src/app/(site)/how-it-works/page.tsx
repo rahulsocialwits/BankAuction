@@ -6,7 +6,7 @@ const STEPS = [
   },
   {
     title: "Review",
-    body: "Open a listing to see the full auction summary, property description, legal schedule and any linked official documents — all attributed to the source that published them.",
+    body: "Open a listing to see the full auction summary, property description, legal schedule and the source information available — attributed to the source that published it. Document availability varies by listing.",
   },
   {
     title: "Verify",

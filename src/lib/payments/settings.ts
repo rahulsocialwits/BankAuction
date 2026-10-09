@@ -10,7 +10,7 @@ export interface Plan {
 }
 
 export const DEFAULT_PLANS: Plan[] = [
-  { id: "3m", name: "3 Month", priceInr: 2500, days: 90, note: "Refund on 1st week cancellation", active: true },
+  { id: "3m", name: "3 Month", priceInr: 2500, days: 90, note: "", active: true },
   { id: "6m", name: "6 Month", priceInr: 4000, days: 180, note: "Save 20%", active: true },
   { id: "1y", name: "1 Year", priceInr: 7000, days: 365, note: "Save 30%", active: true },
 ];
