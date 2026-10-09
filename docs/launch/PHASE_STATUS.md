@@ -1,0 +1,36 @@
+# Phase status tracker
+
+Single source of truth for progress. The LLM updates this file in the same PR that completes work. Never mark a phase Done without the exit-gate evidence listed.
+
+Status values: NOT STARTED, AUDITING, IN PROGRESS, BLOCKED (state on what), DONE (gate evidence linked).
+Stage columns follow spec 19: implemented / tested / merged / deployed / production smoke-tested. Use yes, no or NOT VERIFIED. Never infer one stage from another.
+
+| Phase | Title | Launch-critical | Depends on | Status | Implemented | Tested | Merged | Deployed | Smoke-tested | Evidence (PR / CI / live check links) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| P01 | [Orient, baseline and owner decisions](phases/P01-orient-baseline-decisions.md) | Yes | none | NOT STARTED | no | no | no | no | no |  |
+| P02 | [Engineering foundation and release process](phases/P02-engineering-foundation.md) | Yes | P01 | NOT STARTED | no | no | no | no | no |  |
+| P03 | [Data model and provenance design](phases/P03-data-model-design.md) | Yes | P01, P02 | NOT STARTED | no | no | no | no | no |  |
+| P04 | [Lifecycle and counting core](phases/P04-lifecycle-counting-core.md) | Yes | P03 | NOT STARTED | no | no | no | no | no |  |
+| P05 | [Location data quality and city pages' foundation](phases/P05-location-quality.md) | Yes | P01, P03, P04 | NOT STARTED | no | no | no | no | no |  |
+| P06 | [Source compliance and ingestion health](phases/P06-source-compliance-ingestion.md) | Yes | P03 | NOT STARTED | no | no | no | no | no |  |
+| P07 | [Search, filters, sort and pagination everywhere](phases/P07-search-filters-pagination.md) | Yes | P04, P05 | NOT STARTED | no | no | no | no | no |  |
+| P08 | [Property cards and detail page to spec](phases/P08-cards-detail-page.md) | Yes | P04, P06, P07 | NOT STARTED | no | no | no | no | no |  |
+| P09 | [Coordinates and map discovery](phases/P09-coordinates-map.md) | Partial | P03, P05, P07 | NOT STARTED | no | no | no | no | no |  |
+| P10 | [Homepage, city/region/institution pages and SEO](phases/P10-home-city-seo.md) | Yes | P05, P07, P08 | NOT STARTED | no | no | no | no | no |  |
+| P11 | [Security and privacy baseline](phases/P11-security-privacy-baseline.md) | Yes | P02 | NOT STARTED | no | no | no | no | no |  |
+| P12 | [Accounts, consent and preferences](phases/P12-accounts-consent-preferences.md) | Yes | P11 | NOT STARTED | no | no | no | no | no |  |
+| P13 | [Plans, entitlements and premium access control](phases/P13-plans-entitlements.md) | Yes (paid launch) | P11, P12 | NOT STARTED | no | no | no | no | no |  |
+| P14 | [Payments, invoices and refunds](phases/P14-payments-billing.md) | Yes (paid launch) | P13 | NOT STARTED | no | no | no | no | no |  |
+| P15 | [Alerts and notifications](phases/P15-alerts-notifications.md) | Partial | P12, P13 | NOT STARTED | no | no | no | no | no |  |
+| P16 | [Admin operations, audit log and support](phases/P16-admin-operations-support.md) | Yes | P03, P04, P05, P06 | NOT STARTED | no | no | no | no | no |  |
+| P17 | [Risk intelligence, compare, client reports and media rights](phases/P17-risk-compare-reports-media.md) | Partial | P08, P13, P16 | NOT STARTED | no | no | no | no | no |  |
+| P18 | [Analytics, content and localisation](phases/P18-analytics-content-localisation.md) | Partial | P10, P12 | NOT STARTED | no | no | no | no | no |  |
+| P19 | [Partner programme and team features](phases/P19-partners-teams.md) | No (post-launch, behind flags) | P13, P14, P16 | NOT STARTED | no | no | no | no | no |  |
+| P20 | [Hardening, full acceptance and launch readiness](phases/P20-release-candidate-launch.md) | Yes | all launch-critical phases | NOT STARTED | no | no | no | no | no |  |
+
+## Notes from the 9 Oct 2026 audit (starting state)
+
+- PR #25 (city counts) and PR #26 (map) are merged and deployed. City tiles equal results totals (8/8, live checked). Map shows 0 pins in production.
+- Main at 6404be2 when this system was written. CI and Vercel results for those PRs were not read.
+- Admin console was not audited live.
+- See data/live_audit_2026-10-09.csv and data/issues_2026-10-09.csv.

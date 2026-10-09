@@ -3,6 +3,9 @@
 Indian bank-auction property discovery website (Next.js 16 · React 19 · Prisma · PostgreSQL · Vercel).
 Production: https://auction.bizsocio.com
 
+> **Working on this project with an AI assistant or as a new developer?** Start with [`docs/launch/PROTOCOL.md`](docs/launch/PROTOCOL.md). It defines the 20-phase launch plan, what to audit first, and the approval rules.
+
+
 **New here? Start with [docs/PROJECT-HANDOVER.md](docs/PROJECT-HANDOVER.md).** The documentation package:
 
 | File | Topic |
