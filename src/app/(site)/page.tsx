@@ -67,7 +67,7 @@ export default async function Home() {
     : topBanks.filter((b) => b._count.auctions > 0);
 
   const stats = [
-    { label: "Active Listings", value: activeListings },
+    { label: "Listings in Catalogue", value: activeListings },
     { label: "Banks Covered", value: banksCovered },
     { label: "Upcoming Auctions", value: upcomingAuctions },
   ];
@@ -151,7 +151,7 @@ export default async function Home() {
             const m = imageUrl(versions, cityKey(name, "m"));
             const count = countByCity.get(city) ?? 0;
             return (
-              <Link key={name} href={`/properties?city=${encodeURIComponent(city)}&status=all`} className="group block text-center">
+              <Link key={name} href={`/properties?city=${encodeURIComponent(city)}&status=active`} className="group block text-center">
                 <div className="relative aspect-[221/148] rounded-2xl overflow-hidden bg-gradient-to-br from-brand to-brand-dark shadow-sm group-hover:shadow-lg transition-shadow">
                   {d || m ? (
                     <ResponsiveImage desktop={d} mobile={m} alt={name} className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
@@ -160,7 +160,7 @@ export default async function Home() {
                   )}
                 </div>
                 <div className="mt-2.5 text-sm font-semibold text-black/90">{name}</div>
-                <div className="text-xs text-brand-muted">{count} listing{count === 1 ? "" : "s"}</div>
+                <div className="text-xs text-brand-muted">{count} active propert{count === 1 ? "y" : "ies"}</div>
               </Link>
             );
           })}
