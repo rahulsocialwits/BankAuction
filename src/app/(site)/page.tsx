@@ -22,7 +22,7 @@ const WHY_CHOOSE = [
   { title: "Source-backed information", body: "Every figure and fact traces back to an official auction notice — nothing is invented." },
   { title: "Broad coverage", body: "Residential, commercial, industrial, agricultural and land auctions from banks across India." },
   { title: "Always up to date", body: "Listings refresh automatically, so prices, dates and statuses stay current." },
-  { title: "Full documents", body: "Sale notices, bid forms and terms are linked directly on every listing." },
+  { title: "Source information", body: "Explore property auction listings and available source information. Document availability varies by listing." },
 ];
 
 export default async function Home() {

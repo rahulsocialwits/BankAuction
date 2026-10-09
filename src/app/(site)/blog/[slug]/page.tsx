@@ -112,7 +112,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           <div className="mt-8 rounded-xl bg-brand p-5 text-white sm:flex sm:items-center sm:justify-between sm:gap-6">
             <div>
               <div className="font-semibold">Looking for a bank auction property?</div>
-              <p className="mt-1 text-sm text-white/75">Browse verified listings with links to the official sale notices.</p>
+              <p className="mt-1 text-sm text-white/75">Browse bank auction listings with the source information available for each.</p>
             </div>
             <Link href="/properties" className="mt-4 sm:mt-0 inline-block shrink-0 rounded-lg bg-gold px-5 py-2.5 text-sm font-medium text-white hover:bg-gold-dark">Explore Auctions</Link>
           </div>

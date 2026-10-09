@@ -4,11 +4,8 @@ import { getPaymentSettings } from "@/lib/payments/settings";
 
 const FEATURES = [
   "Full borrower name & contact details",
-  "Auction document / notice access",
+  "Auction document / notice access (availability varies by listing)",
   "Auction history",
-  "Daily mobile notification",
-  "Daily email alert",
-  "Multiple city email alert",
   "Email support",
 ];
 
@@ -24,13 +21,15 @@ export default async function PricingPage() {
   const settings = await getPaymentSettings();
   const PLANS = settings.plans
     .filter((p) => p.active)
-    .map((p) => ({ label: p.name, price: p.priceInr, note: p.note }));
+    // No refund promise is shown until a refund policy and a working refund process are approved (founder decision). This also hides
+    // a refund line saved earlier in Admin -> Payments.
+    .map((p) => ({ label: p.name, price: p.priceInr, note: /refund/i.test(p.note) ? "" : p.note }));
   return (
     <main className="w-full px-5 lg:px-10 xl:px-16 py-14">
       <div className="text-center mb-10">
         <h1 className="text-2xl font-semibold mb-2">BankAuction Premium</h1>
         <p className="text-brand-muted text-sm max-w-xl mx-auto">
-          Unlock full borrower names, complete addresses, and priority alerts. Online payment isn&apos;t live yet —
+          Premium is planned to include full borrower names and complete addresses. Personalised auction alerts are planned and are not yet available. Online payment isn&apos;t live yet —
           contact us to activate a plan manually in the meantime.
         </p>
       </div>
@@ -52,7 +51,7 @@ export default async function PricingPage() {
       </div>
 
       <div className="bg-white border border-brand-border rounded-2xl p-6 max-w-md mx-auto">
-        <div className="font-semibold mb-3">What&apos;s included</div>
+        <div className="font-semibold mb-3">What Premium is planned to include</div>
         <ul className="text-sm space-y-2 text-black/80">
           {FEATURES.map((f) => (
             <li key={f} className="flex items-center gap-2">
