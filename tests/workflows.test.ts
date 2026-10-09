@@ -59,7 +59,7 @@ function run(file: string, fake: { code?: string; body?: string; rc?: number }, 
   const r = spawnSync("bash", ["-e", "-c", stepScript(file)], {
     cwd: work,
     encoding: "utf8",
-    env: { PATH: `${bin}:${process.env.PATH}`, GITHUB_STEP_SUMMARY: summary, FAKE_CODE: fake.code ?? "200", FAKE_BODY: fake.body ?? "", FAKE_RC: String(fake.rc ?? 0), ...env } as NodeJS.ProcessEnv,
+    env: { PATH: `${bin}:${process.env.PATH}`, GITHUB_STEP_SUMMARY: summary, FAKE_CODE: fake.code ?? "200", FAKE_BODY: fake.body ?? "", FAKE_RC: String(fake.rc ?? 0), ...env } as unknown as NodeJS.ProcessEnv,
   });
   const out = (r.stdout ?? "") + (r.stderr ?? "");
   const sum = readFileSync(summary, "utf8");
