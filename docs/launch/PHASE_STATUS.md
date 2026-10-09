@@ -28,9 +28,15 @@ Stage columns follow spec 19: implemented / tested / merged / deployed / product
 | P19 | [Partner programme and team features](phases/P19-partners-teams.md) | No (post-launch, behind flags) | P13, P14, P16 | NOT STARTED | no | no | no | no | no |  |
 | P20 | [Hardening, full acceptance and launch readiness](phases/P20-release-candidate-launch.md) | Yes | all launch-critical phases | NOT STARTED | no | no | no | no | no |  |
 
-## P01 owner decisions and launch mode (2026-10-09)\n\n- Owner approved recommended defaults for D01–D16; see [DECISIONS.md](DECISIONS.md).\n- D06 selects free discovery launch targeted for 20 Oct 2026. P13 and P14 are not launch-critical for free discovery; they remain required for paid launch. P15 is deferred for free discovery, with basic alerts needed for paid launch.\n- P01 remains IN PROGRESS: operator baseline counts, current GitHub Actions CI evidence, and Data Engine run-history evidence are still outstanding. Do not mark P01 DONE until its exit gate is evidenced.\n\n## Notes from the 9 Oct 2026 audit (starting state)
+## P01 owner decisions and launch mode (2026-10-09)
+
+- Owner approved recommended defaults for D01-D16; see [DECISIONS.md](DECISIONS.md).
+- D06 selects free discovery launch targeted for 20 Oct 2026. P13 and P14 are not launch-critical for free discovery; they remain required for paid launch. P15 is deferred for free discovery, with basic alerts needed for paid launch.
+- P01 is DONE: its exit gate (every baseline figure or an explicit NOT VERIFIED with an owner action; decisions recorded; CI and Vercel state recorded) is met. Outstanding items are carried as exceptions in [BASELINE.md](BASELINE.md): operator queries Q1-Q9, Data Engine run history, admin audit, production smoke test. P05 must not plan or run a location backfill until Q2, Q3 and Q9 are recorded.
+
+## Notes from the 9 Oct 2026 audit (starting state)
 
 - PR #25 (city counts) and PR #26 (map) are merged and deployed. City tiles equal results totals (8/8, live checked). Map shows 0 pins in production.
-- Main at 6404be2 when this system was written. CI and Vercel results for those PRs were not read.
+- Main at 6404be2 when this system was written. CI was later read and is green on every checked main commit (see BASELINE.md).
 - Admin console was not audited live.
 - See data/live_audit_2026-10-09.csv and data/issues_2026-10-09.csv.
