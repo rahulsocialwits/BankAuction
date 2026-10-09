@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import PropertyCard from "@/components/PropertyCard";
 import PropertyFilterForm from "@/components/PropertyFilterForm";
+import PropertyMapView from "@/components/PropertyMapView";
+import ViewToggle from "@/components/ViewToggle";
+import { parseView, splitMappable } from "@/lib/map/coordinates";
 import { listPublishedProperties, countPublishedProperties, toPropertyCardData, StatusGroup, type PropertyFilters } from "@/lib/queries/listProperties";
 import { getLocalityMap } from "@/lib/queries/localities";
 import { getPlaces } from "@/lib/queries/places";
@@ -18,7 +21,7 @@ const CATEGORIES: { label: string; value: PropertyCategory }[] = [
   { label: "Agricultural", value: "AGRICULTURAL" },
 ];
 
-type SP = { category?: string; q?: string; bank?: string; state?: string; city?: string; locality?: string; status?: string; priceMin?: string; priceMax?: string; page?: string };
+type SP = { category?: string; q?: string; bank?: string; state?: string; city?: string; locality?: string; status?: string; priceMin?: string; priceMax?: string; page?: string; view?: string };
 
 function placeLabel(sp: SP) {
   if (sp.locality && sp.city) return `${sp.locality}, ${sp.city}`;
@@ -51,6 +54,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
   const { category, q, bank, state, city, locality, status, priceMin, priceMax } = sp;
   const page = Math.max(1, Number(sp.page ?? "1") || 1);
   const PAGE_SIZE = 48;
+  const view = parseView(sp.view);
   const validCategory = CATEGORIES.find((c) => c.value === category)?.value;
   const statusGroup: StatusGroup = status === "completed" || status === "active" ? status : "all";
 
@@ -91,14 +95,27 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
         places={places}
         banks={banks}
         categories={CATEGORIES}
-        initial={{ q, state, city, locality, category: validCategory, bank, status: statusGroup, priceMin, priceMax }}
+        initial={{ q, state, city, locality, category: validCategory, bank, status: statusGroup, priceMin, priceMax, view }}
       />
+
+      <div className="flex items-center justify-between gap-3 mb-5">
+        <ViewToggle params={{ category, q, bank, state, city, locality, status: statusGroup, priceMin, priceMax, page: sp.page }} view={view} />
+      </div>
 
       {properties.length === 0 ? (
         <div className="text-center py-16 border border-dashed border-brand-border rounded-2xl bg-white">
           <p className="font-medium text-brand mb-1">No listings match these filters</p>
           <p className="text-sm text-brand-muted">Try a different area, or widen the status to &quot;All&quot;.</p>
         </div>
+      ) : view === "map" ? (
+        <PropertyMapView
+          items={(() => {
+            // Coordinates come from the stored fields only; a property without reliable ones simply has no pin.
+            const { mappable } = splitMappable<(typeof properties)[number]>(properties);
+            const pin = new Map(mappable.map((m) => [m.row.id, { lat: m.lat, lng: m.lng }]));
+            return properties.map((p) => ({ id: p.id, slug: p.slug, title: p.title, point: pin.get(p.id) ?? null, card: <PropertyCard property={toPropertyCardData(p)} /> }));
+          })()}
+        />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
           {properties.map((p) => (
@@ -110,7 +127,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
       {totalCount > PAGE_SIZE && (() => {
         const totalPages = Math.ceil(totalCount / PAGE_SIZE);
         const params = new URLSearchParams();
-        for (const [key, value] of Object.entries({ category, q, bank, state, city, locality, status: statusGroup, priceMin, priceMax })) {
+        for (const [key, value] of Object.entries({ category, q, bank, state, city, locality, status: statusGroup, priceMin, priceMax, view: view === "map" ? "map" : undefined })) {
           if (value) params.set(key, value);
         }
         return (

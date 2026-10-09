@@ -24,6 +24,7 @@ Legend — Safe to share: **No** for every secret. "Public" means the value is e
 | `NODE_ENV` | set by Next/Vercel; `secure` flag of the admin cookie in production | automatic | `admin/login/actions.ts` | both | system | Yes |
 | `GITHUB_ACTIONS`, `GITHUB_EVENT_NAME` | set by GitHub; only label run logs in `scripts/ingest.ts` | automatic | `scripts/ingest.ts` | Actions | system | Yes |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | listed in `.env.example` | **not read anywhere in `src`/`scripts`** — leftover; NOT VERIFIED whether Vercel has them | — | — | URL/public key / **service-role secret** | URL: yes; service role: **No** |
+| `NEXT_PUBLIC_MAP_TILE_URL`, `NEXT_PUBLIC_MAP_ATTRIBUTION` | optional; default is OpenStreetMap's free public tiles (no key) with attribution | `src/lib/map/config.ts` | map view on `/properties?view=map` | no | tile URL template (`{z}/{x}/{y}`) / attribution HTML | Yes (public) |
 | `AI_EXTRACTOR_PROVIDER`, `NEXT_PUBLIC_SITE_URL` | in `.env.example` only; the site URL is hardcoded as `SITE_URL` in `src/lib/seo.ts` (`https://auction.bizsocio.com`) | not read | — | — | config | Yes |
 
 ## GitHub repository secrets
