@@ -231,9 +231,9 @@ test("the cron endpoint takes the lease before it runs the tick, answers 200 'sk
   assert.match(read("src/app/api/me/route.ts"), /claimId/);
 });
 
-test("the existing GitHub Actions trigger is kept unchanged", () => {
+test("the GitHub Actions trigger still calls the ingest endpoint every 5 minutes", () => {
   const yml = read(".github/workflows/tick.yml");
-  assert.match(yml, /cron: "\*\/5 \* \* \* \*"/);
+  assert.match(yml, /cron: "3-58\/5 \* \* \* \*"/); // every 5 minutes, offset off the :00/:05 marks (see workflows.test.ts)
   assert.match(yml, /api\/cron\/ingest\?limit=100/);
 });
 

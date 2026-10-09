@@ -4,7 +4,7 @@ There is **no separate worker**. Everything that runs "automatically" is one HTT
 
 | Trigger | File | Frequency | Notes |
 |---|---|---|---|
-| **GitHub Actions** | `.github/workflows/tick.yml` | cron `*/5 * * * *` requested | the intended primary scheduler. GitHub's `schedule` event is **best-effort**: on 2026-10-05/06 only 2 runs happened in ≈ 4 h (they failed because of the route bug fixed in `2feebac`). Do not rely on exact 5-minute spacing |
+| **GitHub Actions** | `.github/workflows/tick.yml` | cron `3-58/5 * * * *` requested (minutes 3, 8, 13 … 58; moved off the busy :00/:05 marks, see "Workflow hardening") | the intended primary scheduler. GitHub's `schedule` event is **best-effort**: on 2026-10-05/06 only 2 runs happened in ≈ 4 h (they failed because of the route bug fixed in `2feebac`). Do not rely on exact 5-minute spacing |
 | **Visitor safety net** | `src/app/api/me/route.ts` → `claimTick()` in `src/lib/pipeline/tick.ts` | any page view may start a tick | starts one **in the background (`after()`)** if no tick ran in the last **35 min**, or in the last **5 min while an "Import all" is active** (a source with `"importAll":true` or the built-in switch). A claim row (`SourceRunLog kind=claim`) stops two visitors from starting two ticks; a claim older than 6 min is considered dead |
 | Vercel Cron | `vercel.json` has **no `crons`** entry (the project is on the Hobby plan; commit "Fix Vercel Hobby deployment cron limit") | — | NOT IMPLEMENTED |
 | Manual ingest of the built-in crawler | `.github/workflows/ingest.yml` (`workflow_dispatch` only) → `npm run ingest -- <source> <limit>` (`scripts/ingest.ts`) | manual | needs repository secrets `DATABASE_URL`, `DIRECT_URL`, `AI_API_KEY`, `AI_BASE_URL`, `AI_EXTRACTOR_MODEL` |
@@ -31,7 +31,7 @@ curl -sS -m 295 -H "x-cron-secret: $CRON_SECRET" "https://auction.bizsocio.com/a
 or GitHub → Actions → "Scheduler tick" → "Run workflow". An unauthenticated call (`curl https://auction.bizsocio.com/api/cron/ingest`) must answer `401 {"ok":false,"error":"Unauthorized"}`; that proves the route is alive.
 
 ## GitHub Actions workflow (`tick.yml`)
-* Name "Scheduler tick"; triggers: `schedule` (`*/5 * * * *`) and `workflow_dispatch`; `concurrency.group: scheduler-tick` (no overlapping runs, no cancel); job `tick` on `ubuntu-latest`, `timeout-minutes: 7`.
+* Name "Scheduler tick"; triggers: `schedule` (`3-58/5 * * * *`) and `workflow_dispatch`; `concurrency.group: scheduler-tick` (no overlapping runs, no cancel); job `tick` on `ubuntu-latest`, `timeout-minutes: 7`.
 * Secret needed: **`CRON_SECRET`** (repository secret; must equal the Vercel env var of the same name). Missing → the job fails with "CRON_SECRET repository secret is missing".
 * Step: `curl --max-time 295` to `https://auction.bizsocio.com/api/cron/ingest?limit=100` with header `x-cron-secret`; prints status and the first 3,000 characters of the body; **fails unless HTTP 200 and the body contains `"ok":true`**.
 * Debugging a failed run: open the run → step "Trigger tick" → read `HTTP <code>` and the JSON. 401 = secret mismatch; 500 = read the `error` text and the Vercel runtime logs; curl timeout = the tick exceeded 295 s (see budgets below); "secret missing" = add it in Settings → Secrets and variables → Actions.
@@ -75,3 +75,40 @@ GitHub's schedule is best-effort and can stop on its own, so add an independent 
 3. Turn on failure notifications for the job (e-mail). A duplicate trigger is harmless: it answers `skipped`.
 4. Create a second cron job: URL `https://auction.bizsocio.com/api/cron/health`, every 15 minutes, same header, and enable notifications on failure. It answers 503 when the scheduler has been late for about 60 minutes, so you get an e-mail even if GitHub is down.
 
+
+
+## Workflow hardening (GitHub Actions only)
+
+Scope: the two workflow files, this document and `tests/workflows.test.ts`. No application code, secret, production setting or data changed. The ingestion lease and overlap protections (`tickLease.ts`, `concurrency: scheduler-tick`) are untouched. cron-job.org / any external scheduler is deliberately NOT used.
+
+**Schedules.** GitHub delays or drops scheduled runs most at busy minute boundaries (:00, :05, :15 …). Tick: `3-58/5 * * * *` (minutes 3, 8, … 58). Watchdog: `7,22,37,52 * * * *`. Neither lands on a multiple of 5 / 15. This improves the odds only: GitHub's `schedule` event is **best-effort** and cannot be guaranteed.
+
+**Reading a tick run** (Actions -> Scheduler tick -> the run -> step log and Summary). The log always prints `curl exit code: N, HTTP status: NNN` and the first 3000 bytes of the reply (the secret is never printed).
+
+| What you see | Meaning | Run result |
+|---|---|---|
+| `HTTP 200` + `"ok":true` | tick ran | green |
+| `HTTP 200` + `"skipped":true` + reason | another trigger holds the lease; harmless | green (notice) |
+| curl exit 28 | no reply within 295 s; the tick may still have finished on the server (check Engine -> History) | red |
+| other curl exit (6, 7, 35, 52, 56 …) | could not reach the site (DNS / connect / TLS / dropped connection) | red |
+| HTTP 401 | `CRON_SECRET` in GitHub differs from Vercel | red |
+| HTTP 500 | tick threw, or `CRON_SECRET` not set in Vercel; body has the message | red |
+| HTTP 502 / 503 / 504 | hosting platform error or timeout | red |
+| empty `CRON_SECRET` | GitHub secret missing | red, before any request |
+
+The tick is never retried by the workflow, so a retry cannot start a second tick.
+
+**Reading a watchdog run.** It checks `/api/cron/health` (up to 2 retries for network errors):
+
+| Message | Meaning |
+|---|---|
+| healthy, N minute(s) | last successful tick within 60 minutes |
+| SCHEDULER LATE | no successful tick for N minutes: the real alert |
+| CHECK COULD NOT RUN (network / unexpected HTTP / database unreadable) | the check failed, says nothing about the scheduler |
+| CONFIGURATION (401 / 500) | secret mismatch or `CRON_SECRET` unset: fix the secret, not the scheduler |
+
+The watchdog runs on the same GitHub scheduler, so it is not independent of it.
+
+**48-hour measurement (after merge).** Count two things separately: (1) scheduled workflow runs (Actions -> Scheduler tick, event = schedule; 288 expected per 24 h) and (2) successful ingestion ticks (Engine -> History `cron` rows with status ok, from any trigger, including visitors). Record the gaps. Then decide the next step.
+
+**Not implemented:** a self-chaining long-polling workflow (Proposal B) is deferred until the measurement is in.
