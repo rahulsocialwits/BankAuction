@@ -29,7 +29,7 @@ export default async function CitiesPage() {
   return (
     <main className="w-full px-5 lg:px-10 xl:px-16 py-10">
       <h1 className="text-2xl font-semibold mb-1">Browse by State and City</h1>
-      <p className="text-brand-muted text-sm mb-6">Every state and city with live bank auction properties, with the number of listings.</p>
+      <p className="text-brand-muted text-sm mb-6">Every state and city in our catalogue, with the total number of published listings (including auctions that have ended). For auctions you can still bid on, open a city page.</p>
       {groups.length === 0 ? (
         <p className="text-brand-muted text-sm py-10 text-center">No published listings with a location yet.</p>
       ) : (

@@ -266,6 +266,7 @@ test("REGRESSION: no visitor-facing query filters by the raw stored open status 
   const files = [
     "src/lib/queries/listAuctions.ts",
     "src/lib/queries/listProperties.ts",
+    "src/lib/queries/publishedWhere.ts",
     "src/lib/queries/autoMeta.ts",
     "src/app/(site)/page.tsx",
     "src/app/admin/(shell)/page.tsx",
@@ -278,8 +279,8 @@ test("REGRESSION: no visitor-facing query filters by the raw stored open status 
     assert.doesNotMatch(src, /status: "COMPLETED", property/, f);
   }
   assert.match(read("src/lib/queries/listAuctions.ts"), /auctionStatusWhere\(statuses\)/);
-  assert.match(read("src/lib/queries/listProperties.ts"), /activeAuctionWhere\(\)/);
-  assert.match(read("src/lib/queries/listProperties.ts"), /inactiveAuctionWhere\(\)/);
+  assert.match(read("src/lib/queries/publishedWhere.ts"), /activeAuctionWhere\(\)/);
+  assert.match(read("src/lib/queries/publishedWhere.ts"), /inactiveAuctionWhere\(\)/);
 });
 
 test("the status shown on cards, the property page and the public API goes through effectiveAuctionStatus", () => {
