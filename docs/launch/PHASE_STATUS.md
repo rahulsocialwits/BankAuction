@@ -7,7 +7,7 @@ Stage columns follow spec 19: implemented / tested / merged / deployed / product
 
 | Phase | Title | Launch-critical | Depends on | Status | Implemented | Tested | Merged | Deployed | Smoke-tested | Evidence (PR / CI / live check links) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| P01 | [Orient, baseline and owner decisions](phases/P01-orient-baseline-decisions.md) | Yes | none | IN PROGRESS | yes | no | no | no | NOT VERIFIED | [WP1.2/WP1.3 PR](https://github.com/rahulsocialwits/BankAuction/pull/29) — owner defaults recorded; baseline counts and CI evidence still outstanding |
+| P01 | [Orient, baseline and owner decisions](phases/P01-orient-baseline-decisions.md) | Yes | none | DONE (exit gate met, exceptions listed in BASELINE.md) | yes | n/a (docs) | yes (PR #29, this PR) | n/a (docs) | NOT VERIFIED | Decisions D01-D16 recorded ([PR #29](https://github.com/rahulsocialwits/BankAuction/pull/29)); CI green on main (BASELINE.md); Vercel READY; Q1-Q9 NOT VERIFIED with owner actions; P05 blocked on Q2/Q3/Q9 |
 | P02 | [Engineering foundation and release process](phases/P02-engineering-foundation.md) | Yes | P01 | NOT STARTED | no | no | no | no | no |  |
 | P03 | [Data model and provenance design](phases/P03-data-model-design.md) | Yes | P01, P02 | NOT STARTED | no | no | no | no | no |  |
 | P04 | [Lifecycle and counting core](phases/P04-lifecycle-counting-core.md) | Yes | P03 | NOT STARTED | no | no | no | no | no |  |
