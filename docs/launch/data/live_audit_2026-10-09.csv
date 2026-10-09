@@ -1,0 +1,32 @@
+Page / check,What was checked,Expected,Observed result
+Home /,"Loads, city tiles with active counts",8 tiles with counts,PASS
+Home tile vs results,Tile count == /properties?city&status=active,Equal,"PASS (8/8, earlier check)"
+/properties,Total listings,Total shown,"PASS - 9,304"
+/properties?status=active,Active total,Shown,"6,988 (suspect, I-04)"
+/properties?status=completed,Completed total,Shown,"2,356; active+completed = 9,344 > 9,304 (40 properties in both - allowed)"
+/properties?city=Nashik,City filter vs real supply,~68,FAIL - 8 (I-01)
+/properties?q=nashik,Keyword search,Matches,68 (works)
+/properties?keyword=nashik,Alias param,Filtered,"FAIL - returns 9,304 (I-13)"
+/properties?state=Maharashtra,State filter,Filtered,"1,713 (text fallback in use)"
+/properties?view=map,Pins,Pins for geocoded rows,FAIL - 0 pins (I-02)
+/cities,City list,Clean list,"972 cities, variants (I-06)"
+/city/nashik,City page,Count + list,Loads; shows only canonical matches
+/auctions/*,"Pagination, true total",Pager,FAIL (I-03)
+/auctions/today,Today view,Exists,FAIL - 404 (I-04b)
+/property/<slug>,"EMD, increment, dates, doc links",Present,PASS (fields present)
+/property/<slug>,"Map, last-checked, risk, share",Per spec,FAIL
+/property/<slug>,Similar properties,Same area,FAIL (I-05)
+/pricing,Plans/prices,Spec prices,FAIL - different prices; copy honest about 'not live'
+/login /register,Pages load,200,PASS (flows not tested - no account creation allowed)
+/my-alerts /saved-properties,Pages load,200,PASS (load only)
+/contact,Form present,Fields,PASS (not submitted)
+/robots.txt,Blocks admin/api/login,Yes,PASS
+/sitemap.xml,"Valid, sensible",Yes,"PASS - 10,268 URLs; thin city URLs (I-06)"
+"/api/v1/properties, /banks",Auth required,401,PASS
+/api/me,No leak when logged out,{user:null},PASS
+/api/cron/health,Protected,401,PASS
+/admin,Redirects when logged out,Redirect,PASS (admin itself not audited)
+Headers,Security headers,"CSP, XFO, nosniff",FAIL - only HSTS (I-09)
+/property-types,Counts reconcile,Sum = total,"FAIL - 8,919 vs 9,304 (I-12)"
+/banks,Per-bank counts,Shown,Loads; counts not reconciled
+Payments / alerts delivery,Working,Per spec,NOT LIVE (stated on site)

@@ -1,0 +1,691 @@
+FINAL BASELINE FOR DEVELOPMENT · Version 1.0 · 9 October 2026
+
+Purpose: define the product to be built, how each major function should behave, what counts as acceptance, and what must not be assumed. This is a product specification, not a claim that every feature is already implemented or that all commercial proposals have been approved.
+
+Product positioning: India’s auction intelligence and buyer-support platform — combining multi-source auction discovery, understandable risk information, alerts, professional tools and a path from discovery to due diligence.
+
+0. How to read this document
+
+-   “MUST” means required for the product scope described here. “SHOULD” means expected unless the product owner explicitly defers it. “LATER PHASE” means designed for but not required in the initial launch.
+
+-   This document defines desired product behaviour. It does not certify current production capabilities. Existing implementation must be checked against each requirement.
+
+-   Commercial prices and launch targets are carried from the client’s Launch & Scale Strategy as proposed values, not silently treated as approved prices. Product owner must confirm them before payment configuration or public display.
+
+-   Source access is permission-dependent. No source may be added or scraped where terms, robots.txt, authentication, CAPTCHA, 401/403 or other restrictions prohibit access. No source-specific permission is implied by this document.
+
+-   No production database mutation, bulk import, backfill, migration, destructive cleanup, or deployment without explicit owner approval and a rollback plan.
+
+1. Product objectives and success
+
+1.1 Core objective
+
+Help Indian property buyers and professionals find relevant auction opportunities, understand the available information and visible risks, monitor deadlines, share opportunities with clients, and access qualified support when needed.
+
+1.2 Differentiation
+
+-   Broader, permission-compliant coverage beyond public-sector bank notices alone, including approved NBFC/HFC, ARC, DRT, NCLT/IBBI liquidation and official-liquidator sources where available.
+
+-   Speed and freshness: make source publication and last-checked time visible; target publication-to-listing under 24 hours where source access and processing allow.
+
+-   Practical intelligence: structured auction terms, source-linked evidence, historical rounds, explicit missing-data flags and carefully qualified risk indicators.
+
+-   Usable discovery: search, filters, maps, location pages and saved alerts.
+
+-   Buyer and professional workflow: shareable client cards/reports, partner attribution, team access and optional diligence/support services.
+
+1.3 Product success measures
+
+  -----------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Metric                    Definition / target from strategy                                                   Notes
+  ------------------------- ----------------------------------------------------------------------------------- ---------------------------------------------------
+  Paid subscribers          Base case ~6,000; stretch 20,000 by 31 Mar 2027                                     Planning targets, not guarantees.
+
+  Free-to-paid conversion   12%+ estimate                                                                       Measure by cohort and channel.
+
+  Paid acquisition cost     Under ₹1,200 paid; under ₹1,500 all-in estimate                                     Targets from strategy; validate with actual data.
+
+  Active partners           400 partners with at least one sale in last 30 days by March                        Track activity, not just registrations.
+
+  Listing freshness         Under 24 hours from source publication where feasible                               Expose timestamps and exceptions.
+
+  Support response          Under 2 working hours first response                                                Operational SLA target.
+
+  Quarterly renewal         60%+ target                                                                         Track renewals and churn.
+
+  Data quality              Counts reconcile; critical dates/prices have source evidence; corrections tracked   Define dashboards and thresholds before launch.
+  -----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+2. User types and permissions
+
+  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Role                                Core capabilities
+  ----------------------------------- --------------------------------------------------------------------------------------------------------------------------------------
+  Public visitor                      Browse permitted public listing summaries, search/filter, view public details, use map/list discovery.
+
+  Free registered user                Saved searches/watchlist and allowed alerts; listing access delayed by 48 hours and selected fields masked if this tier is approved.
+
+  Paid individual subscriber          Same-day eligible notices, full permitted details, documents, contacts and auction history according to plan.
+
+  Professional partner                Partner referral links/codes, conversion reporting, commission statement, shareable client cards.
+
+  Team/firm administrator             Manage seats, invite/revoke team members, shared deal pipeline and branded client materials within plan limits.
+
+  Private Desk customer               Curated deal workflow and human-service coordination according to a separately approved service agreement.
+
+  Content/data reviewer               Review source records, data quality, location, media permissions, risk flags and corrections.
+
+  Administrator                       Manage users, plans, sources, content, moderation, partner programme, support, audit logs and configuration.
+  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Permission rule: access is enforced on the server for every page, API and document request. Hiding or blurring a field in the browser is not access control.
+
+3. Core data model and lifecycle
+
+3.1 Main entities
+
+  -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Entity                              Required information
+  ----------------------------------- -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Property                            Stable ID/slug; property type; address/locality; canonical city/state/PIN where verified; coordinates and precision; description; source links; provenance; publication status; media/document relations.
+
+  Auction round                       Property ID; source auction ID; institution/source; auction type/forum; start/end dates and times with timezone; reserve price; EMD; increment; inspection details; possession type; notice/reference; official source URL; lifecycle status.
+
+  Institution/source                  Name, type (bank, NBFC/HFC, ARC, DRT, NCLT/IBBI, official liquidator, other approved category), source URL, permission/terms review, robots/access state, coverage status, last checked.
+
+  Evidence/provenance                 Field, source document/page, source URL, extracted value, extraction timestamp, confidence/review status, reviewer and correction history.
+
+  Media/document                      Property/round link; type; source/owner; permission status; MIME/type; URL or controlled storage reference; review status; upload date.
+
+  User/subscription                   Identity, consent/preferences, plan, entitlement start/end, payment-provider IDs, invoice records, status and audit history.
+
+  Saved search/alert                  User, filters, delivery channels, frequency, consent, pause/unsubscribe state, last delivery and delivery result.
+
+  Partner/referral                    Partner profile, code/link, attribution window, referred user, paid order, commission basis, refund/clawback and payout state.
+
+  Team/deal                           Organisation, members/roles, shared saved properties, pipeline stage, notes and client-report access.
+  -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+3.2 Auction-round status rules
+
+-   Use one central lifecycle rule for cards, detail pages, counts, filters, alerts and reports. Do not create separate contradictory status logic in components.
+
+-   Supported states: Upcoming, Live, Auction Today, Completed, Cancelled, Postponed, and Undated/Needs Review where the data cannot support a reliable date-based state.
+
+-   Upcoming requires a valid future start. Live applies during a valid auction window. Auction Today is used for a qualifying same-day event according to the approved lifecycle rule. Completed applies after the end time/date. Cancelled and Postponed must not be silently treated as active.
+
+-   Undated rounds are excluded from the trusted active-opportunity headline if neither usable start nor end date exists. They are reported separately for review.
+
+-   End-before-start and partial-date records are flagged for review. Do not invent dates or automatically “repair” source facts.
+
+-   Never overwrite source facts merely to make a status look right. Derived display status may be calculated at read time; status transitions must be tested around date/time boundaries and India Standard Time.
+
+3.3 Property vs round counting
+
+-   Count distinct properties, not auction-round rows, for property cards and headline opportunity counts.
+
+-   A property can have more than one auction round and can appear in active and historical views at different times. Active and completed counts are not necessarily mutually exclusive.
+
+-   General catalogue total includes published properties even if they have no auction round. Active opportunity count excludes properties without a qualifying dated open round.
+
+-   Cancelled and postponed rounds are excluded from active opportunity totals and reported separately.
+
+-   Homepage city active counts use canonical, verified city only. Missing canonical city is a separate data-quality bucket, not silently assigned through fuzzy text matching.
+
+-   City-card count and its corresponding results total must use the same eligibility, canonical location and lifecycle definitions.
+
+4. Public site and navigation
+
+4.1 Main navigation
+
+-   Home
+
+-   Search / All Properties
+
+-   Map View
+
+-   Cities and Regions
+
+-   Institutions / Banks
+
+-   Auction calendar / deadlines
+
+-   How it works
+
+-   Pricing
+
+-   For Professionals / Partner Programme
+
+-   Guides / Insights
+
+-   Help / Contact
+
+-   Sign in / Account
+
+4.2 Homepage
+
+-   Hero explains the value proposition: find auctions across approved sources, understand key risks and act on deadlines.
+
+-   Prominent search by keyword/location/PIN code, with filters for property type, budget, institution, auction date and status.
+
+-   Coverage counters: eligible notices live today, institutions tracked, states/UTs covered. Counts must be derived from defined metrics, show an “as of” timestamp and must not be inflated by duplicates or stale/blocked sources.
+
+-   Active opportunity city tiles must show qualifying upcoming/live/today properties only. Each tile links to a page whose result count follows the same rule.
+
+-   Sections for Auction of the Day, recently added opportunities, map discovery, relevant guides, video/media where permitted, professional benefits and pricing.
+
+-   Show source freshness and honest limitations. Never claim “verified title”, “guaranteed profit”, “safe investment” or unsupported below-market savings.
+
+4.3 Search and filters
+
+-   Keyword search across permitted structured fields; canonical city, state, PIN code, locality, institution/source, property type, price range, auction date range, possession type and lifecycle status.
+
+-   Sort by newest published/updated, auction deadline, reserve price low-to-high/high-to-low and relevance. Each sort must be deterministic and paginated.
+
+-   Filters combine predictably and are reflected in shareable URLs. Clear-all and active-filter chips are required.
+
+-   Show result count, applied filters, pagination or load-more with stable ordering, empty state, and helpful reset suggestions.
+
+-   No results must not be “fixed” by silently broadening location or text matching.
+
+4.4 Property cards
+
+-   Show property title/type, canonical location (with uncertainty label if unverified), reserve price when available, auction date/deadline, institution, status, source freshness, media thumbnail if permitted, and visible data-quality/risk indicators.
+
+-   Actions: open details, save/watch, share, compare, set alert. Access-controlled actions prompt sign-in or plan upgrade where relevant.
+
+-   Missing data is labelled “Not available in source” or “Needs confirmation”, never fabricated. Placeholder imagery is used unless media type and usage permission are confirmed.
+
+4.5 Map discovery — required feature
+
+-   Provide a map/list toggle and responsive split view on desktop; on mobile use a map screen with a clear list toggle.
+
+-   Plot only records with usable, sufficiently accurate coordinates. Do not geocode uncertain addresses into falsely precise pins.
+
+-   Pins or clusters show a compact summary and link to the corresponding property detail. Clustering is required at zoomed-out levels.
+
+-   Map filters and list filters remain synchronised; changing map bounds may optionally narrow results, with an explicit “search this area” action.
+
+-   Provide loading, no-results, no-coordinate and map-provider-error states. Listings without coordinates remain discoverable in list results.
+
+-   Use an approved map provider, document costs/quotas/terms and privacy implications, and provide attribution as required. Map-provider selection is an implementation decision requiring owner approval if it adds a paid service.
+
+4.6 City, state and region pages
+
+-   Separate city from larger metro-region aggregation. Mumbai city and Mumbai Metropolitan Region (MMR) are distinct views.
+
+-   Proposed MMR membership in the client discussions is a draft requiring owner validation before it becomes production logic.
+
+-   City pages show active count, all-status catalogue count, relevant filters, map/list discovery and pagination. Labels must state what is counted.
+
+-   Only canonical verified city values contribute to trusted city counts. Show or internally report unassigned/unknown location totals.
+
+-   SEO pages must provide useful unique information and must not create thin, duplicate or misleading pages.
+
+4.7 Property detail page
+
+-   Clear title and location; map when coordinates are reliable; reserve price; auction start/end; EMD; increment; institution; auction type; possession; inspection details; eligibility/process notes where source-supported.
+
+-   Current and prior auction rounds with status, date, reserve-price history where available and provenance for each value.
+
+-   Official notice/source links and permitted documents, with access control by entitlement. Display “source notice” and a last-checked timestamp.
+
+-   Gallery for permitted photographs/video, with media type and source/permission controls. If none is cleared, use a neutral placeholder.
+
+-   Risk indicators with explanation, evidence, confidence/review state and date last reviewed. Missing or unreviewed flags must not imply no risk.
+
+-   Share, save, compare, set alert, download/share client card, and request qualified professional help where available.
+
+-   Disclaimers: information is for research, not a guarantee of title, possession, price, legal outcome or auction success. Buyer must review official notice and perform independent due diligence.
+
+4.8 Compare and share
+
+-   Allow users to compare selected properties across location, reserve price, EMD, dates, institution, possession, known risks, document availability and source freshness.
+
+-   Generate a shareable client card/report with BankAuction.co branding and, for eligible partners, their approved name/logo and contact details.
+
+-   Reports must identify missing/unverified fields, carry generation timestamp and link back to source notices. Avoid representing automated summaries as a legal opinion.
+
+-   Control private notes and team data; public share links must be revocable or expire according to product settings.
+
+5. Auction intelligence and legal risk
+
+5.1 Risk fields
+
+  ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Risk field                          Expected behaviour
+  ----------------------------------- ------------------------------------------------------------------------------------------------------------------------------
+  Possession                          Represent source-stated physical/symbolic/other/unknown; link evidence; do not infer from vague text without a review label.
+
+  Litigation / case references        Capture only source-supported references; distinguish “mentioned in source” from independent legal verification.
+
+  Society/maintenance dues            Show amount/status only when documented; otherwise “Not disclosed in available source”.
+
+  Tenancy / occupancy                 Record source-stated occupancy/tenancy; unknown is not equivalent to vacant.
+
+  Lis pendens / title concerns        Use as a review flag only when supported by cited evidence or a qualified reviewer.
+
+  Document completeness               Show which notice, terms, annexures and other expected documents are available or missing.
+
+  Data confidence                     Per-field confidence/review state and last review date; retain correction history.
+  ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+5.2 Risk score policy
+
+Do not ship an opaque “legal score” as if it certifies safety. If a score is used, the owner must approve a transparent rubric, evidence standards, weighting, unknown-data handling, review ownership, disclaimers and correction/appeal workflow. Until approved, use descriptive evidence-backed flags (e.g., “Possession type: symbolic — source stated”) rather than a numerical legal rating.
+
+5.3 Review and correction workflow
+
+-   Reviewer sees source facts, extracted fields, evidence links and differences between source and stored values.
+
+-   Reviewer can mark confirmed, source-stated, uncertain, incorrect or needs legal review.
+
+-   Corrections preserve prior value, actor, timestamp and reason. Critical reserve-price/date errors can be escalated and hidden from promotional feeds until reviewed.
+
+-   Publish a correction/contact path with a target review SLA of 24 hours from the client strategy, subject to staffing.
+
+6. Data sourcing, ingestion and provenance
+
+-   Maintain a source register by institution/source category, state/coverage, terms review, robots/access policy, last successful check, last publication date, source health and known limitations.
+
+-   Before enabling a source, record its legal/terms review and approved collection method. Public accessibility alone does not establish reuse rights for images, documents or substantial text.
+
+-   Never bypass authentication, CAPTCHA, robots.txt, 401/403, anti-bot blocks or source restrictions. Stop when refused and record the refusal.
+
+-   Store original source URL, source identifier, retrieval time, publication time when provided, extraction version, and field-level evidence where possible.
+
+-   Normalize institution names, property type, money/date/time formats and location, but preserve raw source values and never erase provenance.
+
+-   Deduplicate conservatively using source IDs and evidence. Potential duplicates go to review; do not automatically merge materially different auction rounds or delete records based only on similar text.
+
+-   Track source runs and show success, no-change, blocked, partial, failed and stale states distinctly. Retry only according to approved retry policy; do not treat refusal as a transient error.
+
+-   No ingestion of findauction.in. No source expansion is authorised by this specification merely because a source category is listed.
+
+-   Do not ingest or display source media unless type and permission are confirmed. No unrestricted downloading of official documents/media merely to create thumbnails.
+
+7. Accounts, subscriptions and access entitlements
+
+7.1 Account functions
+
+-   Email/phone sign-in using an approved secure method; account recovery; profile and communication preferences.
+
+-   Explicit opt-in for WhatsApp/SMS/email alerts, purpose and channel; opt-out must be simple and respected promptly.
+
+-   Saved properties, saved searches, alert history, subscription status, invoices and support requests.
+
+-   Server-side authorization for every premium field, document, API and report; test direct URL access and cached-page leakage.
+
+7.2 Access tiers
+
+  -------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Tier                                Proposed entitlement model
+  ----------------------------------- -------------------------------------------------------------------------------------------------------------------------
+  Visitor                             Public summaries; listings may be delayed/masked only if the approved free model requires it.
+
+  Free registered                     48-hour delayed feed; selected sensitive/commercial fields masked; saved searches and limited alerts only if approved.
+
+  Single notice unlock                One eligible notice for the specified duration/fields; credit toward subscription only if approved.
+
+  Quarterly / half-yearly / yearly    Same-day eligible notices, permitted PDFs, contact information and auction history; entitlement limits defined by plan.
+
+  Founding Member                     Time-limited acquisition offer; lifetime price lock only if explicitly approved, with clear renewal/benefit terms.
+
+  Team plan                           Shared seat allowance, firm administration, branded client reports and deal pipeline.
+
+  Private Desk                        Curated deal memos and human service delivered under separate service terms; not an automated guarantee.
+  -------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+7.3 Proposed prices from strategy — owner approval required
+
+  -----------------------------------------------------------------------------------------------------------------------------------------
+  Plan                    Strategy proposal                                                     Status
+  ----------------------- --------------------------------------------------------------------- -------------------------------------------
+  Quarterly               ₹1,499 (current stated price in strategy ₹1,500)                      Proposed; confirm before publishing
+
+  Half-yearly             ₹2,699 (current stated price ₹3,000)                                  Proposed; confirm before publishing
+
+  Yearly                  ₹4,999 (current stated price ₹6,000)                                  Proposed; confirm before publishing
+
+  Founding Member         ₹3,999/year, first 3,000, offer through 20 Nov; lifetime price lock   Proposed; confirm legal/commercial terms
+
+  Single notice           ₹99                                                                   Proposed
+
+  Team                    ₹19,999/year, 5 seats                                                 Proposed
+
+  Private Desk            ₹50,000–₹1,50,000/year                                                Proposed; service scope/contract required
+  -----------------------------------------------------------------------------------------------------------------------------------------
+
+Prices must clearly state whether GST is included. Do not launch mixed or contradictory prices across site, checkout, partner creatives and invoices.
+
+7.4 Payments, renewal and billing
+
+-   Payment gateway checkout; server-side order creation and verification; signed webhook validation; idempotency; payment status reconciliation; no entitlement based only on client-side success redirect.
+
+-   UPI AutoPay/card recurring payments only if supported and explicitly approved. Obtain mandate consent, show amount/cadence, handle cancellation and failed renewals clearly.
+
+-   Automatic GST invoice generation with configured legal entity/GST details; credit notes/refunds and invoice numbering according to CA-approved rules.
+
+-   Refund policy shown before payment. Strategy suggests a 7-day refund window, but final policy and statutory treatment require owner/CA/legal approval.
+
+-   On payment failure: preserve truthful status, retry only under documented rules, notify customer, avoid duplicate charges and provide support path.
+
+-   Cancellation, renewal reminder, expiry/grace-period and refund flows are testable and recorded.
+
+8. Alerts, notifications and retention
+
+-   Users can create alerts by city, PIN code, bank/institution, budget, property type and auction date/status. Multiple filters combine predictably.
+
+-   Channels: WhatsApp, email and push notifications as planned; channel availability depends on approved providers, user consent, templates, cost and platform capability.
+
+-   Support immediate alerts for newly eligible notices plus daily/weekly digest. The user controls frequency, channels, quieting/pause and unsubscribe.
+
+-   Only send a notification when the listing meets saved criteria and passes defined eligibility/freshness rules. Deduplicate repeated updates and distinguish new listing from material change.
+
+-   Notification content includes concise property details, deadline, source link and timestamp; do not expose masked premium fields in free-tier notifications.
+
+-   Log queued/sent/delivered/failed where provider reports it; retry transient failures within limits and expose operational metrics.
+
+-   Retention workflows: weekly “your city” digest; inactivity re-engagement after 14 days; day-60 quarterly-to-yearly upgrade offer; renewal reminders. These are proposed campaign rules and must be consent-aware and configurable.
+
+9. Partner, affiliate and professional workspace
+
+9.1 Partner onboarding
+
+-   Application, identity/business details, PAN/tax information where needed, agreement acceptance, approved territory/category and review status.
+
+-   Unique partner code and link; attribution window proposed as 30 days with last valid code winning; final attribution policy must be approved and disclosed.
+
+-   Approved creatives and messaging rules; partners cannot claim guaranteed profit, verified title or unsupported discounts.
+
+-   Consent requirements: no bought lists or unsolicited bulk messaging; comply with applicable privacy, messaging and marketing rules.
+
+9.2 Commission model — proposed
+
+  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Tier                    Strategy proposal                                                                      Conditions to encode
+  ----------------------- -------------------------------------------------------------------------------------- ---------------------------------------------------------
+  Referrer                1 free month or ₹300 credit; referred friend 10% off                                   Define choice, eligibility, expiry and anti-abuse.
+
+  Affiliate               20% first payment                                                                      Approval and coupon code.
+
+  Professional Partner    25% first payment; 10% renewals for 2 years                                            5 paid referrals to unlock.
+
+  Gold Partner            30% first payment; 10% renewals for 2 years                                            50+ paid in a quarter.
+
+  City Partner            30% own sales + 5% sub-partner override; 10% renewals proposed elsewhere in strategy   Signed agreement, territory and performance conditions.
+
+  Institution             No cash commission; member discount/event sponsorship                                  MoU and conflict controls.
+  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+The strategy has multiple commission references that need one approved rulebook before implementation. Calculate commission on money actually collected, pay after refund window, claw back refunds/chargebacks, maintain payout statements, and support monthly payout review. Apply tax deductions and invoice requirements as confirmed by the CA. Never pay bank/NBFC/ARC officers.
+
+9.3 Partner dashboard
+
+-   Clicks, sign-ups, paid conversions, cancellations/refunds, eligible commission, pending/approved/paid payouts, coupon performance and leaderboard.
+
+-   Filters by date, plan, campaign and referral source; export statement; transparent attribution explanation.
+
+-   Role-based access: partners see only their own referred customers and aggregate performance, not unrelated customer personal data.
+
+9.4 Team and deal pipeline
+
+-   Organisation owner can invite/remove seats and assign roles.
+
+-   Shared property shortlist, stage (new, reviewing, client shared, diligence, bid planned, won/lost/closed), notes and next action.
+
+-   Access log and separation between private notes and shareable client report.
+
+-   Firm logo/client card configuration with moderation and safe image upload.
+
+10. Media, documents and content
+
+-   Support property photos, videos, official auction notice PDFs and supporting documents only when permission and usage rights allow.
+
+-   For every asset store type, origin, rights/permission status, source, retrieval/upload time and review state. Do not label a generic “PHOTO” source attachment as a verified property photograph without inspection.
+
+-   Use neutral placeholders for missing or unapproved media. Do not hotlink or download restricted media to bypass source controls.
+
+-   PDF/document access follows subscription entitlements. Protect URLs from unauthorised sharing where feasible; use expiring signed links for private stored files.
+
+-   Admin content system for guides, FAQs, state/city pages, language variants, launch content, Auction of the Day and video embeds.
+
+-   Content must be evidence-based, include update date/source links where relevant and avoid legal/financial guarantees.
+
+11. Multilingual product, SEO and content
+
+-   Planned languages in the strategy: Hindi, Gujarati, Marathi, Tamil, Telugu, Kannada, Malayalam and Bengali; English baseline. Confirm phased launch languages before translation production.
+
+-   Translate navigation, search/filter labels, account/checkout/help, alert templates, core education content and key landing pages; define fallback when a language version is unavailable.
+
+-   Property source text should remain distinguishable from machine-translated summaries. Label translations and allow access to original source.
+
+-   SEO: canonical URLs, metadata, structured data only where accurate, XML sitemap, robots controls, pagination/indexation policy, internal linking and useful unique location/institution pages.
+
+-   No fabricated counts, thin doorway pages, duplicate indexable filter permutations or misleading structured data.
+
+-   Analytics: consent-aware page/event tracking, source/UTM attribution, signup-to-paid funnel and campaign/partner attribution.
+
+12. Admin, support and reporting
+
+-   Admin dashboard: user/subscription support, source health, listing review, duplicate candidates, location backlog, media permission state, risk review queue, partner applications and payouts.
+
+-   Coverage dashboard: active notices today, institutions tracked, states/UTs covered, notices added/day, freshness, source last successful run, blocked sources and known gaps.
+
+-   Data-quality dashboard: missing city/coordinates/dates/prices, undated rounds, end-before-start, contradictory statuses, duplicate candidates, source age and correction queue.
+
+-   Operational audit log for admin changes, source configuration, plan changes, partner payouts, permission decisions and data corrections.
+
+-   Support ticket/contact flow with category, property/round reference, priority, status, first-response time and resolution history.
+
+-   Exports must be role-protected, minimised and logged. Do not expose borrower personal information or sensitive personal data unnecessarily.
+
+13. Security, privacy and legal safeguards
+
+-   Least-privilege roles, secure session handling, rate limits, input validation, CSRF protection where relevant, secure headers, dependency updates and secret management.
+
+-   Server-side premium entitlements and document access; test cache separation so one user’s entitlements/private data cannot leak to another.
+
+-   Explicit consent and opt-out for communications; retain consent timestamp, source and purpose. Apply applicable Indian privacy, consumer, GST, payment and messaging requirements with qualified review.
+
+-   Minimise personal data. Avoid displaying borrower names or other personal information unless there is a documented lawful need and approved policy.
+
+-   No claims that a property title is verified, that returns are guaranteed, or that the platform replaces official auction notices or independent due diligence.
+
+-   Disclose relevant business relationships/conflicts where applicable. Keep listings neutral and do not preferentially promote institutions because of relationships.
+
+-   Log and respond to data/security incidents; define backup, restore, retention and account deletion processes.
+
+-   Production changes require approved PR, CI result, preview review, explicit owner approval to merge/deploy and post-deployment smoke test.
+
+14. Non-functional requirements
+
+  -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Area                                Requirement
+  ----------------------------------- -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Performance                         Responsive experience; paginate results; avoid unbounded queries; cache public content without leaking entitlement-specific fields. Set measurable Core Web Vitals targets before acceptance.
+
+  Reliability                         Monitor application errors, scheduler/import health, payment webhooks and notification delivery. Alerts for repeated failure or stale coverage.
+
+  Accessibility                       Keyboard navigation, visible focus, labels, contrast, screen-reader names, sensible heading order and responsive text.
+
+  Compatibility                       Current major desktop/mobile browsers; responsive phone, tablet and desktop layouts.
+
+  Scalability                         Test realistic expected load. Strategy proposes load testing at 5,000 concurrent users; confirm budget and test environment before treating this as a release gate.
+
+  Observability                       Structured logs, correlation IDs, health checks, source-run history, payment/notification audit and actionable alerts; redact secrets and personal data.
+
+  Backups/recovery                    Document database backups, restoration test, RPO/RTO targets and rollback procedure before launch.
+
+  Data correctness                    One central lifecycle/eligibility rule, deterministic filters, source provenance, distinct-property counts and correction history.
+  -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+15. Acceptance test catalogue
+
+  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  ID                      Test                      Pass condition
+  ----------------------- ------------------------- ------------------------------------------------------------------------------------------------------------------------------------
+  AT-01                   City count parity         For each city card, count equals results total under the same active definition.
+
+  AT-02                   Lifecycle                 Upcoming, Live, Auction Today, Completed, Cancelled, Postponed and Undated cases follow approved rules at date boundaries.
+
+  AT-03                   Distinct property count   Multiple rounds for one property count once per qualifying result set.
+
+  AT-04                   No auction round          Published property appears in general catalogue but not active opportunity count.
+
+  AT-05                   Unknown city              Missing canonical city is reported separately and is not assigned by fuzzy text matching.
+
+  AT-06                   Map/list parity           Filters, selected result and count remain consistent between map and list; no-coordinate records remain in list.
+
+  AT-07                   Pagination                Result count, page boundaries and stable sorting are correct; no silent 48-item truncation.
+
+  AT-08                   Premium access            Unauthorised user cannot access masked fields, documents, contacts or paid API data by direct URL or cache.
+
+  AT-09                   Payment integrity         Verified successful payment grants entitlement once; failed/duplicate webhooks do not double-charge or double-grant.
+
+  AT-10                   Renewal/refund            Mandate consent, cancellation, refund, invoice/credit note and expiry paths work per approved policy.
+
+  AT-11                   Alerts                    Only opted-in users receive matching notices; deduplication, unsubscribe and failed delivery are tested.
+
+  AT-12                   Risk provenance           Every displayed risk flag has evidence/review state; unknown is not represented as clear.
+
+  AT-13                   Source controls           Blocked/refused sources stop; robots/terms rules are honoured; no bypass attempts.
+
+  AT-14                   Partner attribution       Coupon/link attribution, refund clawback, tier thresholds and payout totals reconcile.
+
+  AT-15                   Client report             Branded report contains correct fields, timestamp, source links and missing-data indicators.
+
+  AT-16                   Media rights              Unapproved/unknown assets are not publicly shown; placeholder is used.
+
+  AT-17                   Privacy/security          Role separation, private notes, team seats, consent, logs and borrower-data minimisation are tested.
+
+  AT-18                   SEO                       Canonical tags, sitemap, pagination and indexation rules pass; no fabricated structured data.
+
+  AT-19                   Support and correction    User can report an error; review status, owner and correction history are recorded.
+
+  AT-20                   Production smoke test     Homepage, search, city, map, detail, sign-in, pricing, payment sandbox, alerts and admin health checked after approved deployment.
+  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+16. Delivery phases and priority
+
+  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Priority                        Scope                                                                                                                                                                                   Release rule
+  ------------------------------- --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- ----------------------------------------------------------------------------------------------
+  P0 — Core trust and discovery   Lifecycle/count consistency, search/filter/pagination, accurate detail page, provenance, source freshness, safe access controls, map/list discovery, location/data quality reporting.   No launch claim until acceptance tests for data correctness and core discovery pass.
+
+  P0 — Commercial launch          Approved plans/entitlements, checkout, billing/invoices, consent, support, basic alert delivery, analytics.                                                                             Do not collect paid subscriptions until payment, entitlement, refund and support paths pass.
+
+  P1 — Intelligence               Evidence-backed risk flags, auction history, compare, client cards/reports, Auction of the Day and approved media.                                                                      Risk copy reviewed; media permissions recorded.
+
+  P1 — Partner growth             Referral codes, attribution, commissions, partner dashboard, payout statements, branded cards.                                                                                          Commission rulebook and agreements approved first.
+
+  P2 — Professional suite         Team seats, deal pipeline, Private Desk workflows, expanded reporting.                                                                                                                  Separate plan/service definitions approved.
+
+  P2 — Scale and localisation     Additional language waves, more approved sources, state-by-state coverage pages, advanced push/retention automation.                                                                    Each source/language wave has coverage, quality, permission and support gates.
+  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+This priority order is a delivery recommendation. The product owner may change sequencing, but dependencies and acceptance gates should not be bypassed.
+
+17. Launch and growth operations (not all software)
+
+-   Launch date in client strategy: 20 October 2026 at 2:35 pm. Treat as a business target; readiness must be evidence-based.
+
+-   Pre-launch targets in strategy: 8,000 waitlist sign-ups, 150 signed founding partners, 200 beta users, 3 November seminar bookings. These are targets, not guaranteed outcomes.
+
+-   Launch-week target: 1,000 paid subscribers. Track daily sign-ups, conversion, payment failures, support questions, notices covered and partner referrals.
+
+-   Content programme proposed: daily Auction of the Day, short videos/reels, long-form video, SEO city/bank pages, multilingual explainers and buyer-success stories. Marketing team owns production; product provides publishing and analytics tools.
+
+-   Professional outreach: CA branches, bar associations, brokers, valuers, insolvency professionals, DSAs, wealth managers, creators and NRI associations. Track pipeline in CRM; recruitment itself is not a website feature.
+
+-   Budget in strategy: ₹50–70 lakh October–March estimate excluding partner commissions. This is a business planning figure and requires separate approval; it is not a software implementation budget.
+
+-   15 December review gate from strategy: if paid subscribers are below 3,500, reassess spend and prioritise the channels actually converting.
+
+-   Dashboard cadence: Monday metrics review, Wednesday partner review, Friday content planning, monthly state coverage review.
+
+18. Decisions required before public launch
+
+  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  Decision                            Default captured in this specification                               Owner action
+  ----------------------------------- -------------------------------------------------------------------- -----------------------------------------------------------------------------------
+  Final plan prices and GST display   Strategy proposals listed in section 7.3                             Approve exact amounts, GST-inclusion wording and effective dates.
+
+  Free-tier delay and masking         48-hour delay and selected fields masked, as proposed                Approve exact fields and whether delayed access applies to every source/category.
+
+  Refund policy                       Strategy suggests 7 days                                             Approve policy with CA/legal review and payment-provider constraints.
+
+  Map provider                        Not selected                                                         Approve provider, budget, quotas, attribution and fallback.
+
+  Risk rubric                         Descriptive evidence-backed flags before any score                   Approve risk categories, reviewer roles and whether numeric score exists.
+
+  Source permissions                  Per-source approval required                                         Approve source register and permitted methods; no automatic scope expansion.
+
+  Media permissions                   Neutral placeholder unless cleared                                   Approve asset-rights policy and who verifies it.
+
+  Language launch waves               Eight Indian languages planned                                       Approve launch languages and translation quality owner.
+
+  MMR definition                      Proposed membership is draft                                         Validate membership list and treatment of suburbs before coding.
+
+  Partner commissions                 Multiple proposals in strategy                                       Approve one commission schedule, attribution and tax rules.
+
+  Team and Private Desk               Feature concepts in strategy                                         Approve seats/roles, service deliverables, price and separate agreements.
+
+  Legal service boundary              Qualified professional delivery; platform info is not legal advice   Approve disclaimer, referral model and professional responsibility terms.
+
+  Scale/load target                   5,000 concurrent users proposed in strategy                          Approve test scope, infrastructure budget and release threshold.
+  --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+19. Developer delivery checklist
+
+-   Produce a feature-by-feature implementation matrix mapping each requirement ID to existing code, new work, tests and deployment status.
+
+-   Before coding, provide a concise architecture/data-model impact note and identify any external service costs or credentials needed.
+
+-   Implement one focused branch/PR per coherent feature; do not combine unrelated changes.
+
+-   Provide automated tests and clear manual acceptance steps. Report actual command outputs; distinguish a test not run from a test passed.
+
+-   Use test/sandbox credentials for payments and notifications. Never send real campaigns or charge real customers during testing without explicit approval.
+
+-   No production data changes, imports, backfills, migrations, source additions, plan changes or deployment without explicit written approval.
+
+-   Deployment status must be stated as separate stages: implemented, tested, merged, deployed, production smoke-tested. Never call a feature live based only on a successful build.
+
+-   Provide rollback steps, monitoring signals and owner-facing release notes.
+
+20. Definition of done
+
+-   Every P0 requirement has an implementation status and evidence; no “done” claim without tests or direct verification.
+
+-   Search, filters, map, list, city counts and property detail behave consistently and show honest data limitations.
+
+-   Critical dates/prices/source links are traceable to source evidence; unknowns are explicit.
+
+-   Free/paid permissions are enforced server-side and tested against direct access and caching.
+
+-   Payments, invoices, renewal/cancellation/refund, alerts and support are ready before taking paid subscriptions.
+
+-   No unauthorised source or media is used; blocked access is respected.
+
+-   Security, privacy, backup/rollback, monitoring and owner acceptance gates pass.
+
+-   Product owner signs the release checklist before production deployment.
+
+Appendix A. Source basis and interpretation
+
+This specification incorporates the client-provided “bankauction.co — Launch & Scale Strategy (Oct 2026–Mar 2027)” including its positioning, market gaps, launch must-haves, proposed prices, growth channels, partner programme, KPI targets and compliance safeguards. The strategy explicitly marks many numerical targets as estimates. The implementation requirements above translate those goals into testable software behaviour; they do not independently verify competitor claims, market estimates, legal conclusions or current production status.
+
+Appendix B. Explicit exclusions unless separately approved
+
+-   No guarantee that every auction in India can be covered; coverage is limited by source availability, permissions and operational capacity.
+
+-   No guarantee of property title, possession, investment return, winning a bid or legal outcome.
+
+-   No automated legal opinion or replacement for independent title/legal/technical due diligence.
+
+-   No bypassing source access restrictions or using findauction.in.
+
+-   No unapproved production data mutation, migration, ingestion expansion or deployment.
+
+-   No public exposure of borrower personal information merely because it exists in a source or database.
