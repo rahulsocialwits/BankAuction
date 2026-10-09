@@ -90,7 +90,8 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
   const property = await prisma.property.findUnique({
     where: { slug },
     include: {
-      auctions: { include: { bank: true, branch: true }, orderBy: { createdAt: "desc" }, take: 1 },
+      // borrower is never selected: this page is cached and shared by every visitor (see tests/borrowerExposure.test.ts)
+      auctions: { omit: { borrower: true }, include: { bank: true, branch: true }, orderBy: { createdAt: "desc" }, take: 1 },
       documents: { include: { document: true } },
       attributes: true,
     },
@@ -171,23 +172,9 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
               )}
               <div>
                 <dt className="text-xs text-brand-muted mb-0.5">Borrower</dt>
-                <dd className="text-sm font-medium flex flex-wrap items-center gap-2">
-                  {auction?.borrower ? (
-                    <Link href="/pricing" className="inline-flex items-center gap-2 group">
-                      <span className="blur-[5px] select-none group-hover:blur-[6px]">{auction.borrower}</span>
-                      <span className="text-[11px] text-gold font-semibold whitespace-nowrap">Unlock →</span>
-                    </Link>
-                  ) : (
-                    <>
-                      <span className="blur-[5px] select-none text-brand-muted">Borrower details unavailable</span>
-                      <Link
-                        href="#property-enquiry"
-                        className="rounded-md border border-brand px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand-bg whitespace-nowrap"
-                      >
-                        Request details →
-                      </Link>
-                    </>
-                  )}
+                <dd className="text-sm text-brand-muted">
+                  Borrower details available with Premium.{" "}
+                  <Link href="/pricing" className="text-gold font-semibold whitespace-nowrap">See plans →</Link>
                 </dd>
               </div>
             </dl>
