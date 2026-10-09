@@ -79,7 +79,7 @@ export function PaymentSettingsForm({
             </tbody>
           </table>
         </div>
-        <p className="text-[11px] text-brand-muted mt-1">Leave a row's name empty to remove that plan.</p>
+        <p className="text-[11px] text-brand-muted mt-1">Leave a row&apos;s name empty to remove that plan.</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-4">

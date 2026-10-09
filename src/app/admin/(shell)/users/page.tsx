@@ -17,6 +17,7 @@ export default async function RegisteredUsersPage({ searchParams }: { searchPara
       select: { id: true, email: true, name: true, role: true, createdAt: true, _count: { select: { savedProperties: true, alerts: true } } },
     }),
     prisma.user.count(),
+    // eslint-disable-next-line react-hooks/purity -- server component, evaluated once per request
     prisma.user.count({ where: { createdAt: { gte: new Date(Date.now() - 7 * 864e5) } } }),
   ]);
 

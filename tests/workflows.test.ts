@@ -30,7 +30,7 @@ function minutesOf(expr: string): number[] {
   for (const part of expr.split(",")) {
     const [range, step] = part.split("/");
     const n = step ? Number(step) : 1;
-    let [a, b] = range === "*" ? [0, 59] : range.includes("-") ? range.split("-").map(Number) : [Number(range), step ? 59 : Number(range)];
+    const [a, b] = range === "*" ? [0, 59] : range.includes("-") ? range.split("-").map(Number) : [Number(range), step ? 59 : Number(range)];
     for (let m = a; m <= b; m += n) out.add(m);
   }
   return [...out].sort((x, y) => x - y);
