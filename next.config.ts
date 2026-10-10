@@ -39,6 +39,21 @@ const nextConfig: NextConfig = {
     "/api/me": BROWSER_FILES,
     "/admin/*": BROWSER_FILES,
   },
+  // Basic security headers. No Content-Security-Policy yet: photos come from many bank CDNs and the map from OSM tiles, so a CSP
+  // needs its own tested change.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

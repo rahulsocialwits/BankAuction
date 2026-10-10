@@ -99,13 +99,13 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
 
   if (!property || property.status !== "PUBLISHED") notFound();
 
-  // Similar listings: same city first, topped up with the same type; never this property itself.
+  // Similar listings: same city first, topped up with the same type in the same state; never this property itself.
   const similarInclude = { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" as const }, take: 1 }, media: { include: { media: true }, orderBy: { sortOrder: "asc" as const }, take: 1 } };
   const sameCity = property.geoCity
     ? await prisma.property.findMany({ where: { status: "PUBLISHED", id: { not: property.id }, geoCity: property.geoCity, ...(property.category ? { category: property.category } : {}) }, orderBy: { createdAt: "desc" }, take: 8, include: similarInclude })
     : [];
-  const topUp = sameCity.length < 8 && property.category
-    ? await prisma.property.findMany({ where: { status: "PUBLISHED", id: { notIn: [property.id, ...sameCity.map((x) => x.id)] }, category: property.category }, orderBy: { createdAt: "desc" }, take: 8 - sameCity.length, include: similarInclude })
+  const topUp = sameCity.length < 8 && property.category && property.geoState
+    ? await prisma.property.findMany({ where: { status: "PUBLISHED", id: { notIn: [property.id, ...sameCity.map((x) => x.id)] }, category: property.category, geoState: property.geoState }, orderBy: { createdAt: "desc" }, take: 8 - sameCity.length, include: similarInclude })
     : [];
   const similar = [...sameCity, ...topUp];
 
@@ -297,6 +297,10 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
           </div>
         </aside>
       </div>
+
+      <p className="mt-8 rounded-xl border border-brand-border bg-[#F8FAFC] p-4 text-xs text-brand-muted">
+        Details are collected from the bank / auction portal notices and may change or be incomplete. Please verify the property, reserve price, EMD and auction date with the bank and read the official notice before bidding. This is not legal or financial advice.
+      </p>
 
       {similar.length > 0 && (
         <section className="mt-12">

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import PropertyCard from "@/components/PropertyCard";
+import PagerNav from "@/components/PagerNav";
 import { auctionToCardData, listAuctionsByStatus } from "@/lib/queries/listAuctions";
 import { AuctionStatus } from "@prisma/client";
 
@@ -33,17 +34,18 @@ export async function generateMetadata({ params }: { params: Promise<{ status: s
   return { title, description, alternates: { canonical: `/auctions/${status}` }, openGraph: { title, description } };
 }
 
-export default async function AuctionsStatusPage({ params }: { params: Promise<{ status: string }> }) {
+export default async function AuctionsStatusPage({ params, searchParams }: { params: Promise<{ status: string }>; searchParams: Promise<{ page?: string }> }) {
   const { status } = await params;
+  const page = Math.max(1, Number((await searchParams).page ?? "1") || 1);
   const statuses = STATUS_MAP[status];
   if (!statuses) notFound();
 
-  const auctions = await listAuctionsByStatus(statuses);
+  const { rows: auctions, total, totalPages } = await listAuctionsByStatus(statuses, page);
 
   return (
     <main className="w-full px-5 lg:px-10 xl:px-16 py-10">
       <h1 className="text-2xl font-semibold mb-1 capitalize">{status} Auctions</h1>
-      <p className="text-brand-muted text-sm mb-5">{auctions.length} auction(s)</p>
+      <p className="text-brand-muted text-sm mb-5">{total.toLocaleString("en-IN")} auction(s)</p>
 
       <div className="flex flex-wrap gap-2 mb-6">
         {TABS.map((t) => (
@@ -68,6 +70,7 @@ export default async function AuctionsStatusPage({ params }: { params: Promise<{
           ))}
         </div>
       )}
+      <PagerNav basePath={`/auctions/${status}`} page={page} totalPages={totalPages} />
     </main>
   );
 }

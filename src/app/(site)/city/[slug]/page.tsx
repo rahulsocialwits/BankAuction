@@ -24,7 +24,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       : `Bank auction properties in ${match.city}: flats, houses, plots and commercial assets with reserve prices, EMD and auction dates.`,
     158,
   );
-  return { title, description, alternates: { canonical: `/city/${slug}` }, openGraph: { title, description } };
+  // Thin pages (fewer than 5 active listings) stay reachable for visitors but are kept out of search results.
+  return { title, description, alternates: { canonical: `/city/${slug}` }, openGraph: { title, description }, robots: n < 5 ? { index: false, follow: true } : undefined };
 }
 
 const PAGE = 48;
