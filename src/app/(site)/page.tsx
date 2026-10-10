@@ -13,7 +13,7 @@ import { canonCity } from "@/lib/pipeline/locations";
 import { activeAuctionWhere } from "@/lib/domain/auctionLifecycle";
 import { bankKey, cityKey, getImageVersions, heroKey, imageUrl, typeKey } from "@/lib/siteImages";
 
-export const revalidate = 120;
+export const dynamic = "force-dynamic";
 
 // "Other" tab = land & plots and anything without a category.
 const COUNTDOWN_CATEGORIES = ["RESIDENTIAL", "COMMERCIAL", "INDUSTRIAL", "AGRICULTURAL", "LAND_PLOT", null] as const;
