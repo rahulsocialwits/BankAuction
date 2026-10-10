@@ -21,7 +21,7 @@ const CATEGORIES: { label: string; value: PropertyCategory }[] = [
   { label: "Agricultural", value: "AGRICULTURAL" },
 ];
 
-type SP = { category?: string; q?: string; bank?: string; state?: string; city?: string; locality?: string; status?: string; priceMin?: string; priceMax?: string; page?: string; view?: string };
+type SP = { category?: string; q?: string; keyword?: string; bank?: string; state?: string; city?: string; locality?: string; status?: string; priceMin?: string; priceMax?: string; page?: string; view?: string };
 
 function placeLabel(sp: SP) {
   if (sp.locality && sp.city) return `${sp.locality}, ${sp.city}`;
@@ -45,13 +45,14 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
     alternates: { canonical: "/properties" },
     openGraph: { title, description },
     // Filtered views are useful to visitors but should not compete with the main listing in search.
-    robots: sp.q || sp.priceMin || sp.priceMax ? { index: false, follow: true } : undefined,
+    robots: sp.q || sp.keyword || sp.priceMin || sp.priceMax ? { index: false, follow: true } : undefined,
   };
 }
 
 export default async function PropertiesPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
-  const { category, q, bank, state, city, locality, status, priceMin, priceMax } = sp;
+  const q = (sp.q ?? sp.keyword)?.trim() || undefined;
+  const { category, bank, state, city, locality, status, priceMin, priceMax } = sp;
   const page = Math.max(1, Number(sp.page ?? "1") || 1);
   const PAGE_SIZE = 48;
   const view = parseView(sp.view);

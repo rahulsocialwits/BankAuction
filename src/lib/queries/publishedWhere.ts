@@ -32,6 +32,24 @@ function textMatch(term: string): Prisma.PropertyWhereInput {
   };
 }
 
+/**
+ * Free-text search: every word must be found, each in the title, description, address, city, state or locality
+ * ("flat andheri mumbai 400058" finds a flat whose address has andheri and 400058 in a Mumbai listing).
+ */
+export function keywordClauses(keyword: string): Prisma.PropertyWhereInput[] {
+  const terms = keyword.split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean).slice(0, 8);
+  return terms.map((term) => ({
+    OR: [
+      { title: { contains: term, mode: "insensitive" } },
+      { description: { contains: term, mode: "insensitive" } },
+      { addressText: { contains: term, mode: "insensitive" } },
+      { geoCity: { contains: term, mode: "insensitive" } },
+      { geoState: { contains: term, mode: "insensitive" } },
+      { geoLocality: { contains: term, mode: "insensitive" } },
+    ],
+  }));
+}
+
 /** The where-clause shared by the website lists, the counts and the public API. */
 export function publishedWhere(filters: PropertyFilters = {}): Prisma.PropertyWhereInput {
   const priceFilter =
@@ -44,7 +62,7 @@ export function publishedWhere(filters: PropertyFilters = {}): Prisma.PropertyWh
     filters.statusGroup === "active" ? activeAuctionWhere() : filters.statusGroup === "completed" ? inactiveAuctionWhere() : undefined;
 
   const and: Prisma.PropertyWhereInput[] = [];
-  if (filters.keyword) and.push(textMatch(filters.keyword));
+  if (filters.keyword) and.push(...keywordClauses(filters.keyword));
   // State and locality: AI-verified place first (exact); listings the AI has not checked yet fall back to a text match.
   if (filters.state) {
     const state = filters.state;

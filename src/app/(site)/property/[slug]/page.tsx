@@ -123,7 +123,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
   const legalSchedule = property.attributes.find((a) => a.key === "legal_schedule")?.value;
   const rawType = property.attributes.find((a) => a.key === "source_property_type")?.value;
   // Everything else an admin or source attached (area size, floor, …), as "Label: value".
-  const HIDDEN_ATTRS = new Set(["legal_schedule", "source_property_type"]);
+  const HIDDEN_ATTRS = new Set(["legal_schedule", "source_property_type", "coord_quality", "borrower_status", "enrichment_status", "deep_scanned"]);
   const extraDetails = property.attributes
     .filter((a) => a.value && !HIDDEN_ATTRS.has(a.key))
     .map((a) => ({ key: a.key, label: a.key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()), value: a.value as string }));
