@@ -4,7 +4,7 @@ import { useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import type { Map as LeafletMap, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MAP_ATTRIBUTION, MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM, MAP_TILE_URL } from "@/lib/map/config";
-import { initialSelection, mapSummary, selectionReducer } from "@/lib/map/coordinates";
+import { initialSelection, mapSummary, selectionReducer, spreadPoints } from "@/lib/map/coordinates";
 
 export interface MapItem {
   id: string;
@@ -44,8 +44,9 @@ export default function PropertyMapView({ items }: { items: MapItem[] }) {
       leaflet.current = L;
       const m = L.map(box.current, { scrollWheelZoom: false }).setView(MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM);
       L.tileLayer(MAP_TILE_URL, { attribution: MAP_ATTRIBUTION, maxZoom: 18 }).addTo(m);
+      const spread = spreadPoints(mappable);
       for (const item of mappable) {
-        const p = item.point!;
+        const p = spread.get(item.id) ?? item.point!;
         const marker = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: "", html: pinHtml(false), iconSize: [22, 22], iconAnchor: [11, 22] }), title: item.title, keyboard: true });
         const popup = document.createElement("div");
         const name = document.createElement("strong");
@@ -95,6 +96,7 @@ export default function PropertyMapView({ items }: { items: MapItem[] }) {
   return (
     <section aria-label="Properties on a map">
       <p className="text-xs text-brand-muted mb-3" role="status">{mapSummary(mappable.length, items.length)}</p>
+      {mappable.length > 0 && <p className="text-xs text-brand-muted mb-3">Pins mark the city centre and are spread slightly so each property can be seen: the exact address is in the auction notice.</p>}
       <div className="flex flex-col lg:flex-row gap-5">
         <div className="lg:order-2 lg:w-[55%] lg:sticky lg:top-24 lg:self-start">
           {mappable.length > 0 ? (

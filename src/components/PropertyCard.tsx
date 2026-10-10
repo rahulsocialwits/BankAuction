@@ -1,6 +1,6 @@
+import SafeImage from "./SafeImage";
 import Link from "next/link";
 import { AuctionStatus, PropertyCategory } from "@prisma/client";
-import { PLACEHOLDER_IMAGE_URL } from "@/lib/constants";
 
 export interface PropertyCardData {
   slug: string;
@@ -64,12 +64,9 @@ export default function PropertyCard({ property }: { property: PropertyCardData 
       className="group flex flex-col h-full bg-white border border-brand-border rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition"
     >
       <div className="relative aspect-[5/3] bg-[#E8EDF5] overflow-hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={property.imageUrl ?? PLACEHOLDER_IMAGE_URL}
+        <SafeImage
+          src={property.imageUrl}
           alt={property.title}
-          loading="lazy"
-          decoding="async"
           width={400}
           height={240}
           className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"

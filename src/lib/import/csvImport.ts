@@ -195,7 +195,7 @@ async function isThin(hit: Known): Promise<boolean> {
 export async function enrichExisting(hit: Known, rec: ListingRecord, statusSource: string, strong: boolean): Promise<boolean> {
   const [a, p] = await Promise.all([
     prisma.auction.findUnique({ where: { id: hit.auctionId } }),
-    prisma.property.findUnique({ where: { id: hit.propertyId }, select: { status: true, addressText: true, latitude: true, longitude: true, description: true, attributes: { select: { key: true } } } }),
+    prisma.property.findUnique({ where: { id: hit.propertyId }, select: { status: true, geoCity: true, geoState: true, geoLocality: true, addressText: true, latitude: true, longitude: true, description: true, attributes: { select: { key: true } } } }),
   ]);
   if (!a || !p) return false;
   // A different listing id is a different auction round of a similar-looking property: never mix its details in.
@@ -273,6 +273,10 @@ export async function enrichExisting(hit: Known, rec: ListingRecord, statusSourc
   const pdata: Record<string, unknown> = {};
   const place = rec.location?.trim();
   if (place && (!p.addressText || /\]\(|google maps/i.test(p.addressText))) pdata.addressText = place;
+  // A place the source states as data (city / state / locality) fills an empty verified place; an AI-checked place is never overwritten.
+  if (rec.geo_city && !p.geoCity) { pdata.geoCity = rec.geo_city; pdata.geoCheckedAt = new Date(); }
+  if (rec.geo_state && !p.geoState) pdata.geoState = rec.geo_state;
+  if (rec.geo_locality && !p.geoLocality) pdata.geoLocality = rec.geo_locality;
   if (rec.latitude && rec.longitude && p.latitude === null && p.longitude === null) {
     pdata.latitude = Number(rec.latitude);
     pdata.longitude = Number(rec.longitude);
@@ -587,6 +591,7 @@ export async function importRecords(
           category,
           description: col("description") || null,
           addressText: col("location") || null,
+          ...(col("geo_city") ? { geoCity: col("geo_city"), geoState: col("geo_state") || null, geoLocality: col("geo_locality") || null, geoCheckedAt: new Date() } : {}),
           latitude: col("latitude") ? Number(col("latitude")) : undefined,
           longitude: col("longitude") ? Number(col("longitude")) : undefined,
           status: "PUBLISHED",

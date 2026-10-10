@@ -1,8 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
-import { PLACEHOLDER_IMAGE_URL } from "@/lib/constants";
 import { Suspense } from "react";
 import PropertyEnquiry from "@/components/PropertyEnquiry";
 import { tidyText } from "@/lib/text";
@@ -10,6 +8,7 @@ import type { Metadata } from "next";
 import { clip, dayLabel, inr } from "@/lib/seo";
 import { titleCase } from "@/lib/pipeline/locations";
 import PropertyCarousel from "@/components/PropertyCarousel";
+import PropertyGallery from "@/components/PropertyGallery";
 import { toPropertyCardData } from "@/lib/queries/listProperties";
 import { effectiveAuctionStatus } from "@/lib/domain/auctionLifecycle";
 
@@ -94,13 +93,14 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
       auctions: { omit: { borrower: true }, include: { bank: true, branch: true }, orderBy: { createdAt: "desc" }, take: 1 },
       documents: { include: { document: true } },
       attributes: true,
+      media: { include: { media: true }, orderBy: { sortOrder: "asc" }, take: 12 },
     },
   });
 
   if (!property || property.status !== "PUBLISHED") notFound();
 
   // Similar listings: same city first, topped up with the same type; never this property itself.
-  const similarInclude = { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" as const }, take: 1 } };
+  const similarInclude = { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" as const }, take: 1 }, media: { include: { media: true }, orderBy: { sortOrder: "asc" as const }, take: 1 } };
   const sameCity = property.geoCity
     ? await prisma.property.findMany({ where: { status: "PUBLISHED", id: { not: property.id }, geoCity: property.geoCity, ...(property.category ? { category: property.category } : {}) }, orderBy: { createdAt: "desc" }, take: 8, include: similarInclude })
     : [];
@@ -136,10 +136,8 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
 
       <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-3 gap-8 items-start">
         <div className="lg:col-span-2 min-w-0">
-          {/* The picture lives in the left column; the enquiry card on the right starts level with it. */}
-          <div className="relative h-52 sm:h-72 rounded-2xl overflow-hidden mb-6 bg-[#E8EDF5]">
-            <Image src={PLACEHOLDER_IMAGE_URL} alt={property.title} fill unoptimized priority className="object-contain" />
-          </div>
+          {/* The photos live in the left column; the enquiry card on the right starts level with them. */}
+          <PropertyGallery photos={property.media.map((m) => m.media.sourceUrl)} title={property.title} />
           <span className={`inline-block text-xs font-semibold px-3 py-1 rounded-full mb-3 ${STATUS_STYLES[shownStatus ?? ""] ?? "bg-gray-100 text-gray-600"}`}>
             {shownStatus ? shownStatus.charAt(0) + shownStatus.slice(1).toLowerCase().replace("_", " ") : "Status unknown"}
           </span>
@@ -149,6 +147,9 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
             {property.addressText ?? "Location not specified"}
             {auction?.bank ? ` · ${auction.bank.name}` : ""}
             {auction?.branch ? ` (${auction.branch.name})` : ""}
+            {property.latitude !== null && property.longitude !== null && (
+              <> · <a href={`https://www.openstreetmap.org/?mlat=${property.latitude}&mlon=${property.longitude}#map=12/${property.latitude}/${property.longitude}`} target="_blank" rel="noopener noreferrer" className="text-gold underline">View area on map</a></>
+            )}
           </p>
 
           <section className="bg-white border border-brand-border rounded-2xl p-5 mb-6">

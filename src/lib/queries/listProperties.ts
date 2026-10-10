@@ -15,7 +15,8 @@ export function countPublishedProperties(filters: PropertyFilters = {}) {
 export async function listPublishedProperties(filters: PropertyFilters = {}, take = 24, skip = 0) {
   return prisma.property.findMany({
     where: publishedWhere(filters),
-    orderBy: { createdAt: "desc" },
+    // Listings with photos first (a page of grey placeholders looks broken), then newest; `id` makes the order total, so page 2 never repeats page 1.
+    orderBy: [{ media: { _count: "desc" } }, { createdAt: "desc" }, { id: "desc" }],
     take,
     skip,
     include: { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 }, media: { include: { media: true }, orderBy: { sortOrder: "asc" }, take: 1 } },

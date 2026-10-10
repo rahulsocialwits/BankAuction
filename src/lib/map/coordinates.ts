@@ -87,3 +87,28 @@ export function mapSummary(mapped: number, total: number): string {
   if (mapped === total) return `All ${total} listing${total === 1 ? "" : "s"} on this page ${total === 1 ? "has" : "have"} a map location.`;
   return `${mapped} of ${total} listings on this page have a map location.`;
 }
+
+/**
+ * Properties of one city share ONE point (the city centre), so their pins would sit exactly on top of each other. This moves
+ * pins that share a point onto a small ring around it (about 1 km at most) so every pin can be seen and clicked. Pure and
+ * deterministic: the same input always gives the same positions. Points that are alone are not moved.
+ */
+export function spreadPoints<T extends { id: string; point: Coordinates | null }>(items: T[]): Map<string, Coordinates> {
+  const groups = new Map<string, T[]>();
+  for (const it of items) {
+    if (!it.point) continue;
+    const key = `${it.point.lat.toFixed(4)}|${it.point.lng.toFixed(4)}`;
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(it);
+  }
+  const out = new Map<string, Coordinates>();
+  for (const list of groups.values()) {
+    if (list.length === 1) { out.set(list[0].id, list[0].point!); continue; }
+    list.forEach((it, i) => {
+      const ring = 1 + Math.floor(i / 8); // 8 pins per ring, rings 0.004 degrees (about 450 m) apart
+      const angle = ((i % 8) / Math.min(8, list.length - (ring - 1) * 8)) * 2 * Math.PI;
+      const r = 0.004 * ring;
+      out.set(it.id, { lat: it.point!.lat + r * Math.sin(angle), lng: it.point!.lng + (r * Math.cos(angle)) / Math.cos((it.point!.lat * Math.PI) / 180) });
+    });
+  }
+  return out;
+}

@@ -32,9 +32,9 @@ export default async function Home() {
     prisma.auction.count({ where: { AND: [activeAuctionWhere()], property: { status: "PUBLISHED" } } }),
     prisma.property.findMany({
       where: { status: "PUBLISHED", auctions: { some: { AND: [activeAuctionWhere()] } } },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ media: { _count: "desc" } }, { createdAt: "desc" }, { id: "desc" }],
       take: 12,
-      include: { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 } },
+      include: { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 }, media: { include: { media: true }, orderBy: { sortOrder: "asc" }, take: 1 } },
     }),
     getCityCounts(),
     prisma.bank.findMany({

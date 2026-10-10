@@ -4,6 +4,7 @@ import { runAllFeeds } from "@/data-sources/feeds/run";
 import { autoCleanExactDuplicates } from "./duplicates";
 import { logRun } from "./runLog";
 import { enrichLocations } from "./geo";
+import { fillCityCoordinates } from "@/lib/map/cityCoordinates";
 import { autoReviewPending } from "./review";
 import { revalidateTag } from "next/cache";
 import { snapshotCoverageIfDue } from "./coverageHistoryStore";
@@ -36,6 +37,8 @@ export async function runTick(opts: { limit?: number; trigger?: TickTrigger; via
     // one small reading per India day of how many current unique actionable auctions we hold (reads auctions, writes only its own rows)
     await snapshotCoverageIfDue().catch(() => undefined);
     const timeLeft = hardEnd - Date.now();
+    // new cities get their map point (one Nominatim lookup per new city, at most 8 per tick, ~1 s each); never blocks the tick
+    if (timeLeft > 90_000) await fillCityCoordinates({ maxCities: 8, budgetMs: 15_000 }).catch(() => undefined);
     const geo = slotWork && timeLeft > 60_000 ? await enrichLocations(96).catch(() => ({ processed: 0, tokens: 0, failed: true })) : { processed: 0, tokens: 0, failed: false };
     const places = geo.processed;
     // Listings the importer was unsure about are reviewed automatically (rules every tick, AI only in the AI slot).
