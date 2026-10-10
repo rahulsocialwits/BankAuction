@@ -113,7 +113,11 @@ export async function fillPincodeCoordinates(opts: { maxPins?: number; budgetMs?
           await prisma.propertyAttribute.updateMany({ where: { propertyId: { in: chunk }, key: "coord_quality" }, data: { value: "pincode" } });
           const have = new Set((await prisma.propertyAttribute.findMany({ where: { propertyId: { in: chunk }, key: "coord_quality" }, select: { propertyId: true } })).map((a) => a.propertyId));
           const missing = chunk.filter((id) => !have.has(id));
-          if (missing.length) await prisma.propertyAttribute.createMany({ data: missing.map((propertyId) => ({ propertyId, key: "coord_quality", value: "pincode" })) });
+          if (missing.length) {
+            // (propertyId, key) is unique: a row that appeared in the meantime is skipped here and set to "pincode" by the update below
+            await prisma.propertyAttribute.createMany({ data: missing.map((propertyId) => ({ propertyId, key: "coord_quality", value: "pincode" })), skipDuplicates: true });
+            await prisma.propertyAttribute.updateMany({ where: { propertyId: { in: missing }, key: "coord_quality" }, data: { value: "pincode" } });
+          }
         }
       }
       out.propertiesUpdated += ids.length;
@@ -122,7 +126,7 @@ export async function fillPincodeCoordinates(opts: { maxPins?: number; budgetMs?
       say(`${g.pin} (${g.city}): rejected, ${result.rejected} -> ${ids.length} ${word} keep their position`);
       if (!opts.dry) {
         for (let i = 0; i < ids.length; i += 500) {
-          await prisma.propertyAttribute.createMany({ data: ids.slice(i, i + 500).map((propertyId) => ({ propertyId, key: "pin_geocode", value: `not_found:${g.pin}` })) });
+          await prisma.propertyAttribute.createMany({ data: ids.slice(i, i + 500).map((propertyId) => ({ propertyId, key: "pin_geocode", value: `not_found:${g.pin}` })), skipDuplicates: true });
         }
       }
     }
