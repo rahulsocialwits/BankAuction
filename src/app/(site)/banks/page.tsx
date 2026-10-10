@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import BankDirectory from "@/components/BankDirectory";
 
@@ -11,6 +12,9 @@ export const metadata: Metadata = {
 };
 
 export default async function BanksPage() {
+  // Bank and listing counts are database-backed. Do not query the placeholder CI
+  // database during prerendering; execute this read when the page is requested.
+  await connection();
   const banks = await prisma.bank.findMany({
     include: { _count: { select: { auctions: { where: { property: { status: "PUBLISHED" } } } } } },
     orderBy: { name: "asc" },
