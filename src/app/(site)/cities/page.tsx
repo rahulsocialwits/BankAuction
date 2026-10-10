@@ -3,7 +3,7 @@ import CityDirectory, { type StateGroup } from "@/components/CityDirectory";
 import { getPlaces } from "@/lib/queries/places";
 import { citySlug } from "@/lib/queries/cities";
 
-export const revalidate = 120;
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Bank Auction Properties by State and City",
