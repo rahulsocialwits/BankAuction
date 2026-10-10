@@ -1,7 +1,7 @@
-name: CI (tests and type-check)
+name: CI (lint, type-check, tests and build)
 
-# Runs on every pull request and every push to main. Read-only: no secrets, no database, no ingestion.
-# The placeholder URLs below only satisfy Prisma's config check; nothing connects to them.
+# Runs on every pull request and every push to main.
+# Uses placeholder local-only URLs and dummy auth values; no secrets, database, or ingestion.
 on:
   pull_request:
   push:
@@ -11,12 +11,15 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
       DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+      ADMIN_SESSION_SECRET: ci-only-placeholder-session-secret-not-for-production
+      ADMIN_PASSWORD: ci-only-placeholder-password
+      USER_SESSION_SECRET: ci-only-placeholder-user-session-secret
     steps:
       - uses: actions/checkout@v4
 
@@ -25,12 +28,20 @@ jobs:
           node-version: "22"
           cache: "npm"
 
+      # Do not set NODE_ENV=production for npm ci: npm omits devDependencies
+      # in that mode, which removes eslint/typescript/test tools from CI.
       - run: npm ci
 
       - run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
 
       - name: Type-check
         run: npx tsc --noEmit
 
       - name: Tests
         run: npm test
+
+      - name: Production build
+        run: npm run build
