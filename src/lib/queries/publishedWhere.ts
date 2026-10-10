@@ -45,8 +45,7 @@ export function spellingVariants(term: string): string[] {
   for (let i = 0; i < t.length; i++) {
     if (/[lnmtdrspkbgc]/.test(t[i]) && t[i + 1] !== t[i] && t[i - 1] !== t[i]) out.add(t.slice(0, i + 1) + t[i] + t.slice(i + 1));
   }
-  out.delete(t);
-  return [...out].slice(0, 14);
+  return [...out].filter((v) => v !== t).slice(0, 14);
 }
 
 const termFields = (term: string, withDescription: boolean): Prisma.PropertyWhereInput[] => [
