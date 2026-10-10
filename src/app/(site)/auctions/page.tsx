@@ -4,7 +4,7 @@ import PropertyCard from "@/components/PropertyCard";
 import PagerNav from "@/components/PagerNav";
 import { auctionToCardData, listAuctionsByStatus } from "@/lib/queries/listAuctions";
 
-export const revalidate = 120;
+export const dynamic = "force-dynamic";
 
 const TABS = [
   { label: "All", href: "/auctions" },
