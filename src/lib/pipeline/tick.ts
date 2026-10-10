@@ -5,6 +5,7 @@ import { autoCleanExactDuplicates } from "./duplicates";
 import { logRun } from "./runLog";
 import { enrichLocations } from "./geo";
 import { fillCityCoordinates } from "@/lib/map/cityCoordinates";
+import { fillPincodeCoordinates } from "@/lib/map/pincodeCoordinates";
 import { autoReviewPending } from "./review";
 import { revalidateTag } from "next/cache";
 import { snapshotCoverageIfDue } from "./coverageHistoryStore";
@@ -38,6 +39,8 @@ export async function runTick(opts: { limit?: number; trigger?: TickTrigger; via
     await snapshotCoverageIfDue().catch(() => undefined);
     const timeLeft = hardEnd - Date.now();
     // new cities get their map point (one Nominatim lookup per new city, at most 8 per tick, ~1 s each); never blocks the tick
+    // properties with a PIN in the address get the centre of that PIN area (better than the city centre); at most 8 PINs per tick
+    if (timeLeft > 90_000) await fillPincodeCoordinates({ maxPins: 8, budgetMs: 12_000 }).catch(() => undefined);
     if (timeLeft > 90_000) await fillCityCoordinates({ maxCities: 8, budgetMs: 15_000 }).catch(() => undefined);
     const geo = slotWork && timeLeft > 60_000 ? await enrichLocations(96).catch(() => ({ processed: 0, tokens: 0, failed: true })) : { processed: 0, tokens: 0, failed: false };
     const places = geo.processed;

@@ -33,21 +33,45 @@ function textMatch(term: string): Prisma.PropertyWhereInput {
 }
 
 /**
+ * Spelling variants of one search word, so "nalasopara" finds "Nallasopara": the word with its doubled letters collapsed, and the
+ * word with one common consonant doubled. Only for plain words of 4+ letters; anything else (a PIN, a number) is matched as typed.
+ */
+export function spellingVariants(term: string): string[] {
+  const t = term.toLowerCase();
+  if (!/^[a-z]{4,}$/.test(t)) return [];
+  const out = new Set<string>();
+  const collapsed = t.replace(/(.)\1+/g, "$1");
+  if (collapsed !== t) out.add(collapsed);
+  for (let i = 0; i < t.length; i++) {
+    if (/[lnmtdrspkbgc]/.test(t[i]) && t[i + 1] !== t[i] && t[i - 1] !== t[i]) out.add(t.slice(0, i + 1) + t[i] + t.slice(i + 1));
+  }
+  return [...out].filter((v) => v !== t).slice(0, 14);
+}
+
+const termFields = (term: string, withDescription: boolean): Prisma.PropertyWhereInput[] => [
+  { title: { contains: term, mode: "insensitive" } },
+  ...(withDescription ? [{ description: { contains: term, mode: "insensitive" as const } }] : []),
+  { addressText: { contains: term, mode: "insensitive" } },
+  { geoCity: { contains: term, mode: "insensitive" } },
+  { geoState: { contains: term, mode: "insensitive" } },
+  { geoLocality: { contains: term, mode: "insensitive" } },
+];
+
+/**
  * Free-text search: every word must be found, each in the title, description, address, city, state or locality
- * ("flat andheri mumbai 400058" finds a flat whose address has andheri and 400058 in a Mumbai listing).
+ * ("flat andheri mumbai 400058" finds a flat whose address has andheri and 400058 in a Mumbai listing). A word also matches its
+ * common spelling variants (doubled letters), and the words typed with spaces also match when joined ("nala sopara").
  */
 export function keywordClauses(keyword: string): Prisma.PropertyWhereInput[] {
   const terms = keyword.split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean).slice(0, 8);
-  return terms.map((term) => ({
-    OR: [
-      { title: { contains: term, mode: "insensitive" } },
-      { description: { contains: term, mode: "insensitive" } },
-      { addressText: { contains: term, mode: "insensitive" } },
-      { geoCity: { contains: term, mode: "insensitive" } },
-      { geoState: { contains: term, mode: "insensitive" } },
-      { geoLocality: { contains: term, mode: "insensitive" } },
-    ],
+  const perWord: Prisma.PropertyWhereInput[] = terms.map((term) => ({
+    OR: [...termFields(term, true), ...spellingVariants(term).flatMap((v) => termFields(v, false))],
   }));
+  const joined = terms.join("");
+  if (terms.length >= 2 && /^[a-z]{5,}$/i.test(joined) && terms.every((t) => /^[a-z]+$/i.test(t))) {
+    return [{ OR: [{ AND: perWord }, ...[joined.toLowerCase(), ...spellingVariants(joined)].flatMap((v) => termFields(v, false))] }];
+  }
+  return perWord;
 }
 
 /** The where-clause shared by the website lists, the counts and the public API. */
