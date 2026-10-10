@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import PropertyCard from "@/components/PropertyCard";
 import { auctionToCardData, listAuctionsByStatus } from "@/lib/queries/listAuctions";
 
@@ -21,6 +22,9 @@ export const metadata: Metadata = {
 };
 
 export default async function AuctionsPage() {
+  // This page reads live database data. Wait for the request so CI builds do not
+  // try to prerender it against the intentionally unavailable placeholder DB.
+  await connection();
   const auctions = await listAuctionsByStatus(["UPCOMING", "LIVE", "AUCTION_TODAY", "COMPLETED", "POSTPONED", "CANCELLED"]);
 
   return (
