@@ -4,15 +4,14 @@ config({ path: ".env" });
 
 import { prisma } from "@/lib/db/prisma";
 import { validateFeedUrl } from "@/data-sources/feeds/run";
+import { checkSourceUrl } from "@/data-sources/feeds/blockedHosts";
 import { scanSiteForNew, webStateOf, withWebState } from "@/data-sources/feeds/siteScan";
 
 /**
  * Scan a whole website for property listings and import each one with its full details (the listing page, its notice
  * PDFs, one AI call per listing). Run it yourself:
  *
- *   npx tsx scripts/scan-site.ts https://findauction.in --dry-run          (only shows what it would read)
- *   npx tsx scripts/scan-site.ts https://findauction.in --max 50           (reads up to 50 new listings)
- *   npx tsx scripts/scan-site.ts https://findauction.in --max 200 --save-source "Find Auction"
+ *   npx tsx scripts/scan-site.ts https://authorised-public-source.example --dry-run
  *
  * Options:  --max N        new listings to read in full (default 25)
  *           --pages N      index pages to look through (default 30)
@@ -20,7 +19,7 @@ import { scanSiteForNew, webStateOf, withWebState } from "@/data-sources/feeds/s
  *           --dry-run      discover only: nothing is read by the AI, nothing is written
  *           --save-source "Name"   also keep this site as a source: it is then scanned again every hour automatically
  *
- * Only pages robots.txt allows, same site only, no login, never the do-not-fetch list. Listings already on the site
+ * Only pages robots.txt allows, same site only, no login, and never a project-blocked host. Listings already on the site
  * are skipped, so running it again only picks up what is new.
  */
 
@@ -36,7 +35,14 @@ async function main() {
     console.error('Usage: npx tsx scripts/scan-site.ts <https://website> [--max 25] [--pages 30] [--minutes 30] [--dry-run] [--save-source "Name"]');
     process.exit(1);
   }
-  const check = validateFeedUrl(raw.replace(/^http:/i, "https:"));
+  const candidate = raw.replace(/^http:/i, "https:");
+  // Fail closed before any database lookup or network activity. This explicit CLI guard complements the shared importer guard.
+  const policy = checkSourceUrl(candidate);
+  if (!policy.ok) {
+    console.error(`Not allowed: ${policy.reason}`);
+    process.exit(1);
+  }
+  const check = validateFeedUrl(candidate);
   if (!check.ok) {
     console.error(`Not allowed: ${check.reason}`);
     process.exit(1);
