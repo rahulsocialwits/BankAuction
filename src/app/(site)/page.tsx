@@ -72,11 +72,11 @@ export default async function Home() {
     { label: "Upcoming Auctions", value: upcomingAuctions },
   ];
 
-  const countByCity = new Map(cityCounts.map((c) => [c.city, c.count]));
+  const countByCity = new Map(cityCounts.map((c) => [c.city, { total: c.total, active: c.count }]));
   // Keep admin-selected cities first, but fill empty slots with the highest-volume real cities.
   const homeCities = [...config.cities, ...cityCounts.map((c) => c.city)]
     .filter((name, i, all) => all.findIndex((x) => canonCity(x) === canonCity(name)) === i)
-    .filter((name) => (countByCity.get(canonCity(name)) ?? 0) > 0)
+    .filter((name) => (countByCity.get(canonCity(name))?.total ?? 0) > 0)
     .slice(0, 8);
   const countByType = new Map(typeGroups.map((g) => [g.category, g._count._all]));
 
@@ -149,9 +149,9 @@ export default async function Home() {
             const city = canonCity(name);
             const d = imageUrl(versions, cityKey(name, "d"));
             const m = imageUrl(versions, cityKey(name, "m"));
-            const count = countByCity.get(city) ?? 0;
+            const { total, active } = countByCity.get(city) ?? { total: 0, active: 0 };
             return (
-              <Link key={name} href={`/properties?city=${encodeURIComponent(city)}&status=active`} className="group block text-center">
+              <Link key={name} href={`/properties?city=${encodeURIComponent(city)}&status=all`} className="group block text-center">
                 <div className="relative aspect-[221/148] rounded-2xl overflow-hidden bg-gradient-to-br from-brand to-brand-dark shadow-sm group-hover:shadow-lg transition-shadow">
                   {d || m ? (
                     <ResponsiveImage desktop={d} mobile={m} alt={name} className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
@@ -160,7 +160,7 @@ export default async function Home() {
                   )}
                 </div>
                 <div className="mt-2.5 text-sm font-semibold text-black/90">{name}</div>
-                <div className="text-xs text-brand-muted">{count} active propert{count === 1 ? "y" : "ies"}</div>
+                <div className="text-xs text-brand-muted">{total.toLocaleString("en-IN")} propert{total === 1 ? "y" : "ies"} · {active.toLocaleString("en-IN")} active</div>
               </Link>
             );
           })}
