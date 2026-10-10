@@ -4,7 +4,8 @@ import { useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import type { Map as LeafletMap, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MAP_ATTRIBUTION, MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM, MAP_TILE_URL } from "@/lib/map/config";
-import { initialSelection, mapSummary, selectionReducer, spreadPoints } from "@/lib/map/coordinates";
+import { initialSelection, selectionReducer, spreadPoints } from "@/lib/map/coordinates";
+import type { MapPin } from "@/lib/map/mapPins";
 
 export interface MapItem {
   id: string;
@@ -23,15 +24,17 @@ const pinHtml = (active: boolean) =>
  * Map + cards side by side (stacked on a phone, map first). A pin and its card highlight each other: clicking a pin scrolls to the
  * card, "Show on map" on a card (or hovering it) moves to the pin. Pins exist only for properties with reliable coordinates.
  */
-export default function PropertyMapView({ items }: { items: MapItem[] }) {
-  const mappable = useMemo(() => items.filter((i) => i.point), [items]);
-  const ids = useMemo(() => new Set(mappable.map((i) => i.id)), [mappable]);
+export default function PropertyMapView({ items, pins, summary }: { items: MapItem[]; pins: MapPin[]; summary: string }) {
+  // Pins cover every listing that matches the filters; the cards on the side are the current page.
+  const mappable = pins;
+  const ids = useMemo(() => new Set(pins.map((i) => i.id)), [pins]);
   const [sel, dispatch] = useReducer((s: typeof initialSelection, a: Parameters<typeof selectionReducer>[1]) => selectionReducer(s, a, ids), initialSelection);
 
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<LeafletMap | null>(null);
   const markers = useRef(new Map<string, Marker>());
   const leaflet = useRef<typeof import("leaflet") | null>(null);
+  const fit = useRef<() => void>(() => undefined);
 
   // Create the map once per set of listings. Leaflet touches `window`, so it is loaded only in the browser.
   useEffect(() => {
@@ -44,24 +47,28 @@ export default function PropertyMapView({ items }: { items: MapItem[] }) {
       leaflet.current = L;
       const m = L.map(box.current, { scrollWheelZoom: false }).setView(MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM);
       L.tileLayer(MAP_TILE_URL, { attribution: MAP_ATTRIBUTION, maxZoom: 18 }).addTo(m);
-      const spread = spreadPoints(mappable);
+      const spread = spreadPoints(mappable.map((m) => ({ id: m.id, point: m.point })));
       for (const item of mappable) {
-        const p = spread.get(item.id) ?? item.point!;
+        const p = spread.get(item.id) ?? item.point;
         const marker = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: "", html: pinHtml(false), iconSize: [22, 22], iconAnchor: [11, 22] }), title: item.title, keyboard: true });
         const popup = document.createElement("div");
         const name = document.createElement("strong");
         name.textContent = item.title; // text only, never HTML
+        const meta = document.createElement("div");
+        meta.style.cssText = "margin-top:4px;font-size:12px;color:#5b6577";
+        meta.textContent = [item.city, item.reservePrice != null ? `Reserve ₹${item.reservePrice.toLocaleString("en-IN")}` : null, item.approximate ? "Approximate: city centre" : "Exact location"].filter(Boolean).join(" · ");
         const link = document.createElement("a");
         link.href = `/property/${item.slug}`;
         link.textContent = "View details →";
         link.style.cssText = "display:block;margin-top:6px;color:#10213d;font-weight:600";
-        popup.append(name, link);
+        popup.append(name, meta, link);
         marker.bindPopup(popup);
         marker.on("click", () => dispatch({ type: "pin", id: item.id }));
         marker.addTo(m);
         pins.set(item.id, marker);
       }
-      const bounds = L.latLngBounds(mappable.map((i) => [i.point!.lat, i.point!.lng] as [number, number]));
+      const bounds = L.latLngBounds(mappable.map((i) => [i.point.lat, i.point.lng] as [number, number]));
+      fit.current = () => (mappable.length === 1 ? m.setView(bounds.getCenter(), 13) : m.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 }));
       if (mappable.length === 1) m.setView(bounds.getCenter(), 13);
       else m.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
       m.on("click", () => dispatch({ type: "clear" }));
@@ -95,8 +102,9 @@ export default function PropertyMapView({ items }: { items: MapItem[] }) {
 
   return (
     <section aria-label="Properties on a map">
-      <p className="text-xs text-brand-muted mb-3" role="status">{mapSummary(mappable.length, items.length)}</p>
-      {mappable.length > 0 && <p className="text-xs text-brand-muted mb-3">Pins mark the city centre and are spread slightly so each property can be seen: the exact address is in the auction notice.</p>}
+      <p className="text-xs text-brand-muted mb-1" role="status">{summary}</p>
+      {mappable.some((p) => p.approximate) && <p className="text-xs text-brand-muted mb-3">Approximate pins mark the city centre and are spread slightly so each property can be seen: the exact address is in the auction notice.</p>}
+      {mappable.length > 0 && <button type="button" onClick={() => fit.current()} className="mb-3 text-xs font-semibold text-brand hover:underline">Fit all results</button>}
       <div className="flex flex-col lg:flex-row gap-5">
         <div className="lg:order-2 lg:w-[55%] lg:sticky lg:top-24 lg:self-start">
           {mappable.length > 0 ? (
