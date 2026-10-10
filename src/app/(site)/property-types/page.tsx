@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { PropertyCategory } from "@prisma/client";
 
@@ -21,6 +22,8 @@ export const metadata: Metadata = {
 };
 
 export default async function PropertyTypesPage() {
+  // Listing counts come from the database, so defer this query until a request.
+  await connection();
   const counts = await prisma.property.groupBy({
     by: ["category"],
     where: { status: "PUBLISHED" },
