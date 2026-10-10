@@ -42,3 +42,19 @@ test("the summary states the listing count and the pin count, and says when the 
   assert.match(pinSummary(3, 0, 0, false), /none has a verified map location/);
   assert.equal(pinSummary(0, 0, 0, false), "No listings match these filters.");
 });
+
+import { groupPins } from "../src/lib/map/mapPins";
+
+test("properties that share one stored point are one marker with a count; nothing is moved to a made-up position", () => {
+  const same = { lat: 19.055, lng: 72.8692 };
+  const { pins } = toMapPins([
+    ...Array.from({ length: 5 }, (_, i) => row({ id: `c${i}`, latitude: same.lat, longitude: same.lng })),
+    row({ id: "p1", latitude: 19.13854, longitude: 72.82899, coordQuality: "pincode" }),
+  ]);
+  const groups = groupPins(pins);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups[0].point, same);
+  assert.equal(groups[0].pins.length, 5);
+  assert.equal(groups[1].pins.length, 1);
+  assert.equal(groups.reduce((n, g) => n + g.pins.length, 0), pins.length, "no property is lost or duplicated");
+});

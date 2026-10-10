@@ -62,3 +62,25 @@ export function pinSummary(total: number, shown: number, approximate: number, ca
   const cap = capped ? ` The map shows the first ${shown.toLocaleString("en-IN")} of them.` : "";
   return `${total.toLocaleString("en-IN")} listing${total === 1 ? "" : "s"} match · ${shown.toLocaleString("en-IN")} on the map (${kind}).${cap}`;
 }
+
+export interface PinGroup {
+  /** Stable key of the shared point. */
+  key: string;
+  point: Coordinates;
+  pins: MapPin[];
+}
+
+/**
+ * Properties that share one stored point (all of a PIN area, or all of a city centre) are ONE marker with a count, not hundreds of
+ * markers on top of each other and not points moved around to fake a layout. The order of groups and of pins in a group is the input order.
+ */
+export function groupPins(pins: MapPin[]): PinGroup[] {
+  const groups = new Map<string, PinGroup>();
+  for (const p of pins) {
+    const key = `${p.point.lat.toFixed(4)}|${p.point.lng.toFixed(4)}`;
+    const g = groups.get(key);
+    if (g) g.pins.push(p);
+    else groups.set(key, { key, point: p.point, pins: [p] });
+  }
+  return [...groups.values()];
+}
