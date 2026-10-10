@@ -156,3 +156,15 @@ test("the map feature writes nothing and reads only coordinates already stored o
     assert.doesNotMatch(read(f), /\.(create|update|updateMany|delete|deleteMany|upsert)\(/, f);
   }
 });
+
+
+test("the property-map feature flag hides the Map toggle without changing the default", () => {
+  const page = read("src/app/(site)/properties/page.tsx");
+  const toggle = read("src/components/ViewToggle.tsx");
+
+  assert.match(page, /isFeatureEnabled\(["']propertyMap["']\)/);
+  assert.match(page, /mapEnabled \? requestedView : ["']list["']/);
+  assert.match(page, /mapEnabled=\{mapEnabled\}/);
+  assert.match(toggle, /mapEnabled = true/, "the existing map toggle remains enabled by default");
+  assert.match(toggle, /mapEnabled \? item\(["']map["'], ["']Map["']\) : null/, "the Map link is omitted when disabled");
+});
