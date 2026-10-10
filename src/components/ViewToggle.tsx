@@ -2,7 +2,7 @@ import Link from "next/link";
 import { viewHref, type ListingView } from "@/lib/map/coordinates";
 
 /** List / Map switch for /properties. Plain links, so filters and the page number are kept and it works without JavaScript. */
-export default function ViewToggle({ params, view }: { params: Record<string, string | undefined>; view: ListingView }) {
+export default function ViewToggle({ params, view, mapEnabled = true }: { params: Record<string, string | undefined>; view: ListingView; mapEnabled?: boolean }) {
   const item = (v: ListingView, label: string) => (
     <Link
       href={viewHref(params, v)}
@@ -16,7 +16,7 @@ export default function ViewToggle({ params, view }: { params: Record<string, st
   return (
     <nav aria-label="Listing view" className="inline-flex rounded-lg border border-brand-border overflow-hidden shadow-sm">
       {item("list", "List")}
-      {item("map", "Map")}
+      {mapEnabled ? item("map", "Map") : null}
     </nav>
   );
 }

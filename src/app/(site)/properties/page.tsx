@@ -10,6 +10,7 @@ import { getLocalityMap } from "@/lib/queries/localities";
 import { getPlaces } from "@/lib/queries/places";
 import { prisma } from "@/lib/db/prisma";
 import { PropertyCategory } from "@prisma/client";
+import { isFeatureEnabled } from "@/lib/flags";
 
 export const revalidate = 120;
 
@@ -54,7 +55,10 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
   const { category, q, bank, state, city, locality, status, priceMin, priceMax } = sp;
   const page = Math.max(1, Number(sp.page ?? "1") || 1);
   const PAGE_SIZE = 48;
-  const view = parseView(sp.view);
+  const mapEnabled = isFeatureEnabled("propertyMap");
+  const requestedView = parseView(sp.view);
+  // Keep bookmarked ?view=map URLs safe when the map feature is disabled.
+  const view = mapEnabled ? requestedView : "list";
   const validCategory = CATEGORIES.find((c) => c.value === category)?.value;
   const statusGroup: StatusGroup = status === "completed" || status === "active" ? status : "all";
 
@@ -99,7 +103,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
       />
 
       <div className="flex items-center justify-between gap-3 mb-5">
-        <ViewToggle params={{ category, q, bank, state, city, locality, status: statusGroup, priceMin, priceMax, page: sp.page }} view={view} />
+        <ViewToggle params={{ category, q, bank, state, city, locality, status: statusGroup, priceMin, priceMax, page: sp.page }} view={view} mapEnabled={mapEnabled} />
       </div>
 
       {properties.length === 0 ? (
