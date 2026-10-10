@@ -37,7 +37,7 @@ test("a city-centre point is flagged approximate, a point from the notice is exa
 });
 
 test("the summary states the listing count and the pin count, and says when the map is capped", () => {
-  assert.match(pinSummary(252, 248, 248, false), /252 listings match · 248 on the map \(approximate: city centre\)/);
+  assert.match(pinSummary(252, 248, 248, false), /252 listings match · 248 on the map \(all approximate\)/);
   assert.match(pinSummary(5000, 2000, 2000, true), /first 2,000/);
   assert.match(pinSummary(3, 0, 0, false), /none has a verified map location/);
   assert.equal(pinSummary(0, 0, 0, false), "No listings match these filters.");

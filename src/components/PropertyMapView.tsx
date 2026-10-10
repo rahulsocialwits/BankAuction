@@ -5,7 +5,7 @@ import type { Map as LeafletMap, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MAP_ATTRIBUTION, MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM, MAP_TILE_URL } from "@/lib/map/config";
 import { initialSelection, selectionReducer, spreadPoints } from "@/lib/map/coordinates";
-import type { MapPin } from "@/lib/map/mapPins";
+import { qualityLabel, type MapPin } from "@/lib/map/mapPins";
 
 export interface MapItem {
   id: string;
@@ -56,7 +56,7 @@ export default function PropertyMapView({ items, pins, summary }: { items: MapIt
         name.textContent = item.title; // text only, never HTML
         const meta = document.createElement("div");
         meta.style.cssText = "margin-top:4px;font-size:12px;color:#5b6577";
-        meta.textContent = [item.city, item.reservePrice != null ? `Reserve ₹${item.reservePrice.toLocaleString("en-IN")}` : null, item.approximate ? "Approximate: city centre" : "Exact location"].filter(Boolean).join(" · ");
+        meta.textContent = [item.city, item.reservePrice != null ? `Reserve ₹${item.reservePrice.toLocaleString("en-IN")}` : null, qualityLabel(item.quality)].filter(Boolean).join(" · ");
         const link = document.createElement("a");
         link.href = `/property/${item.slug}`;
         link.textContent = "View details →";
@@ -103,7 +103,7 @@ export default function PropertyMapView({ items, pins, summary }: { items: MapIt
   return (
     <section aria-label="Properties on a map">
       <p className="text-xs text-brand-muted mb-1" role="status">{summary}</p>
-      {mappable.some((p) => p.approximate) && <p className="text-xs text-brand-muted mb-3">Approximate pins mark the city centre and are spread slightly so each property can be seen: the exact address is in the auction notice.</p>}
+      {mappable.some((p) => p.approximate) && <p className="text-xs text-brand-muted mb-3">Approximate pins mark the PIN code area (or the city centre when there is no PIN) and are spread slightly so each property can be seen: the exact address is in the auction notice.</p>}
       {mappable.length > 0 && <button type="button" onClick={() => fit.current()} className="mb-3 text-xs font-semibold text-brand hover:underline">Fit all results</button>}
       <div className="flex flex-col lg:flex-row gap-5">
         <div className="lg:order-2 lg:w-[55%] lg:sticky lg:top-24 lg:self-start">

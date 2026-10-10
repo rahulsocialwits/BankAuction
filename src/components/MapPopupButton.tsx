@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
  * "View area on map": opens the map in a popup on the same page (no new tab). The map is the OpenStreetMap embed of the stored
  * coordinates. When the stored point is only the city centre the popup says so.
  */
-export default function MapPopupButton({ lat, lng, title, approximate }: { lat: number; lng: number; title: string; approximate: boolean }) {
+export default function MapPopupButton({ lat, lng, title, quality }: { lat: number; lng: number; title: string; quality: "exact" | "pincode" | "city_centroid" }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!open) return;
@@ -17,7 +17,7 @@ export default function MapPopupButton({ lat, lng, title, approximate }: { lat: 
     return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [open]);
 
-  const d = approximate ? 0.12 : 0.01;
+  const d = quality === "city_centroid" ? 0.12 : quality === "pincode" ? 0.03 : 0.01;
   const src = `https://www.openstreetmap.org/export/embed.html?bbox=${lng - d},${lat - d},${lng + d},${lat + d}&layer=mapnik&marker=${lat},${lng}`;
   return (
     <>
@@ -31,7 +31,7 @@ export default function MapPopupButton({ lat, lng, title, approximate }: { lat: 
             </div>
             <iframe title={`Map of ${title}`} src={src} className="block w-full h-[60vh] min-h-[320px] border-0" loading="lazy" referrerPolicy="no-referrer" />
             <p className="px-4 py-2 text-[11px] text-brand-muted">
-              {approximate ? "Approximate: the pin marks the city centre, not the exact address. The exact address is in the auction notice." : "Location from the source data."} Map © OpenStreetMap contributors.
+              {quality === "exact" ? "Location from the source data." : `Approximate: the pin marks the ${quality === "pincode" ? "PIN code area" : "city centre"}, not the exact address. The exact address is in the auction notice.`} Map © OpenStreetMap contributors.
             </p>
           </div>
         </div>

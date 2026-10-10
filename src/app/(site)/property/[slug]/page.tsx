@@ -10,6 +10,7 @@ import { titleCase } from "@/lib/pipeline/locations";
 import PropertyCarousel from "@/components/PropertyCarousel";
 import PropertyGallery from "@/components/PropertyGallery";
 import MapPopupButton from "@/components/MapPopupButton";
+import { qualityOf } from "@/lib/map/mapPins";
 import { toPropertyCardData } from "@/lib/queries/listProperties";
 import { effectiveAuctionStatus } from "@/lib/domain/auctionLifecycle";
 
@@ -149,7 +150,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
             {auction?.bank ? ` · ${auction.bank.name}` : ""}
             {auction?.branch ? ` (${auction.branch.name})` : ""}
             {property.latitude !== null && property.longitude !== null && (
-              <> · <MapPopupButton lat={property.latitude} lng={property.longitude} title={property.title} approximate={property.attributes.some((a) => a.key === "coord_quality" && a.value === "city_centroid")} /></>
+              <> · <MapPopupButton lat={property.latitude} lng={property.longitude} title={property.title} quality={qualityOf(property.attributes.find((a) => a.key === "coord_quality")?.value ?? null)} /></>
             )}
           </p>
 

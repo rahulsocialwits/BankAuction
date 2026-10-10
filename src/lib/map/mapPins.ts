@@ -19,6 +19,13 @@ export interface MapPinRow {
   reservePrice: number | null;
 }
 
+/** How the stored point was obtained: from the notice (exact), the centre of the PIN code area, or the centre of the city. */
+export type PinQuality = "exact" | "pincode" | "city_centroid";
+
+export const qualityOf = (coordQuality: string | null): PinQuality => (coordQuality === "pincode" ? "pincode" : coordQuality === "city_centroid" ? "city_centroid" : "exact");
+
+export const qualityLabel = (q: PinQuality): string => (q === "exact" ? "Exact location" : q === "pincode" ? "Approximate: PIN code area" : "Approximate: city centre");
+
 export interface MapPin {
   id: string;
   slug: string;
@@ -27,6 +34,7 @@ export interface MapPin {
   point: Coordinates;
   /** true: the stored point is a city centre, not the property's own address point. */
   approximate: boolean;
+  quality: PinQuality;
   reservePrice: number | null;
 }
 
@@ -40,7 +48,7 @@ export function toMapPins(rows: MapPinRow[]): { pins: MapPin[]; withoutLocation:
     seen.add(r.id);
     const point = validCoordinates(r.latitude, r.longitude);
     if (!point) { withoutLocation++; continue; }
-    pins.push({ id: r.id, slug: r.slug, title: r.title, city: r.geoCity, point, approximate: r.coordQuality === "city_centroid", reservePrice: r.reservePrice });
+    pins.push({ id: r.id, slug: r.slug, title: r.title, city: r.geoCity, point, approximate: qualityOf(r.coordQuality) !== "exact", quality: qualityOf(r.coordQuality), reservePrice: r.reservePrice });
   }
   return { pins, withoutLocation };
 }
@@ -50,7 +58,7 @@ export function pinSummary(total: number, shown: number, approximate: number, ca
   if (total === 0) return "No listings match these filters.";
   if (shown === 0) return `${total.toLocaleString("en-IN")} listing${total === 1 ? "" : "s"} match, but none has a verified map location yet.`;
   const exact = shown - approximate;
-  const kind = approximate === 0 ? "exact locations" : exact === 0 ? "approximate: city centre" : `${exact} exact, ${approximate} approximate`;
+  const kind = approximate === 0 ? "exact locations" : exact === 0 ? "all approximate" : `${exact} exact, ${approximate} approximate`;
   const cap = capped ? ` The map shows the first ${shown.toLocaleString("en-IN")} of them.` : "";
   return `${total.toLocaleString("en-IN")} listing${total === 1 ? "" : "s"} match · ${shown.toLocaleString("en-IN")} on the map (${kind}).${cap}`;
 }
