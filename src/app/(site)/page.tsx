@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import PropertyCarousel from "@/components/PropertyCarousel";
-import { toPropertyCardData } from "@/lib/queries/listProperties";
+import { getHomeData } from "@/lib/queries/homeData";
 import HeroSearch from "@/components/HeroSearch";
 import ResponsiveImage from "@/components/ResponsiveImage";
 import BlogCarousel from "@/components/BlogCarousel";
@@ -10,13 +10,10 @@ import AuctionCountdownTable, { CountdownRow } from "@/components/AuctionCountdo
 import { getCityCounts, citySlug } from "@/lib/queries/cities";
 import { getHomeConfig } from "@/lib/queries/homeConfig";
 import { canonCity } from "@/lib/pipeline/locations";
-import { activeAuctionWhere } from "@/lib/domain/auctionLifecycle";
 import { bankKey, cityKey, getImageVersions, heroKey, imageUrl, typeKey } from "@/lib/siteImages";
 
 export const dynamic = "force-dynamic";
 
-// "Other" tab = land & plots and anything without a category.
-const COUNTDOWN_CATEGORIES = ["RESIDENTIAL", "COMMERCIAL", "INDUSTRIAL", "AGRICULTURAL", "LAND_PLOT", null] as const;
 
 const WHY_CHOOSE = [
   { title: "Source-backed information", body: "Every figure and fact traces back to an official auction notice — nothing is invented." },
@@ -26,37 +23,9 @@ const WHY_CHOOSE = [
 ];
 
 export default async function Home() {
-  const [activeListings, banksCovered, upcomingAuctions, featured, cityCounts, topBanks, countdownAuctions, config, versions, typeGroups] = await Promise.all([
-    prisma.property.count({ where: { status: "PUBLISHED" } }),
-    prisma.bank.count({ where: { auctions: { some: { property: { status: "PUBLISHED" } } } } }),
-    prisma.auction.count({ where: { AND: [activeAuctionWhere()], property: { status: "PUBLISHED" } } }),
-    prisma.property.findMany({
-      where: { status: "PUBLISHED", auctions: { some: { AND: [activeAuctionWhere()] } } },
-      orderBy: [{ media: { _count: "desc" } }, { createdAt: "desc" }, { id: "desc" }],
-      take: 12,
-      include: { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 }, media: { include: { media: true }, orderBy: { sortOrder: "asc" }, take: 1 } },
-    }),
-    getCityCounts(),
-    prisma.bank.findMany({
-      include: { _count: { select: { auctions: { where: { property: { status: "PUBLISHED" } } } } } },
-      orderBy: { auctions: { _count: "desc" } },
-      take: 10,
-    }),
-    // Eight per tab, fetched per tab: one busy category can never push the others out of the list.
-    Promise.all(
-      COUNTDOWN_CATEGORIES.map((category) =>
-        prisma.auction.findMany({
-          where: { AND: [activeAuctionWhere()], property: { status: "PUBLISHED", category } },
-          orderBy: { auctionStart: "asc" },
-          take: 24,
-          include: { bank: true, property: true },
-        }),
-      ),
-    ).then((lists) => lists.flat()),
-    getHomeConfig(),
-    getImageVersions(),
-    prisma.property.groupBy({ by: ["category"], where: { status: "PUBLISHED" }, _count: { _all: true } }),
-  ]);
+  // One cached call for every database list and count of this page (see lib/queries/homeData.ts), plus the other cached helpers.
+  const [data, cityCounts, config, versions] = await Promise.all([getHomeData(), getCityCounts(), getHomeConfig(), getImageVersions()]);
+  const { activeListings, banksCovered, upcomingAuctions, topBanks, featured, countdownRows } = data;
 
   // Admin-chosen banks (in their order); with none chosen, the ten with the most listings.
   const chosen = config.banks.length
@@ -64,7 +33,7 @@ export default async function Home() {
     : [];
   const promoBanks = chosen.length
     ? config.banks.map((slug) => chosen.find((b) => b.slug === slug)).filter((b): b is (typeof chosen)[number] => !!b)
-    : topBanks.filter((b) => b._count.auctions > 0);
+    : topBanks.filter((b) => b.auctions > 0);
 
   const stats = [
     { label: "Listings in Catalogue", value: activeListings },
@@ -78,24 +47,7 @@ export default async function Home() {
     .filter((name, i, all) => all.findIndex((x) => canonCity(x) === canonCity(name)) === i)
     .filter((name) => (countByCity.get(canonCity(name))?.total ?? 0) > 0)
     .slice(0, 8);
-  const countByType = new Map(typeGroups.map((g) => [g.category, g._count._all]));
-
-  // One row per property (soonest auction): a property can have several auction events, which would read as duplicates.
-  const seenPropertyIds = new Set<string>();
-  const countdownRows: CountdownRow[] = [];
-  for (const a of countdownAuctions) {
-    if (seenPropertyIds.has(a.propertyId)) continue;
-    seenPropertyIds.add(a.propertyId);
-    countdownRows.push({
-      id: a.id,
-      slug: a.property.slug,
-      title: a.property.title,
-      bankName: a.bank?.name ?? null,
-      location: a.property.geoLocality && a.property.geoCity ? `${a.property.geoLocality}, ${a.property.geoCity}` : (a.property.geoCity ?? a.property.addressText),
-      category: a.property.category,
-      auctionStart: a.auctionStart ? a.auctionStart.toISOString() : null,
-    });
-  }
+  const countByType = new Map(data.typeCounts.map((g) => [g.category, g.n]));
 
   const heroDesktop = imageUrl(versions, heroKey("d"));
   const heroMobile = imageUrl(versions, heroKey("m"));
@@ -200,7 +152,7 @@ export default async function Home() {
           <h2 className="text-xl sm:text-2xl font-bold text-brand">Featured Bank Auction Properties</h2>
           <Link href="/properties" className="text-sm text-brand font-medium">View all →</Link>
         </div>
-        <PropertyCarousel properties={featured.map(toPropertyCardData)} />
+        <PropertyCarousel properties={featured} />
       </section>
 
       <section className="w-full px-5 lg:px-10 xl:px-16 py-10">
@@ -221,7 +173,7 @@ export default async function Home() {
             {promoBanks.map((b) => {
               const logo = imageUrl(versions, bankKey(b.slug));
               return (
-                <Link key={b.id} href={`/bank/${b.slug}`} title={b.name} className="group snap-start flex aspect-[224/80] items-center justify-center overflow-hidden rounded-xl border border-brand-border bg-white p-2 hover:border-brand hover:shadow-md transition">
+                <Link key={b.slug} href={`/bank/${b.slug}`} title={b.name} className="group snap-start flex aspect-[224/80] items-center justify-center overflow-hidden rounded-xl border border-brand-border bg-white p-2 hover:border-brand hover:shadow-md transition">
                   {logo ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={logo} alt={b.name} loading="lazy" className="h-full w-full object-contain" />

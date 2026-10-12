@@ -11,6 +11,7 @@ import PropertyCarousel from "@/components/PropertyCarousel";
 import PropertyGallery from "@/components/PropertyGallery";
 import MapPopupButton from "@/components/MapPopupButton";
 import SavePropertyButton from "@/components/SavePropertyButton";
+import PropertyDocuments from "@/components/PropertyDocuments";
 import { qualityOf } from "@/lib/map/mapPins";
 import { toPropertyCardData } from "@/lib/queries/listProperties";
 import { effectiveAuctionStatus } from "@/lib/domain/auctionLifecycle";
@@ -255,17 +256,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
           {property.documents.length > 0 && (
             <section className="mb-6">
               <h2 className="font-semibold mb-2">Documents &amp; Official Records</h2>
-              <ul className="text-sm divide-y divide-brand-border border border-brand-border rounded-xl overflow-hidden">
-                {property.documents.map((pd) => (
-                  <li key={pd.documentId} className="flex items-center justify-between px-4 py-2.5">
-                    <span>{pd.document.title ?? pd.document.type}</span>
-                    <Link href="/pricing" className="inline-flex items-center gap-2 group">
-                      <span className="blur-[4px] select-none text-brand font-medium group-hover:blur-[5px]">View Official Document</span>
-                      <span className="text-xs text-gold font-semibold whitespace-nowrap">Unlock →</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <PropertyDocuments slug={property.slug} docs={property.documents.map((pd) => ({ id: pd.documentId, title: pd.document.title ?? pd.document.type }))} />
             </section>
           )}
         </div>

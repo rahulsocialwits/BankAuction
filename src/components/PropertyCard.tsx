@@ -9,7 +9,7 @@ export interface PropertyCardData {
   category: PropertyCategory | null;
   bankName: string | null;
   reservePrice: unknown; // Prisma Decimal | null
-  auctionStart: Date | null;
+  auctionStart: Date | string | null; // a cached card carries an ISO string
   status: AuctionStatus | null;
   imageUrl: string | null;
 }
@@ -51,9 +51,9 @@ function formatMoney(v: unknown): string {
   return `₹${n.toLocaleString("en-IN")}`;
 }
 
-function formatDate(d: Date | null): string {
+function formatDate(d: Date | string | null): string {
   if (!d) return "Not Available";
-  return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" }).format(d);
+  return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" }).format(new Date(d));
 }
 
 export default function PropertyCard({ property }: { property: PropertyCardData }) {
