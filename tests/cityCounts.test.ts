@@ -235,3 +235,12 @@ test("the results filter has no text fallback for city, and the homepage card sh
   assert.match(home, /· \{active\.toLocaleString\("en-IN"\)\} active/);
   assert.match(read("src/app/(site)/city/[slug]/page.tsx"), /statusGroup: "active"/);
 });
+
+test("guides: every guide has its own slug, title and description, and is in the sitemap", async () => {
+  const { GUIDES } = await import("../src/lib/guides");
+  assert.equal(new Set(GUIDES.map((g) => g.slug)).size, GUIDES.length);
+  assert.equal(new Set(GUIDES.map((g) => g.title)).size, GUIDES.length);
+  assert.equal(new Set(GUIDES.map((g) => g.description)).size, GUIDES.length);
+  assert.match(read("src/app/sitemap.ts"), /GUIDES\.map/);
+  for (const g of GUIDES) assert.ok(g.sections.length >= 2 && g.description.length > 40 && g.description.length < 170, g.slug);
+});

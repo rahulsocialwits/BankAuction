@@ -106,7 +106,7 @@ export default async function Footer() {
           </a>
         </p>
         <nav aria-label="Footer" className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1.5">
-          {[["/about", "About"], ["/contact", "Contact"], ["/how-it-works", "How It Works"], ["/faq", "FAQ"], ["/disclaimer", "Disclaimer"], ["/privacy-policy", "Privacy Policy"], ["/terms-and-conditions", "Terms and Conditions"]].map(([href, label]) => (
+          {[["/about", "About"], ["/contact", "Contact"], ["/how-it-works", "How It Works"], ["/faq", "FAQ"], ["/guides", "Guides"], ["/disclaimer", "Disclaimer"], ["/privacy-policy", "Privacy Policy"], ["/terms-and-conditions", "Terms and Conditions"]].map(([href, label]) => (
             <Link key={href} href={href} className="whitespace-nowrap hover:text-brand">{label}</Link>
           ))}
         </nav>
