@@ -38,7 +38,7 @@ export default function PropertyFilterForm({ localities, places, banks, categori
   // Choosing a state narrows the city list to that state's cities.
   // The page sends only the areas of the selected city; the areas of another city are fetched when it is chosen (keeps the page light).
   const [areaMap, setAreaMap] = useState<Record<string, string[]>>(localities);
-  const cities = state ? places.cities.filter((c) => c.state?.toLowerCase() === state.toLowerCase()).map((c) => c.city) : places.cities.map((c) => c.city);
+  const cities = state ? places.cities.filter((c) => c.state?.toLowerCase() === state.toLowerCase()).map((c) => c.city) : [...new Set(places.cities.map((c) => c.city))];
   const areas = city ? (areaMap[city] ?? []) : [];
   async function chooseCity(v: string) {
     setCity(v);

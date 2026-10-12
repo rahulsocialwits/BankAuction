@@ -45,10 +45,11 @@ export const getPlaces = unstable_cache(
       const state = r.geoState ? canonState(r.geoState) : (r.city?.state?.name ? canonState(r.city.state.name) : null);
       const n = 1;
       if (state) states.set(state, (states.get(state) ?? 0) + n);
-      const c = cities.get(city) ?? { city, state, count: 0 };
+      // One entry per (city, state): the same city name can exist in two states (Aurangabad in Maharashtra and in Bihar are different places).
+      const key = `${city}|${state ?? ""}`;
+      const c = cities.get(key) ?? { city, state, count: 0 };
       c.count += n;
-      c.state ??= state;
-      cities.set(city, c);
+      cities.set(key, c);
       if (r.geoLocality) areas.set(`${city}|${r.geoLocality.toLowerCase()}`, { city, area: r.geoLocality });
     }
 
