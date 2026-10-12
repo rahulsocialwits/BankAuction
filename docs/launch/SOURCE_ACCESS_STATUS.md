@@ -12,7 +12,7 @@ Facts only. "Checked" means one plain GET with the honest user agent `BankAuctio
 ## Sources
 | Source | Checked today | Status for automated collection | What is missing |
 |---|---|---|---|
-| eAuctionsIndia (`eauctionsindia.com`) | `/robots.txt` answered **HTTP 403 with a Cloudflare "Just a moment" challenge** | **BLOCKED** (access control). Source `E Auctions` is `active = false` since 5 Oct ("robots.txt says automated access is not allowed") | Written permission from the site owner, or a licensed API / feed, or a signed bulk-export agreement. Terms / contact page not read: that is the first thing to ask them for |
+| eAuctionsIndia (`eauctionsindia.com`) | `/robots.txt` answered **HTTP 403 with a Cloudflare "Just a moment" managed challenge** (12 Oct). The crawler's own run at 12 Oct 11:09 UTC on the configured start page `https://www.eauctionsindia.com/search` was recorded as **"Blocked: Automated access requires verification (the website shows a CAPTCHA / challenge page). Paused automatically"** | **BLOCKED by an access control (verified).** Source `E Auctions` is `active = false`. 0 auctions from this source are stored. The "Site scan: 0 listing pages found" line is a consequence, not a separate bug: the engine could not read the page, so there was nothing to discover (the note about JavaScript is only a hint the scanner always adds) | **Permission.** A CAPTCHA / Cloudflare challenge cannot and must not be solved by the importer. Needed: (1) written permission from the site owner for automated collection, or (2) a licensed API / data feed / export, with its terms (rate limits, attribution, retention). See `EAUCTIONSINDIA_PERMISSION_REQUEST.md` |
 | Auction Tiger (`auctiontiger.in`) | not re-checked | BLOCKED (robots.txt explicit disallow, paused 5 Oct) | Same as above |
 | Bank Auction Deals, yes bank / Yes Bank | not re-checked | PERMISSION UNKNOWN (robots.txt timeout). Not a confirmed block | Retry later; `yes bank` and `Yes Bank` are two entries with the same URL: owner decides which to keep |
 | Find Auction (`findauction.in`) | not touched | FORBIDDEN by project rule (`blockedHosts.ts`) | 241 stored properties still came from it: owner decision (see `findauction_audit.sql`) |
@@ -24,3 +24,11 @@ Facts only. "Checked" means one plain GET with the honest user agent `BankAuctio
 1. Write to eAuctionsIndia asking for a license / feed / written permission. Until an answer arrives it stays blocked.
 2. Turn the `ibapi` source off (or point it at a real listing page if one is found): it can never yield listings.
 3. Prefer permitted sources of unique inventory: official bank auction pages and notices, and the manual Bulk Import for notices you collect lawfully.
+
+## What is ready the day eAuctionsIndia is authorised
+Nothing is built for this source on purpose: an importer written against pages we are not allowed to read would be guesswork. The platform parts that any authorised source reuses already exist:
+- **Scheduling:** the 5-minute tick (`.github/workflows/tick.yml` -> `/api/cron/ingest` -> `runTick`) runs every active feed source in turn with a lease, so two runs never overlap, and one source failing does not stop the others. The interval of a source is its own "unchanged page" and revalidation rules; a source can be given its own minimum interval in its adapter.
+- **Import:** `importRecords` (`src/lib/import/csvImport.ts`) is idempotent: source-qualified external id (`src:<host>:<id>`), then the duplicate rules (`propertyIdentity.ts`), never overwriting a value with an empty one. Re-running does not create duplicates.
+- **Checkpoints and resume:** a resumable cursor in `FeedSource.sheetState`, saved after every page (pattern: `src/data-sources/feeds/baanknetImport.ts`).
+- **Health:** every run writes `SourceRunLog`; Run Health labels refusals, unknown permission, empty reads and unchanged pages.
+With a licensed feed or an approved API, the adapter is a small file that maps the feed to `ListingRecord`s and returns them to `importRecords`; the first full import runs from a script like `scripts/baanknet-run.ts` with a page cursor.
