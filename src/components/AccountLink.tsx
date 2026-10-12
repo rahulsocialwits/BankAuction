@@ -10,7 +10,8 @@ export default function AccountLink({ logoutAction }: { logoutAction: () => void
 
   return user ? (
     <div className="hidden md:flex items-center gap-3 ml-auto text-xs">
-      <span className="font-semibold">Hi, {user.name?.split(" ")[0] ?? "there"}</span>
+      <Link href="/account" className="font-semibold hover:underline">Hi, {user.name?.split(" ")[0] ?? "there"}</Link>
+      {user.premium && <span className="text-[10px] font-semibold bg-gold text-white rounded-full px-2 py-0.5">PREMIUM</span>}
       <form action={logoutAction}>
         <button className="text-brand-muted hover:text-brand">Sign out</button>
       </form>

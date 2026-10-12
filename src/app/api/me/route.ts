@@ -1,5 +1,6 @@
 import { NextResponse, after } from "next/server";
 import { getCurrentUser } from "@/lib/auth/userSession";
+import { getPremium } from "@/lib/payments/premium";
 import { claimTick, runTick } from "@/lib/pipeline/tick";
 
 export const dynamic = "force-dynamic";
@@ -12,12 +13,13 @@ export const maxDuration = 300; // a visitor-triggered source tick may run in th
  */
 export async function GET() {
   const user = await getCurrentUser();
+  const premium = user ? (await getPremium(user.email)).premium : false;
   after(async () => {
     const claimId = await claimTick();
     if (claimId) await runTick({ limit: 40, trigger: "visitor", via: "visitor traffic", claimId }).catch(() => undefined);
   });
   return NextResponse.json(
-    { user: user ? { name: user.name, email: user.email } : null },
+    { user: user ? { name: user.name, email: user.email, premium } : null },
     { headers: { "Cache-Control": "private, no-store" } },
   );
 }
