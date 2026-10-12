@@ -12,6 +12,7 @@ import PropertyGallery from "@/components/PropertyGallery";
 import MapPopupButton from "@/components/MapPopupButton";
 import SavePropertyButton from "@/components/SavePropertyButton";
 import PropertyDocuments from "@/components/PropertyDocuments";
+import BorrowerNote from "@/components/BorrowerNote";
 import { qualityOf } from "@/lib/map/mapPins";
 import { toPropertyCardData } from "@/lib/queries/listProperties";
 import { effectiveAuctionStatus } from "@/lib/domain/auctionLifecycle";
@@ -181,8 +182,8 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
               <div>
                 <dt className="text-xs text-brand-muted mb-0.5">Borrower</dt>
                 <dd className="text-sm text-brand-muted">
-                  Borrower details available with Premium.{" "}
-                  <Link href="/pricing" className="text-gold font-semibold whitespace-nowrap">See plans →</Link>
+                  {/* Borrower details available with Premium. (the client component keeps this line for non-members) */}
+                  <BorrowerNote />
                 </dd>
               </div>
             </dl>

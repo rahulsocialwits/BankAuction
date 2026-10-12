@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
+import { friendlyFeedMessage } from "@/lib/health/runHealth";
+import { eauctionsConfig, isEauctionsIndiaUrl } from "@/data-sources/authorized/eauctionsindia";
 import { addFeed, toggleFeed, deleteFeed } from "./actions";
 
 import SubmitButton from "@/components/admin/SubmitButton";
@@ -53,7 +55,7 @@ export default async function FeedsPage({ searchParams }: { searchParams: Promis
               </div>
               <div className="text-xs text-brand-muted truncate">{f.url}</div>
               <div className={`text-xs mt-1 ${f.lastStatus === "error" ? "text-red-600" : "text-brand-muted"}`}>
-                {f.lastRunAt ? `Last run ${f.lastRunAt.toLocaleString("en-IN")} — ${f.lastMessage}` : "Not run yet"}
+                {f.lastRunAt ? `Last run ${f.lastRunAt.toLocaleString("en-IN")} — ${friendlyFeedMessage({ awaitingAuthorization: isEauctionsIndiaUrl(f.url) && !eauctionsConfig().ready, active: f.active, message: f.lastMessage })}` : "Not run yet"}
                 {f.lastMessage === "Fetching…" && " (refresh in a few seconds)"}
               </div>
             </div>

@@ -53,7 +53,8 @@ test("the blurred borrower text is gone and a neutral message is shown", () => {
   const block = code.slice(code.indexOf(">Borrower</dt>"), code.indexOf("</dl>", code.indexOf(">Borrower</dt>")));
   assert.ok(block.length > 20, "the Borrower row exists");
   assert.doesNotMatch(block, /blur|select-none|hidden|sr-only|aria-hidden|data-/, "no blurred or hidden text in the borrower row");
-  assert.match(code, /Borrower details available with Premium/);
+  assert.match(read("src/components/BorrowerNote.tsx"), /Borrower details available with Premium/);
+  assert.match(read("src/components/BorrowerNote.tsx"), /Borrower names are not published/, "a Premium member is told the truth (D07)");
   assert.doesNotMatch(code, /(unlocked|you have premium|activate now)/i, "must not imply Premium already works");
 });
 

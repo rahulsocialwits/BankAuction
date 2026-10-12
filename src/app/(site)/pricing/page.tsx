@@ -7,7 +7,6 @@ import { getCurrentUser } from "@/lib/auth/userSession";
 import BuyPlanButton from "@/components/BuyPlanButton";
 
 const FEATURES = [
-  "Full borrower name & contact details",
   "Auction document / notice access (availability varies by listing)",
   "Auction history",
   "Email support",
@@ -36,7 +35,7 @@ export default async function PricingPage() {
       <div className="text-center mb-10">
         <h1 className="text-2xl font-semibold mb-2">BankAuction Premium</h1>
         <p className="text-brand-muted text-sm max-w-xl mx-auto">
-          Premium is planned to include full borrower names and complete addresses. Personalised auction alerts are planned and are not yet available.
+          Premium gives you the official auction documents and notices. Personalised auction alerts are planned and are not yet available.
           {gw.ready ? " Pay securely online with Razorpay." : " Click Buy Premium to request a plan: our team confirms the payment with you and activates Premium on your account."}
         </p>
       </div>

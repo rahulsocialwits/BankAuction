@@ -340,6 +340,9 @@ const SITE_SCAN_PENDING = "Site scan continues automatically.";
 export async function runWebDiscovery(feedId: string, trigger: "schedule" | "manual", opts: { budgetMs?: number; all?: boolean } = {}): Promise<string | null> {
   const feed = await prisma.feedSource.findUnique({ where: { id: feedId } });
   if (!feed || !isAiFeed(feed.url)) return null;
+  // eAuctionsIndia answers automated access with a Cloudflare challenge: its pages are never scanned. It is read only through an
+  // authorised feed (authorized/eauctionsindia.ts); without one the run says "awaiting authorization" and sends no request.
+  if (isEauctionsIndiaUrl(feed.url)) return null;
   const check = validateFeedUrl(feed.url);
   if (!check.ok) return null;
   const state = webStateOf(feed.sheetState);
