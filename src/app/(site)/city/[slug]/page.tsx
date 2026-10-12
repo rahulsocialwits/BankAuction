@@ -5,6 +5,7 @@ import { clip } from "@/lib/seo";
 import PropertyCard from "@/components/PropertyCard";
 import { listPublishedProperties, toPropertyCardData } from "@/lib/queries/listProperties";
 import { getCityCounts } from "@/lib/queries/cities";
+import { MIN_INDEXABLE_CITY_LISTINGS } from "@/lib/domain/cityCounts";
 
 export const revalidate = 120;
 
@@ -24,8 +25,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       : `Bank auction properties in ${match.city}: flats, houses, plots and commercial assets with reserve prices, EMD and auction dates.`,
     158,
   );
-  // Thin pages (fewer than 5 active listings) stay reachable for visitors but are kept out of search results.
-  return { title, description, alternates: { canonical: `/city/${slug}` }, openGraph: { title, description }, robots: n < 5 ? { index: false, follow: true } : undefined };
+  // Thin pages (fewer active listings than the minimum) stay reachable for visitors but are kept out of search results.
+  return { title, description, alternates: { canonical: `/city/${slug}` }, openGraph: { title, description }, robots: n < MIN_INDEXABLE_CITY_LISTINGS ? { index: false, follow: true } : undefined };
 }
 
 const PAGE = 48;

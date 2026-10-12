@@ -38,6 +38,9 @@ export interface GeoCityGroup {
 
 export const MAX_CITY_NAME = 40;
 
+/** A city page is indexable (in the sitemap, no noindex) only with at least this many active listings. */
+export const MIN_INDEXABLE_CITY_LISTINGS = 5;
+
 /**
  * A geoCity value is usable only when the results page can find it again: `geoCity equals canonCity(city)` (case-insensitive) must
  * match, so the stored value has to be the canonical spelling already ("Bombay" is not; "mumbai" is, apart from case).

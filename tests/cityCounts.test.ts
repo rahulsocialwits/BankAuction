@@ -244,3 +244,10 @@ test("guides: every guide has its own slug, title and description, and is in the
   assert.match(read("src/app/sitemap.ts"), /GUIDES\.map/);
   for (const g of GUIDES) assert.ok(g.sections.length >= 2 && g.description.length > 40 && g.description.length < 170, g.slug);
 });
+
+test("thin city pages are neither indexable nor in the sitemap: one shared minimum", () => {
+  const sitemap = read("src/app/sitemap.ts");
+  const city = read("src/app/(site)/city/[slug]/page.tsx");
+  assert.match(sitemap, /c\.count >= MIN_INDEXABLE_CITY_LISTINGS/);
+  assert.match(city, /n < MIN_INDEXABLE_CITY_LISTINGS/);
+});
