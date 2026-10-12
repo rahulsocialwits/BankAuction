@@ -33,3 +33,19 @@ export function classifySourceMessage(active: boolean, lastStatus: string | null
   if (/unchanged|no changes/.test(m)) return { kind: "unchanged", label: "Unchanged", action: "The page has not changed since the last run, so AI was skipped on purpose." };
   return { kind: "healthy", label: "OK", action: "" };
 }
+
+/**
+ * The line an admin sees on a source card. A source that is waiting for authorisation, or that the site refused, must not show a
+ * stale "Site scan: 0 listing page(s) found ... JavaScript" note: that reads like a scanner problem, while the real state is "the site
+ * does not allow automated access".
+ */
+export function friendlyFeedMessage(opts: { awaitingAuthorization: boolean; active: boolean; message: string | null }): string | null {
+  const m = opts.message ?? "";
+  if (opts.awaitingAuthorization) {
+    return "Awaiting authorization: this website answers automated access with a Cloudflare challenge, so nothing is requested from it. It needs written permission, an API / licensed feed or an export from the site owner (see docs/launch/SOURCE_ACCESS_STATUS.md).";
+  }
+  if (!opts.active && /refused by robots\.txt or the site|robots\.txt says|CAPTCHA|challenge page/i.test(m)) {
+    return "Blocked: the website refused automated access (robots.txt or a verification page). It is paused and not retried or worked around.";
+  }
+  return opts.message;
+}

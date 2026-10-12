@@ -42,3 +42,19 @@ test("the budget check runs before an AI call is made and never touches data; th
   assert.doesNotMatch(readFileSync("src/lib/ai/dailyBudget.ts", "utf8"), /\.(create|update|updateMany|delete|deleteMany|upsert)\(/);
   assert.match(readFileSync("src/app/admin/(shell)/health/page.tsx", "utf8"), /await requireMaster\(\)/);
 });
+
+import { friendlyFeedMessage } from "../src/lib/health/runHealth";
+
+test("source card message: a source awaiting authorisation or refused by the site never shows a stale 'scanner found 0 pages' note", () => {
+  const stale = "Site scan: 0 listing page(s) found, 0 new. Note: the start page could not be read (refused by robots.txt or the site); the site may load its listings with JavaScript";
+  assert.match(friendlyFeedMessage({ awaitingAuthorization: true, active: false, message: stale })!, /Awaiting authorization.*Cloudflare/);
+  assert.match(friendlyFeedMessage({ awaitingAuthorization: false, active: false, message: stale })!, /^Blocked: the website refused/);
+  assert.equal(friendlyFeedMessage({ awaitingAuthorization: false, active: true, message: "Unchanged: AI skipped" }), "Unchanged: AI skipped");
+  assert.equal(friendlyFeedMessage({ awaitingAuthorization: false, active: true, message: null }), null);
+});
+
+test("eAuctionsIndia is never scanned: the site scan returns before it makes any request", () => {
+  const run = readFileSync("src/data-sources/feeds/run.ts", "utf8");
+  const fn = run.slice(run.indexOf("export async function runWebDiscovery"));
+  assert.ok(fn.indexOf("isEauctionsIndiaUrl(feed.url)") > 0 && fn.indexOf("isEauctionsIndiaUrl(feed.url)") < fn.indexOf("scanSiteForNew("));
+});
