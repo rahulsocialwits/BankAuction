@@ -32,3 +32,14 @@ Nothing is built for this source on purpose: an importer written against pages w
 - **Checkpoints and resume:** a resumable cursor in `FeedSource.sheetState`, saved after every page (pattern: `src/data-sources/feeds/baanknetImport.ts`).
 - **Health:** every run writes `SourceRunLog`; Run Health labels refusals, unknown permission, empty reads and unchanged pages.
 With a licensed feed or an approved API, the adapter is a small file that maps the feed to `ListingRecord`s and returns them to `importRecords`; the first full import runs from a script like `scripts/baanknet-run.ts` with a page cursor.
+
+## Authorised-feed framework (built, waiting for authorisation)
+Code: `src/data-sources/authorized/` (`engine.ts`, `jsonFeed.ts`, `fieldMap.ts`, `eauctionsindia.ts`), hook in `src/data-sources/feeds/run.ts`, script `scripts/eauctions-import.ts`, simulated tests `tests/authorizedFeed.test.ts` (19 tests, simulated: they do not prove a live integration).
+- States: awaiting_authorization, temporarily_unavailable, configuration_error, connected_no_listings, active, partial, completed. A challenge page / 401 / 403 is "awaiting authorization" and is never retried; an empty healthy feed is never "completed"; a temporary error keeps the cursor.
+- The eAuctionsIndia feed source is read ONLY through this path (the web scanner is never used for it). With no authorisation recorded it answers at once and sends no request (verified: `npx tsx scripts/eauctions-import.ts` printed "Awaiting authorization ... Nothing is requested from the site", and wrote nothing).
+- To switch on, after written authorisation: set `EAUCTIONS_AUTHORIZED=yes`, `EAUCTIONS_FEED_URL`, `EAUCTIONS_RECORDS_PATH`, `EAUCTIONS_CURSOR_PARAM` (+ `EAUCTIONS_NEXT_CURSOR_PATH` or `EAUCTIONS_PAGE_NUMBER_MODE=1`), `EAUCTIONS_FIELD_MAP` (JSON), optional token variables; run `--dry`, then `--sample=20`, then `--full`; then set the source active in Admin -> Feeds so the 5-minute tick keeps it fresh (a finished pass is repeated every `EAUCTIONS_MIN_INTERVAL_MIN`, default 60).
+
+## Scheduler reality check (12 Oct, from GitHub and the run logs)
+- `tick.yml` is configured for every 5 minutes, but GitHub's `schedule` event actually ran at 07:46, 01:28 (12 Oct), 22:25, 18:35, 13:56 (failure), 07:05, 01:05 (11 Oct): about every 3 to 6 hours. GitHub runs scheduled workflows on a best-effort basis and delays them heavily.
+- Run logs, last 24 h: 21 ticks, 10 gaps over 20 minutes, longest gap 244 minutes. The ticks in between come from the visitor safety net (`/api/me`).
+- So "configured every 5 minutes" is NOT "executed every 5 minutes". An external pinger is needed (cron-job.org or similar calling `/api/cron/ingest` with the `x-cron-secret` header); Vercel Cron on the Hobby plan runs once a day at most.
