@@ -300,6 +300,28 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
         </aside>
       </div>
 
+      {property.latitude !== null && property.longitude !== null && (() => {
+        const q = qualityOf(property.attributes.find((a) => a.key === "coord_quality")?.value ?? null);
+        const d = q === "city_centroid" ? 0.12 : q === "pincode" ? 0.03 : 0.01;
+        const lat = property.latitude;
+        const lng = property.longitude;
+        return (
+          <section className="mt-8" aria-label="Location on the map">
+            <h2 className="font-semibold mb-2">Location</h2>
+            <iframe
+              title={`Map of ${property.title}`}
+              src={`https://www.openstreetmap.org/export/embed.html?bbox=${lng - d},${lat - d},${lng + d},${lat + d}&layer=mapnik&marker=${lat},${lng}`}
+              className="block w-full h-72 rounded-2xl border border-brand-border"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+            <p className="mt-1.5 text-[11px] text-brand-muted">
+              {q === "exact" ? "Location from the source data." : `Approximate: the pin marks the ${q === "pincode" ? "PIN code area" : "city centre"}, not the exact address. The exact address is in the auction notice.`} Map © OpenStreetMap contributors.
+            </p>
+          </section>
+        );
+      })()}
+
       <p className="mt-8 rounded-xl border border-brand-border bg-[#F8FAFC] p-4 text-xs text-brand-muted">
         Details are collected from the bank / auction portal notices and may change or be incomplete. Please verify the property, reserve price, EMD and auction date with the bank and read the official notice before bidding. This is not legal or financial advice.
       </p>

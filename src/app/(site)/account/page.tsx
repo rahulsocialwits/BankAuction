@@ -53,7 +53,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
           <p className="text-sm text-brand-muted">No payments yet.</p>
         ) : (
           <table className="w-full text-sm">
-            <thead className="text-left text-xs text-brand-muted"><tr><th className="py-1.5">Date</th><th>Plan</th><th className="text-right">Amount</th><th className="text-right">Status</th></tr></thead>
+            <thead className="text-left text-xs text-brand-muted"><tr><th className="py-1.5">Date</th><th>Plan</th><th className="text-right">Amount</th><th className="text-right">Status</th><th className="text-right">Receipt</th></tr></thead>
             <tbody>
               {payments.map((p) => (
                 <tr key={p.id} className="border-t border-brand-border">
@@ -61,6 +61,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
                   <td>{p.planId ?? "-"}</td>
                   <td className="text-right">₹{(p.amount / 100).toLocaleString("en-IN")}</td>
                   <td className="text-right capitalize">{p.status}</td>
+                  <td className="text-right"><Link href={`/account/receipt/${p.id}`} className="text-brand hover:underline">View</Link></td>
                 </tr>
               ))}
             </tbody>
