@@ -92,3 +92,23 @@ test("the receipt page: login needed, only the owner of a paid or refunded onlin
   assert.match(r, /provider !== "razorpay"/);
   assert.match(r, /not a GST tax invoice/);
 });
+
+test("official document links reach only a logged-in Premium user: the page lists the rows, the links come from a private API", () => {
+  const api = readFileSync("src/app/api/property-docs/[slug]/route.ts", "utf8");
+  assert.ok(api.indexOf("login_required") < api.indexOf("premium_required"));
+  assert.ok(api.indexOf("premium_required") < api.indexOf("prisma.propertyDocument"), "the premium check comes before any document is read");
+  assert.match(api, /no-store/);
+  const page = readFileSync("src/app/(site)/property/[slug]/page.tsx", "utf8");
+  assert.doesNotMatch(page, /document.sourceUrl/, "the property page does not put document addresses in its HTML");
+  assert.match(readFileSync("src/components/PropertyDocuments.tsx", "utf8"), /user\?\.premium/);
+});
+
+test("page speed: the home page reads its data from one cached call, and the search page sends only the selected city's areas", () => {
+  const home = readFileSync("src/app/(site)/page.tsx", "utf8");
+  assert.match(home, /getHomeData\(\)/);
+  assert.doesNotMatch(home, /prisma\.property\.count|prisma\.auction\.count|prisma\.property\.groupBy/);
+  assert.match(readFileSync("src/lib/queries/homeData.ts", "utf8"), /unstable_cache/);
+  const props = readFileSync("src/app/(site)/properties/page.tsx", "utf8");
+  assert.match(props, /selectedAreas\(localities, city\)/);
+  assert.match(props, /areas: \[\]/);
+});
