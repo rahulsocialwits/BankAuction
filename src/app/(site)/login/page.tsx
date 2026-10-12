@@ -34,7 +34,7 @@ export default async function LoginPage({
             <input name="email" type="email" required className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Password</label>
+            <div className="flex items-center justify-between"><label className="block text-sm font-medium mb-1">Password</label><Link href="/forgot-password" className="text-xs text-brand hover:underline">Forgot password?</Link></div>
             <input name="password" type="password" required className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm" />
           </div>
           <button type="submit" className="w-full bg-brand text-white font-medium rounded-lg py-2.5 hover:bg-brand-dark">

@@ -10,6 +10,7 @@ import { acquireAiLock, aiWindow, releaseAiLock } from "@/lib/pipeline/aiSchedul
 import { orderByWaiting, planScanOrder, scanWindowEnd, sliceFor, type PlanSource } from "@/lib/pipeline/tickPlan";
 import { checkSourceUrl, type SourceUrlCheck } from "./blockedHosts";
 import { isBaanknetUrl, runBaanknetImport } from "./baanknetImport";
+import { isEauctionsIndiaUrl, runEauctionsFeed } from "../authorized/eauctionsindia";
 import { DEEP_MAX_LISTINGS, makeDeepener } from "./deepScan";
 import { scanSiteForNew, webStateOf, withWebState } from "./siteScan";
 import { recordYield } from "@/lib/pipeline/yieldMonitor";
@@ -130,6 +131,12 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
     if (!check.ok) throw check.status === "internal_policy_block" ? new PolicyError(check.reason) : new Error(check.reason);
     // BAANKNET has its own importer (baanknetImport.ts: the site's public listing data, resumable, no AI): its home page is not AI-scanned.
     if (isBaanknetUrl(check.url)) return { name: feed.name, message: "BAANKNET is imported by its dedicated importer (see Site scan)." };
+    // eAuctionsIndia is never scanned like a web page (its site answers with a Cloudflare challenge): it is read only through an authorised
+    // feed (src/data-sources/authorized/eauctionsindia.ts). Without a recorded authorisation this answers at once and sends no request.
+    if (isEauctionsIndiaUrl(check.url)) {
+      const r = await runEauctionsFeed({ id: feed.id, name: feed.name, url: feed.url }, { mode: "full", scheduled: trigger !== "manual", budgetMs: 120_000 });
+      return { name: feed.name, message: r.message };
+    }
     const isSheet = check.url.startsWith("https://docs.google.com/spreadsheets/");
     const target = toCsvUrl(check.url);
 

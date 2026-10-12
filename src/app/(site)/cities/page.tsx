@@ -14,12 +14,16 @@ export const metadata: Metadata = {
 export default async function CitiesPage() {
   const { cities } = await getPlaces();
 
+  // A city name that exists in more than one state links to the results of THAT state, so the number shown is the number you get.
+  const statesOf = new Map<string, number>();
+  for (const c of cities) statesOf.set(c.city, (statesOf.get(c.city) ?? 0) + 1);
   const byState = new Map<string, StateGroup>();
   for (const c of cities) {
     const state = c.state ?? "Other";
     const g = byState.get(state) ?? { state, total: 0, cities: [] };
     g.total += c.count;
-    g.cities.push({ city: c.city, slug: citySlug(c.city), count: c.count });
+    const shared = (statesOf.get(c.city) ?? 0) > 1 && c.state;
+    g.cities.push({ city: c.city, slug: citySlug(c.city), count: c.count, ...(shared ? { href: `/properties?city=${encodeURIComponent(c.city)}&state=${encodeURIComponent(c.state as string)}&status=all` } : {}) });
     byState.set(state, g);
   }
   const groups = [...byState.values()]

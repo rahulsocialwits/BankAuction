@@ -1,6 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { createResetToken } from "@/lib/auth/resetToken";
+import { SITE_URL } from "@/lib/seo";
 import { requireMaster } from "@/lib/auth/adminAuth";
 import { prisma } from "@/lib/db/prisma";
 import { grantPremium, revokePremium } from "@/lib/payments/premium";
@@ -27,4 +30,14 @@ export async function makeNormal(formData: FormData) {
   if (!user) return;
   await revokePremium(user.email, admin.adminId ? `admin ${admin.adminId}` : "master admin");
   revalidatePath("/admin/users");
+}
+
+/** Master admin only: a password-reset link (valid 24 hours, works once) to send to the user. Shown on the users page, not emailed. */
+export async function makeResetLink(formData: FormData) {
+  await requireMaster();
+  const userId = String(formData.get("userId") ?? "");
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, passwordHash: true, id: true } });
+  if (!user) return;
+  const link = `${SITE_URL}/reset-password?token=${encodeURIComponent(createResetToken(user.id, user.passwordHash, 24 * 60))}`;
+  redirect(`/admin/users?for=${encodeURIComponent(user.email)}&link=${encodeURIComponent(link)}`);
 }

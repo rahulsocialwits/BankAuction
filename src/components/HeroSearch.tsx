@@ -76,7 +76,7 @@ export default function HeroSearch() {
     if (!city) {
       for (const c of places.cities) {
         if (state && c.state?.toLowerCase() !== state.toLowerCase()) continue;
-        if (match(c.city)) out.push({ key: `c-${c.city}`, label: c.city, hint: `City${c.state && !state ? " · " + c.state : ""}`, chip: { kind: "city", value: c.city } });
+        if (match(c.city)) out.push({ key: `c-${c.city}-${c.state ?? ""}`, label: c.city, hint: `City${c.state && !state ? " · " + c.state : ""}`, chip: { kind: "city", value: c.city } });
       }
     }
     if (q || city) {

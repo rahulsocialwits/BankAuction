@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { chatJSONDetailed } from "@/lib/ai/relayModelsClient";
-import { canonCity, titleCase } from "./locations";
+import { canonCity, canonCityInState, titleCase } from "./locations";
 
 const BATCH = 12;
 
@@ -66,7 +66,7 @@ export async function enrichLocations(limit = 48): Promise<{ processed: number; 
         await prisma.property.update({
           where: { id: p.id },
           data: {
-            geoCity: city ? canonCity(city) : null,
+            geoCity: city ? canonCityInState(city, clean(a.state, 40)) : null,
             geoLocality: city && locality ? titleCase(locality) : null,
             geoState: city ? clean(a.state, 40) : null,
             geoCheckedAt: new Date(),

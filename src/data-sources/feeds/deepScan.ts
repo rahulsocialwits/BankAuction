@@ -3,7 +3,7 @@ import { chatJSONDetailed } from "@/lib/ai/relayModelsClient";
 import { getAiConfig } from "@/lib/ai/aiConfig";
 import type { ListingRecord } from "@/lib/import/csvImport";
 import { moneyNumber } from "@/lib/import/richRaw";
-import { canonCity, titleCase } from "@/lib/pipeline/locations";
+import { canonCityInState, titleCase } from "@/lib/pipeline/locations";
 import { UA, htmlToText } from "./webScan";
 import { RobotsGate } from "./robotsGate";
 import { isBlockedUrl } from "./blockedHosts";
@@ -350,7 +350,7 @@ export function baanknetRecordsFromSources(sources: Raw[]): ListingRecord[] {
       branch: str(r.propertyBranchName, 140) || str(r.auctionBranch, 140),
       category: category(type, sub),
       location: place || address.slice(0, 200),
-      geo_city: city ? canonCity(city) : "",
+      geo_city: city ? canonCityInState(city, state) : "",
       geo_state: state ? titleCase(state) : "",
       geo_locality: str(r.locality, 100) ? titleCase(str(r.locality, 100)) : "",
       description: desc.slice(0, 1500),
