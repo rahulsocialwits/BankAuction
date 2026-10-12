@@ -22,6 +22,7 @@ const NAV: NavItem[] = [
   // Master admin only:
   // One sourcing area: overview, link sources, bulk import, history and duplicates are tabs inside it.
   { href: "/admin/engine", label: "Data Engine", also: ["/admin/feeds", "/admin/properties/import"], master: true },
+  { href: "/admin/health", label: "Run Health", master: true },
   { href: "/admin/home", label: "Home Page", master: true },
   { href: "/admin/pages", label: "Pages (About, Policies, FAQ)", master: true },
   { href: "/admin/media", label: "Media Library", master: true },
@@ -78,7 +79,7 @@ export default function AdminSidebar({ isMaster }: { isMaster: boolean }) {
       {isMaster && (
         <Link href="/admin/engine" className="m-3 rounded-xl bg-white/5 p-3 block hover:bg-white/10">
           <div className="text-[10px] uppercase tracking-wider text-white/40">Data engine</div>
-          <div className="mt-2 flex items-center gap-2 text-[10px] text-emerald-300"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Auto sync every 30 min</div>
+          <div className="mt-2 flex items-center gap-2 text-[10px] text-emerald-300"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Sync every 5 min (scheduler)</div>
         </Link>
       )}
       <form action={logoutAdmin} className="p-3 border-t border-white/10">
