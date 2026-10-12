@@ -225,11 +225,13 @@ test("the card query is built from publishedWhere, the cache key moved, and noth
   assert.doesNotMatch(read("src/lib/domain/cityCounts.ts"), /prisma/);
 });
 
-test("the results filter has no text fallback for city, and the homepage card links to the active results", () => {
+test("the results filter has no text fallback for city, and the homepage card shows the city total and links to the all-status results (owner request 2026-10-10)", () => {
   const lp = read("src/lib/queries/publishedWhere.ts");
   assert.match(lp, /if \(filters\.city\) and\.push\(\{ geoCity: \{ equals: canonCity\(filters\.city\), mode: "insensitive" \} \}\)/);
   const home = read("src/app/(site)/page.tsx");
-  assert.match(home, /status=active/);
-  assert.match(home, /active propert/);
+  // the number on the card is the city total (all published properties) and the link opens the all-status list, so number = list total
+  assert.match(home, /city=\$\{encodeURIComponent\(city\)\}&status=all/);
+  assert.match(home, /total: c\.total, active: c\.count/);
+  assert.match(home, /· \{active\.toLocaleString\("en-IN"\)\} active/);
   assert.match(read("src/app/(site)/city/[slug]/page.tsx"), /statusGroup: "active"/);
 });

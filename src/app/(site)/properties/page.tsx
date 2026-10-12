@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import PropertyCard from "@/components/PropertyCard";
 import PropertyFilterForm from "@/components/PropertyFilterForm";
+import { listMapPins } from "@/lib/queries/mapPins";
+import { pinSummary } from "@/lib/map/mapPins";
 import PropertyMapView from "@/components/PropertyMapView";
 import ViewToggle from "@/components/ViewToggle";
-import { parseView, splitMappable } from "@/lib/map/coordinates";
+import { parseView } from "@/lib/map/coordinates";
 import { listPublishedProperties, countPublishedProperties, toPropertyCardData, StatusGroup, type PropertyFilters } from "@/lib/queries/listProperties";
 import { getLocalityMap } from "@/lib/queries/localities";
 import { getPlaces } from "@/lib/queries/places";
@@ -82,6 +84,8 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
     getPlaces(),
   ]);
 
+  // Map view: pins for EVERY listing matching the filters (not just this page), same where-clause as the list.
+  const mapData = view === "map" ? await listMapPins(filters) : { pins: [], withoutLocation: 0, capped: false };
   const place = placeLabel(sp);
 
   return (
@@ -110,12 +114,9 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
         </div>
       ) : view === "map" ? (
         <PropertyMapView
-          items={(() => {
-            // Coordinates come from the stored fields only; a property without reliable ones simply has no pin.
-            const { mappable } = splitMappable<(typeof properties)[number]>(properties);
-            const pin = new Map(mappable.map((m) => [m.row.id, { lat: m.lat, lng: m.lng }]));
-            return properties.map((p) => ({ id: p.id, slug: p.slug, title: p.title, point: pin.get(p.id) ?? null, card: <PropertyCard property={toPropertyCardData(p)} /> }));
-          })()}
+          pins={mapData.pins}
+          summary={pinSummary(totalCount, mapData.pins.length, mapData.pins.filter((p) => p.approximate).length, mapData.capped)}
+          items={properties.map((p) => ({ id: p.id, slug: p.slug, title: p.title, point: null, card: <PropertyCard property={toPropertyCardData(p)} /> }))}
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">

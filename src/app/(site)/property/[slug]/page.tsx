@@ -9,6 +9,8 @@ import { clip, dayLabel, inr } from "@/lib/seo";
 import { titleCase } from "@/lib/pipeline/locations";
 import PropertyCarousel from "@/components/PropertyCarousel";
 import PropertyGallery from "@/components/PropertyGallery";
+import MapPopupButton from "@/components/MapPopupButton";
+import { qualityOf } from "@/lib/map/mapPins";
 import { toPropertyCardData } from "@/lib/queries/listProperties";
 import { effectiveAuctionStatus } from "@/lib/domain/auctionLifecycle";
 
@@ -148,7 +150,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
             {auction?.bank ? ` · ${auction.bank.name}` : ""}
             {auction?.branch ? ` (${auction.branch.name})` : ""}
             {property.latitude !== null && property.longitude !== null && (
-              <> · <a href={`https://www.openstreetmap.org/?mlat=${property.latitude}&mlon=${property.longitude}#map=12/${property.latitude}/${property.longitude}`} target="_blank" rel="noopener noreferrer" className="text-gold underline">View area on map</a></>
+              <> · <MapPopupButton lat={property.latitude} lng={property.longitude} title={property.title} quality={qualityOf(property.attributes.find((a) => a.key === "coord_quality")?.value ?? null)} /></>
             )}
           </p>
 

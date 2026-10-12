@@ -141,7 +141,8 @@ test("the page keeps the shared filters, pagination and cards in both views, and
 
 test("the map component never builds HTML from listing text, never geocodes, and uses no API key", () => {
   const c = read("src/components/PropertyMapView.tsx");
-  assert.match(c, /\.textContent = item\.title/);
+  assert.match(c, /head\.textContent = /, "popup text is set as text, never as HTML");
+  assert.match(c, /link\.textContent = many \? item\.title/);
   assert.doesNotMatch(c, /bindPopup\(`|innerHTML/, "popup content is built from text nodes");
   assert.doesNotMatch(c, /geocod|nominatim|googleapis|api[_-]?key/i);
   assert.match(c, /\/property\/\$\{item\.slug\}/, "pins link to the existing property detail page");
