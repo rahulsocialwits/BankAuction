@@ -70,7 +70,7 @@ test("the server decides: price from the saved plan, premium only after a verifi
   const hook = readFileSync("src/app/api/payments/webhook/route.ts", "utf8");
   assert.ok(hook.indexOf("verifyWebhookSignature(") < hook.indexOf("markOrderPaid("));
   const actions = readFileSync("src/app/admin/(shell)/users/actions.ts", "utf8");
-  assert.equal((actions.match(/requireMaster\(\)/g) ?? []).length, 2, "both admin actions are master-only");
+  assert.equal((actions.match(/requireMaster\(\)/g) ?? []).length, 3, "all three admin actions (premium, normal, reset link) are master-only");
   const razor = readFileSync("src/lib/payments/razorpay.ts", "utf8");
   assert.doesNotMatch(razor, /deleteMany|\.delete\(/, "payments are never deleted");
 });

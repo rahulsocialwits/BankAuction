@@ -10,6 +10,7 @@ import { titleCase } from "@/lib/pipeline/locations";
 import PropertyCarousel from "@/components/PropertyCarousel";
 import PropertyGallery from "@/components/PropertyGallery";
 import MapPopupButton from "@/components/MapPopupButton";
+import SavePropertyButton from "@/components/SavePropertyButton";
 import { qualityOf } from "@/lib/map/mapPins";
 import { toPropertyCardData } from "@/lib/queries/listProperties";
 import { effectiveAuctionStatus } from "@/lib/domain/auctionLifecycle";
@@ -144,7 +145,10 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
             {shownStatus ? shownStatus.charAt(0) + shownStatus.slice(1).toLowerCase().replace("_", " ") : "Status unknown"}
           </span>
           {earlier.length > 0 && <span className="ml-2 inline-block text-xs font-semibold px-3 py-1 rounded-full mb-3 bg-amber-50 text-amber-800">Re-auction · attempt {earlier.length + 1}</span>}
-          <h1 className="text-2xl font-semibold mb-1">{property.title}</h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="text-2xl font-semibold mb-1">{property.title}</h1>
+            <SavePropertyButton slug={property.slug} />
+          </div>
           <p className="text-brand-muted text-sm mb-6">
             {property.addressText ?? "Location not specified"}
             {auction?.bank ? ` · ${auction.bank.name}` : ""}

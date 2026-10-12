@@ -1,14 +1,14 @@
 import { prisma } from "@/lib/db/prisma";
 import { requireMaster } from "@/lib/auth/adminAuth";
 import { computePremium } from "@/lib/payments/premium";
-import { makeNormal, makePremium } from "./actions";
+import { makeNormal, makePremium, makeResetLink } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 /** Everyone who registered on the public website (not the admin team). */
-export default async function RegisteredUsersPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+export default async function RegisteredUsersPage({ searchParams }: { searchParams: Promise<{ q?: string; link?: string; for?: string }> }) {
   await requireMaster();
-  const { q } = await searchParams;
+  const { q, link, for: linkFor } = await searchParams;
   const where = q ? { OR: [{ email: { contains: q, mode: "insensitive" as const } }, { name: { contains: q, mode: "insensitive" as const } }] } : {};
 
   const [users, total, last7] = await Promise.all([
@@ -44,6 +44,14 @@ export default async function RegisteredUsersPage({ searchParams }: { searchPara
         <div className="bg-white border border-brand-border rounded-xl p-4"><div className="text-2xl font-semibold text-green-700">{last7}</div><div className="text-xs text-brand-muted mt-1">Joined in last 7 days</div></div>
       </div>
 
+      {link && link.startsWith("http") && (
+        <div className="mb-4 rounded-xl border border-gold bg-[#FFF8E6] p-4 text-sm">
+          <div className="font-semibold text-brand mb-1">Password reset link for {linkFor}</div>
+          <p className="text-xs text-brand-muted mb-2">Valid 24 hours, works once. Send it to the user yourself (it is not emailed from here).</p>
+          <input readOnly value={link} className="w-full border border-brand-border rounded-lg px-3 py-2 text-xs bg-white" />
+        </div>
+      )}
+
       <form className="flex gap-2 mb-4">
         <input name="q" defaultValue={q} placeholder="Search name or email…" className="border border-brand-border rounded-lg px-3 py-2 text-sm w-64" />
         <button className="border border-brand-border rounded-lg px-4 text-sm hover:bg-brand-bg">Search</button>
@@ -72,6 +80,7 @@ export default async function RegisteredUsersPage({ searchParams }: { searchPara
                 <td className="px-4 py-2.5"><span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">{u.role}</span></td>
                 <td className="px-4 py-2.5">
                   <div className="flex items-center gap-2 flex-wrap">
+                    <form action={makeResetLink}><input type="hidden" name="userId" value={u.id} /><button className="text-xs border border-brand-border rounded px-2 py-1 hover:bg-brand-bg" title="Create a password reset link">Reset link</button></form>
                     {!p.premium && requestOf.get(u.email.toLowerCase()) && (
                       <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">Requested {requestOf.get(u.email.toLowerCase())!.planId} · ₹{(requestOf.get(u.email.toLowerCase())!.amount / 100).toLocaleString("en-IN")}</span>
                     )}

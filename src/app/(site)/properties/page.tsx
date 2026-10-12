@@ -4,6 +4,8 @@ import PropertyCard from "@/components/PropertyCard";
 import PropertyFilterForm from "@/components/PropertyFilterForm";
 import { listMapPins } from "@/lib/queries/mapPins";
 import { pinSummary } from "@/lib/map/mapPins";
+import { Suspense } from "react";
+import SaveSearchButton from "@/components/SaveSearchButton";
 import PropertyMapView from "@/components/PropertyMapView";
 import ViewToggle from "@/components/ViewToggle";
 import { parseView } from "@/lib/map/coordinates";
@@ -104,7 +106,10 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
       />
 
       <div className="flex items-center justify-between gap-3 mb-5">
-        <ViewToggle params={{ category, q, bank, state, city, locality, status: statusGroup, priceMin, priceMax, page: sp.page }} view={view} />
+        <div className="flex flex-wrap items-center gap-3">
+          <ViewToggle params={{ category, q, bank, state, city, locality, status: statusGroup, priceMin, priceMax, page: sp.page }} view={view} />
+          <Suspense fallback={null}><SaveSearchButton label={place ? `Properties in ${place}` : "Bank auction properties"} /></Suspense>
+        </div>
       </div>
 
       {properties.length === 0 ? (
