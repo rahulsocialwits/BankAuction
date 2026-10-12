@@ -8,6 +8,8 @@ export interface CityEntry {
   city: string;
   slug: string;
   count: number;
+  /** Set when the city name exists in several states: the results page of that state. */
+  href?: string;
 }
 export interface StateGroup {
   state: string;
@@ -74,7 +76,7 @@ export default function CityDirectory({ groups }: { groups: StateGroup[] }) {
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-x-4 gap-y-2">
                 {g.cities.map((c) => (
-                  <Link key={c.slug} href={`/city/${c.slug}`} className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm hover:bg-brand-bg">
+                  <Link key={c.href ?? c.slug} href={c.href ?? `/city/${c.slug}`} className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm hover:bg-brand-bg">
                     <span className="leading-tight break-words min-w-0 text-[13px] sm:text-sm">{c.city}</span>
                     <span className="text-xs text-brand-muted shrink-0">{c.count}</span>
                   </Link>

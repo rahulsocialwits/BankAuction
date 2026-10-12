@@ -62,7 +62,7 @@ export default function SearchBar({ size = "md", onDone }: { size?: "md" | "lg";
       if (s.name.toLowerCase().includes(query)) out.push({ key: `s-${s.name}`, label: s.name, hint: "State", params: { state: s.name, status: "all" } });
     }
     for (const c of places.cities) {
-      if (c.city.toLowerCase().includes(query)) out.push({ key: `c-${c.city}`, label: c.city, hint: c.state ? `City · ${c.state}` : "City", params: { ...(c.state ? { state: c.state } : {}), city: c.city, status: "all" } });
+      if (c.city.toLowerCase().includes(query)) out.push({ key: `c-${c.city}-${c.state ?? ""}`, label: c.city, hint: c.state ? `City · ${c.state}` : "City", params: { ...(c.state ? { state: c.state } : {}), city: c.city, status: "all" } });
     }
     for (const a of places.areas) {
       if (a.area.toLowerCase().includes(query)) out.push({ key: `a-${a.city}-${a.area}`, label: a.area, hint: `Area · ${a.city}`, params: { city: a.city, locality: a.area, status: "all" } });
