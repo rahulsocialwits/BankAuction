@@ -36,8 +36,22 @@ export default function PropertyFilterForm({ localities, places, banks, categori
   const activeCount = [initial.q, initial.state, initial.city, initial.locality, initial.category, initial.bank, initial.priceMin, initial.priceMax].filter(Boolean).length;
   const [open, setOpen] = useState(activeCount > 0);
   // Choosing a state narrows the city list to that state's cities.
-  const cities = state ? places.cities.filter((c) => c.state?.toLowerCase() === state.toLowerCase()).map((c) => c.city) : Object.keys(localities);
-  const areas = city ? (localities[city] ?? []) : [];
+  // The page sends only the areas of the selected city; the areas of another city are fetched when it is chosen (keeps the page light).
+  const [areaMap, setAreaMap] = useState<Record<string, string[]>>(localities);
+  const cities = state ? places.cities.filter((c) => c.state?.toLowerCase() === state.toLowerCase()).map((c) => c.city) : places.cities.map((c) => c.city);
+  const areas = city ? (areaMap[city] ?? []) : [];
+  async function chooseCity(v: string) {
+    setCity(v);
+    setLocality("");
+    if (!v || areaMap[v]) return;
+    try {
+      const r = await fetch(`/api/localities?city=${encodeURIComponent(v)}`);
+      if (r.ok) {
+        const add = (await r.json()) as Record<string, string[]>;
+        setAreaMap((m) => ({ ...m, ...add }));
+      }
+    } catch { /* the area list stays empty; the rest of the form still works */ }
+  }
 
   return (
     <form action="/properties" className="bg-white border border-brand-border rounded-2xl p-4 sm:p-5 mb-6 shadow-sm">
@@ -78,7 +92,7 @@ export default function PropertyFilterForm({ localities, places, banks, categori
           <Dropdown
             name="city"
             value={city}
-            onChange={(v) => { setCity(v); setLocality(""); }}
+            onChange={(v) => { void chooseCity(v); }}
             options={cities.map((c) => ({ value: c, label: c }))}
             placeholder="All cities"
             searchable

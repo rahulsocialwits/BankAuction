@@ -51,6 +51,13 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   };
 }
 
+/** Only the areas of the selected city go to the browser (the whole map was most of this page's weight). */
+function selectedAreas(map: Record<string, string[]>, city: string | undefined): Record<string, string[]> {
+  if (!city) return {};
+  const key = Object.keys(map).find((k) => k.toLowerCase() === city.trim().toLowerCase());
+  return key ? { [key]: map[key] } : {};
+}
+
 export default async function PropertiesPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const q = (sp.q ?? sp.keyword)?.trim() || undefined;
@@ -96,8 +103,8 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
       <p className="text-brand-muted text-sm mb-6">Showing {totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalCount)} of {totalCount.toLocaleString("en-IN")} listing(s)</p>
 
       <PropertyFilterForm
-        localities={localities}
-        places={places}
+        localities={selectedAreas(localities, city)}
+        places={{ ...places, areas: [] }}
         banks={banks}
         categories={CATEGORIES}
         initial={{ q, state, city, locality, category: validCategory, bank, status: statusGroup, priceMin, priceMax, view }}
