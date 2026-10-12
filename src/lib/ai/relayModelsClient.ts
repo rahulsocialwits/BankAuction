@@ -1,4 +1,5 @@
 import { getAiConfig } from "./aiConfig";
+import { dailyBudgetExceeded } from "./dailyBudget";
 
 /**
  * Minimal OpenAI-compatible chat client for the Relay Models provider.
@@ -16,6 +17,7 @@ export async function chatJSONDetailed<T>(systemPrompt: string, userPrompt: stri
   const cfg = await getAiConfig();
   const apiKey = process.env.AI_API_KEY?.trim();
   if (!cfg.enabled) throw new Error("AI is switched off (Admin → AI Admin).");
+  if (await dailyBudgetExceeded()) throw new Error("AI daily token budget reached (AI_DAILY_TOKEN_CAP). AI work resumes when the last 24 hours use fewer tokens; importing and refreshing continue without AI.");
   if (!apiKey || !cfg.baseUrl) return { data: null, tokens: 0, model: cfg.model };
   // A masked/placeholder value (e.g. "sk-••••") pasted into the env var breaks the HTTP header.
   if (!cfg.keyValid) {
