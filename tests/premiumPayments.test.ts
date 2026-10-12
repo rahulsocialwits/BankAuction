@@ -84,3 +84,11 @@ test("Buy Premium without online payment only records a request: no premium, no 
   const btn = readFileSync("src/components/BuyPlanButton.tsx", "utf8");
   assert.match(btn, /\/api\/payments\/request/);
 });
+
+test("the receipt page: login needed, only the owner of a paid or refunded online payment, and it says it is not a GST invoice", () => {
+  const r = readFileSync("src/app/(site)/account/receipt/[id]/page.tsx", "utf8");
+  assert.match(r, /redirect\("\/login/);
+  assert.match(r, /pay\.email !== user\.email\.toLowerCase\(\)/);
+  assert.match(r, /provider !== "razorpay"/);
+  assert.match(r, /not a GST tax invoice/);
+});
