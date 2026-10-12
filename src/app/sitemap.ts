@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { prisma } from "@/lib/db/prisma";
 import { SITE_URL } from "@/lib/seo";
 import { getCityCounts } from "@/lib/queries/cities";
+import { MIN_INDEXABLE_CITY_LISTINGS } from "@/lib/domain/cityCounts";
 import { PROPERTY_TYPE_TILES } from "@/lib/siteImages";
 
 export const revalidate = 3600;
@@ -21,7 +22,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   return [
     ...staticPages.map((p) => ({ url: `${SITE_URL}${p}`, lastModified: now, changeFrequency: p === "" || p === "/properties" ? ("daily" as const) : ("weekly" as const), priority: p === "" ? 1 : p === "/properties" ? 0.9 : 0.6 })),
     ...PROPERTY_TYPE_TILES.map((t) => ({ url: `${SITE_URL}/property-type/${t.value.toLowerCase().replace(/_/g, "-")}`, lastModified: now, changeFrequency: "daily" as const, priority: 0.7 })),
-    ...cities.map((c) => ({ url: `${SITE_URL}/city/${c.slug}`, lastModified: now, changeFrequency: "daily" as const, priority: 0.7 })),
+    // thin city pages are noindex (city page metadata), so they are not listed here either
+    ...cities.filter((c) => c.count >= MIN_INDEXABLE_CITY_LISTINGS).map((c) => ({ url: `${SITE_URL}/city/${c.slug}`, lastModified: now, changeFrequency: "daily" as const, priority: 0.7 })),
     ...banks.map((b) => ({ url: `${SITE_URL}/bank/${b.slug}`, lastModified: now, changeFrequency: "daily" as const, priority: 0.7 })),
     ...posts.map((p) => ({ url: `${SITE_URL}/blog/${p.slug}`, lastModified: p.updatedAt, changeFrequency: "monthly" as const, priority: 0.5 })),
     ...properties.map((p) => ({ url: `${SITE_URL}/property/${p.slug}`, lastModified: p.updatedAt, changeFrequency: "daily" as const, priority: 0.8 })),

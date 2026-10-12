@@ -235,3 +235,10 @@ test("the results filter has no text fallback for city, and the homepage card sh
   assert.match(home, /· \{active\.toLocaleString\("en-IN"\)\} active/);
   assert.match(read("src/app/(site)/city/[slug]/page.tsx"), /statusGroup: "active"/);
 });
+
+test("thin city pages are neither indexable nor in the sitemap: one shared minimum", () => {
+  const sitemap = read("src/app/sitemap.ts");
+  const city = read("src/app/(site)/city/[slug]/page.tsx");
+  assert.match(sitemap, /c\.count >= MIN_INDEXABLE_CITY_LISTINGS/);
+  assert.match(city, /n < MIN_INDEXABLE_CITY_LISTINGS/);
+});
