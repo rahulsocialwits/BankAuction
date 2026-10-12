@@ -112,3 +112,10 @@ test("page speed: the home page reads its data from one cached call, and the sea
   assert.match(props, /selectedAreas\(localities, city\)/);
   assert.match(props, /areas: \[\]/);
 });
+
+test("home page speed: the city tiles are picked in one pass (a nested findIndex over ~2,000 cities took about 14 seconds)", () => {
+  const home = readFileSync("src/app/(site)/page.tsx", "utf8");
+  assert.doesNotMatch(home, /findIndex\([^)]*canonCity/);
+  assert.match(home, /picked\.has\(key\)/);
+  assert.match(home, /homeCities\.length >= 8/);
+});
