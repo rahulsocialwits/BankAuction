@@ -22,10 +22,11 @@ function loadCheckout(): Promise<boolean> {
 }
 
 /** "Buy now": creates the order on the server, opens the Razorpay popup, then asks the server to verify the payment. */
-export default function BuyPlanButton({ planId, label, loggedIn }: { planId: string; label: string; loggedIn: boolean }) {
+export default function BuyPlanButton({ planId, label, loggedIn, online = true }: { planId: string; label: string; loggedIn: boolean; online?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
 
   async function buy() {
     if (!loggedIn) return router.push("/login?next=/pricing");
@@ -33,6 +34,15 @@ export default function BuyPlanButton({ planId, label, loggedIn }: { planId: str
     setMsg(null);
     let opened = false; // once the popup is open, its own callbacks end the busy state
     try {
+      if (!online) {
+        // Online payment is not switched on yet: send a request, the team activates Premium after confirming the payment.
+        const r = await fetch("/api/payments/request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId }) });
+        if (r.status === 401) return router.push("/login?next=/pricing");
+        const d = (await r.json().catch(() => ({}))) as { email?: string };
+        setMsg(r.ok ? `Request received for ${label} Premium. Our team will contact you at ${d.email ?? "your email"} to complete the payment and activate Premium.` : "Could not send the request. Please try again or contact us.");
+        if (r.ok) setDone(true);
+        return;
+      }
       const res = await fetch("/api/payments/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId }) });
       if (res.status === 401) return router.push("/login?next=/pricing");
       const order = (await res.json()) as { keyId?: string; orderId?: string; amount?: number; currency?: string; planName?: string; email?: string; name?: string; error?: string; message?: string };
@@ -73,10 +83,10 @@ export default function BuyPlanButton({ planId, label, loggedIn }: { planId: str
 
   return (
     <div>
-      <button type="button" onClick={buy} disabled={busy} className="block w-full bg-brand text-white font-medium rounded-lg py-2.5 hover:bg-brand-dark text-sm disabled:opacity-60">
-        {busy ? "Opening payment…" : loggedIn ? "Buy now" : "Sign in to buy"}
+      <button type="button" onClick={buy} disabled={busy || done} className="block w-full bg-brand text-white font-medium rounded-lg py-2.5 hover:bg-brand-dark text-sm disabled:opacity-60">
+        {busy ? (online ? "Opening payment…" : "Sending…") : done ? "Request sent" : loggedIn ? (online ? "Buy now" : "Buy Premium") : "Sign in to buy"}
       </button>
-      {msg && <p role="alert" className="mt-2 text-xs text-red-700">{msg}</p>}
+      {msg && <p role="status" className={`mt-2 text-xs ${done ? "text-green-700" : "text-red-700"}`}>{msg}</p>}
     </div>
   );
 }

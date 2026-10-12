@@ -15,6 +15,7 @@ export async function makePremium(formData: FormData) {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
   if (!user || !ALLOWED_DAYS.includes(days)) return;
   await grantPremium(user.email, days, admin.adminId ? `admin ${admin.adminId}` : "master admin");
+  await prisma.payment.updateMany({ where: { email: user.email.toLowerCase(), status: "requested" }, data: { status: "granted" } }); // the request is answered
   revalidatePath("/admin/users");
 }
 
