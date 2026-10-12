@@ -28,6 +28,8 @@ export default async function RegisteredUsersPage({ searchParams }: { searchPara
     select: { email: true, status: true, createdAt: true, paidAt: true, planId: true, note: true },
     orderBy: { createdAt: "asc" },
   });
+  const requested = await prisma.payment.findMany({ where: { status: "requested", email: { in: users.map((u) => u.email.toLowerCase()) } }, select: { email: true, planId: true, amount: true, createdAt: true }, orderBy: { createdAt: "desc" } });
+  const requestOf = new Map(requested.map((r) => [r.email ?? "", r]));
   const byEmail = new Map<string, typeof rows>();
   for (const r of rows) (byEmail.get(r.email ?? "") ?? byEmail.set(r.email ?? "", []).get(r.email ?? "")!).push(r);
   const now = new Date();
@@ -70,6 +72,9 @@ export default async function RegisteredUsersPage({ searchParams }: { searchPara
                 <td className="px-4 py-2.5"><span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">{u.role}</span></td>
                 <td className="px-4 py-2.5">
                   <div className="flex items-center gap-2 flex-wrap">
+                    {!p.premium && requestOf.get(u.email.toLowerCase()) && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">Requested {requestOf.get(u.email.toLowerCase())!.planId} · ₹{(requestOf.get(u.email.toLowerCase())!.amount / 100).toLocaleString("en-IN")}</span>
+                    )}
                     {p.premium && p.until ? (
                       <>
                         <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">Premium until {p.until.toLocaleDateString("en-IN")}</span>

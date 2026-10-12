@@ -74,3 +74,13 @@ test("the server decides: price from the saved plan, premium only after a verifi
   const razor = readFileSync("src/lib/payments/razorpay.ts", "utf8");
   assert.doesNotMatch(razor, /deleteMany|\.delete\(/, "payments are never deleted");
 });
+
+test("Buy Premium without online payment only records a request: no premium, no money, and a request gives nothing by itself", () => {
+  const req = readFileSync("src/app/api/payments/request/route.ts", "utf8");
+  assert.match(req, /login_required/);
+  assert.match(req, /status: "requested"/);
+  assert.doesNotMatch(req, /status: "paid"|grantPremium|markOrderPaid/);
+  assert.equal(computePremium([row({ status: "requested", note: paymentNote(90, "admin") })], now).premium, false);
+  const btn = readFileSync("src/components/BuyPlanButton.tsx", "utf8");
+  assert.match(btn, /\/api\/payments\/request/);
+});

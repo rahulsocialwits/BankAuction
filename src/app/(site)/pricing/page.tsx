@@ -37,7 +37,7 @@ export default async function PricingPage() {
         <h1 className="text-2xl font-semibold mb-2">BankAuction Premium</h1>
         <p className="text-brand-muted text-sm max-w-xl mx-auto">
           Premium is planned to include full borrower names and complete addresses. Personalised auction alerts are planned and are not yet available.
-          {gw.ready ? " Pay securely online with Razorpay." : " Online payment isn't available yet: contact us to activate a plan manually in the meantime."}
+          {gw.ready ? " Pay securely online with Razorpay." : " Click Buy Premium to request a plan: our team confirms the payment with you and activates Premium on your account."}
         </p>
       </div>
 
@@ -57,13 +57,7 @@ export default async function PricingPage() {
             </div>
             <div className="text-xs text-gold font-semibold mb-4">{p.note}</div>
             <p className="text-[11px] text-brand-muted mb-5">GST included</p>
-            {gw.ready ? (
-              <BuyPlanButton planId={p.id} label={p.label} loggedIn={!!user} />
-            ) : (
-              <Link href="/contact" className="block bg-brand text-white font-medium rounded-lg py-2.5 hover:bg-brand-dark text-sm">
-                Contact to Upgrade
-              </Link>
-            )}
+            <BuyPlanButton planId={p.id} label={p.label} loggedIn={!!user} online={gw.ready} />
           </div>
         ))}
       </div>
