@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getPaymentSettings } from "@/lib/payments/settings";
+import { gatewayReady } from "@/lib/payments/razorpay";
+import { getPremium } from "@/lib/payments/premium";
+import { getCurrentUser } from "@/lib/auth/userSession";
+import BuyPlanButton from "@/components/BuyPlanButton";
 
 const FEATURES = [
   "Full borrower name & contact details",
@@ -15,24 +19,34 @@ export const metadata: Metadata = {
   alternates: { canonical: "/pricing" },
 };
 
-export const revalidate = 120;
+// Depends on who is looking (login, premium) and on the gateway switch, so it is rendered per request.
+export const dynamic = "force-dynamic";
 
 export default async function PricingPage() {
   const settings = await getPaymentSettings();
+  const [gw, user] = await Promise.all([gatewayReady(), getCurrentUser()]);
+  const premium = await getPremium(user?.email);
   const PLANS = settings.plans
     .filter((p) => p.active)
     // No refund promise is shown until a refund policy and a working refund process are approved (founder decision). This also hides
     // a refund line saved earlier in Admin -> Payments.
-    .map((p) => ({ label: p.name, price: p.priceInr, note: /refund/i.test(p.note) ? "" : p.note }));
+    .map((p) => ({ id: p.id, label: p.name, price: p.priceInr, note: /refund/i.test(p.note) ? "" : p.note }));
   return (
     <main className="w-full px-5 lg:px-10 xl:px-16 py-14">
       <div className="text-center mb-10">
         <h1 className="text-2xl font-semibold mb-2">BankAuction Premium</h1>
         <p className="text-brand-muted text-sm max-w-xl mx-auto">
-          Premium is planned to include full borrower names and complete addresses. Personalised auction alerts are planned and are not yet available. Online payment isn&apos;t live yet —
-          contact us to activate a plan manually in the meantime.
+          Premium is planned to include full borrower names and complete addresses. Personalised auction alerts are planned and are not yet available.
+          {gw.ready ? " Pay securely online with Razorpay." : " Online payment isn't available yet: contact us to activate a plan manually in the meantime."}
         </p>
       </div>
+
+      {premium.premium && premium.until && (
+        <div className="max-w-xl mx-auto mb-8 rounded-2xl border border-gold bg-[#FFF8E6] px-5 py-4 text-center text-sm">
+          <span className="font-semibold text-brand">You are a Premium member</span> until {premium.until.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}.{" "}
+          <Link href="/account" className="text-gold font-semibold">View account →</Link>
+        </div>
+      )}
 
       <div className="grid sm:grid-cols-3 gap-5 mb-10">
         {PLANS.map((p) => (
@@ -43,9 +57,13 @@ export default async function PricingPage() {
             </div>
             <div className="text-xs text-gold font-semibold mb-4">{p.note}</div>
             <p className="text-[11px] text-brand-muted mb-5">GST included</p>
-            <Link href="/contact" className="block bg-brand text-white font-medium rounded-lg py-2.5 hover:bg-brand-dark text-sm">
-              Contact to Upgrade
-            </Link>
+            {gw.ready ? (
+              <BuyPlanButton planId={p.id} label={p.label} loggedIn={!!user} />
+            ) : (
+              <Link href="/contact" className="block bg-brand text-white font-medium rounded-lg py-2.5 hover:bg-brand-dark text-sm">
+                Contact to Upgrade
+              </Link>
+            )}
           </div>
         ))}
       </div>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
-export interface Me { name: string | null; email: string }
+export interface Me { name: string | null; email: string; premium?: boolean }
 
 // Last known answer, used only to avoid a flicker between navigations.
 let last: Me | null | undefined;
