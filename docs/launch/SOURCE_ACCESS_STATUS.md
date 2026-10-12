@@ -43,3 +43,9 @@ Code: `src/data-sources/authorized/` (`engine.ts`, `jsonFeed.ts`, `fieldMap.ts`,
 - `tick.yml` is configured for every 5 minutes, but GitHub's `schedule` event actually ran at 07:46, 01:28 (12 Oct), 22:25, 18:35, 13:56 (failure), 07:05, 01:05 (11 Oct): about every 3 to 6 hours. GitHub runs scheduled workflows on a best-effort basis and delays them heavily.
 - Run logs, last 24 h: 21 ticks, 10 gaps over 20 minutes, longest gap 244 minutes. The ticks in between come from the visitor safety net (`/api/me`).
 - So "configured every 5 minutes" is NOT "executed every 5 minutes". An external pinger is needed (cron-job.org or similar calling `/api/cron/ingest` with the `x-cron-secret` header); Vercel Cron on the Hobby plan runs once a day at most.
+
+## eAuctionsIndia: free, authorised access checked again (12 Oct, evening)
+- `/robots.txt` and now `/sitemap.xml` both answer **HTTP 403 with the Cloudflare "Just a moment" challenge**. No sitemap, RSS feed, export or documented endpoint is reachable without passing that challenge. Requests to the site were stopped there.
+- A public web search found no official API, data feed, terms page or contact for the site (only a third-party marketplace listing that is not the operator's documentation).
+- Therefore: **no parser has been written** (no real page or payload exists to build it from; selectors and field names would be invented), and **no real import has run**. The generic framework (`src/data-sources/authorized/`) is tested only against simulated fixtures.
+- What is needed to proceed, any ONE of: (a) a CSV / JSON / XML export or API response sample that the operator gives you in writing, (b) written permission plus an allow-listed user agent so `BankAuctionBot/1.0` is not challenged, (c) a saved copy of a few listing pages that the operator allows you to use. With a real sample the provider-specific parser, fixtures and the field map are a few hours of work.
