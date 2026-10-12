@@ -11,6 +11,7 @@ import { orderByWaiting, planScanOrder, scanWindowEnd, sliceFor, type PlanSource
 import { checkSourceUrl, type SourceUrlCheck } from "./blockedHosts";
 import { isBaanknetUrl, runBaanknetImport } from "./baanknetImport";
 import { isEauctionsIndiaUrl, runEauctionsFeed } from "../authorized/eauctionsindia";
+import { isAcreUrl, runAcreImport } from "../acre/import";
 import { DEEP_MAX_LISTINGS, makeDeepener } from "./deepScan";
 import { scanSiteForNew, webStateOf, withWebState } from "./siteScan";
 import { recordYield } from "@/lib/pipeline/yieldMonitor";
@@ -135,6 +136,14 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
     // feed (src/data-sources/authorized/eauctionsindia.ts). Without a recorded authorisation this answers at once and sends no request.
     if (isEauctionsIndiaUrl(check.url)) {
       const r = await runEauctionsFeed({ id: feed.id, name: feed.name, url: feed.url }, { mode: "full", scheduled: trigger !== "manual", budgetMs: 120_000 });
+      return { name: feed.name, message: r.message };
+    }
+    // ACRE ("Assets for sale") has its own parser (src/data-sources/acre/): its list page is plain HTML and robots.txt allows crawlers.
+    // Once an hour at most from the scheduler; a person pressing Run always gets a pass.
+    if (isAcreUrl(check.url)) {
+      const recent = trigger === "schedule" && feed.lastStatus === "ok" && feed.lastRunAt && Date.now() - feed.lastRunAt.getTime() < 55 * 60_000;
+      if (recent) return { name: feed.name, message: feed.lastMessage ?? "ACRE: next pass within the hour." };
+      const r = await runAcreImport({ id: feed.id, name: feed.name, url: feed.url }, { apply: true });
       return { name: feed.name, message: r.message };
     }
     const isSheet = check.url.startsWith("https://docs.google.com/spreadsheets/");
@@ -342,7 +351,7 @@ export async function runWebDiscovery(feedId: string, trigger: "schedule" | "man
   if (!feed || !isAiFeed(feed.url)) return null;
   // eAuctionsIndia answers automated access with a Cloudflare challenge: its pages are never scanned. It is read only through an
   // authorised feed (authorized/eauctionsindia.ts); without one the run says "awaiting authorization" and sends no request.
-  if (isEauctionsIndiaUrl(feed.url)) return null;
+  if (isEauctionsIndiaUrl(feed.url) || isAcreUrl(feed.url)) return null; // ACRE has its own importer (acre/import.ts), not the AI site scan
   const check = validateFeedUrl(feed.url);
   if (!check.ok) return null;
   const state = webStateOf(feed.sheetState);
