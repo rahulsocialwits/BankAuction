@@ -112,3 +112,22 @@ test("page speed: the home page reads its data from one cached call, and the sea
   assert.match(props, /selectedAreas\(localities, city\)/);
   assert.match(props, /areas: \[\]/);
 });
+
+test("home page speed: the city tiles are picked in one pass (a nested findIndex over ~2,000 cities took about 14 seconds)", () => {
+  const home = readFileSync("src/app/(site)/page.tsx", "utf8");
+  assert.doesNotMatch(home, /findIndex\([^)]*canonCity/);
+  assert.match(home, /picked\.has\(key\)/);
+  assert.match(home, /homeCities\.length >= 8/);
+});
+
+test("checkout page: a plan from the saved plans, a login first, a summary with the price, and the pricing buttons lead to it", () => {
+  const c = readFileSync("src/app/(site)/checkout/page.tsx", "utf8");
+  assert.match(c, /findActivePlan\(planId\)/);
+  assert.ok(c.indexOf("redirect(`/login?next=") > c.indexOf("findActivePlan"));
+  assert.match(c, /Order summary/);
+  assert.match(c, /GST included/);
+  assert.match(c, /BuyPlanButton planId=\{plan\.id\}/);
+  const pricing = readFileSync("src/app/(site)/pricing/page.tsx", "utf8");
+  assert.match(pricing, /href=\{`\/checkout\?plan=\$\{p\.id\}`\}/);
+  assert.doesNotMatch(c, /RAZORPAY_KEY_SECRET|keySecret/, "the secret never appears in the page");
+});

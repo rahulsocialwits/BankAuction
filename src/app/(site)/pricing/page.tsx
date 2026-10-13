@@ -4,7 +4,6 @@ import { getPaymentSettings } from "@/lib/payments/settings";
 import { gatewayReady } from "@/lib/payments/razorpay";
 import { getPremium } from "@/lib/payments/premium";
 import { getCurrentUser } from "@/lib/auth/userSession";
-import BuyPlanButton from "@/components/BuyPlanButton";
 
 const FEATURES = [
   "Auction document / notice access (availability varies by listing)",
@@ -56,7 +55,9 @@ export default async function PricingPage() {
             </div>
             <div className="text-xs text-gold font-semibold mb-4">{p.note}</div>
             <p className="text-[11px] text-brand-muted mb-5">GST included</p>
-            <BuyPlanButton planId={p.id} label={p.label} loggedIn={!!user} online={gw.ready} />
+            <Link href={`/checkout?plan=${p.id}`} className="block bg-brand text-white font-medium rounded-lg py-2.5 hover:bg-brand-dark text-sm">
+              {gw.ready ? "Buy now" : "Buy Premium"}
+            </Link>
           </div>
         ))}
       </div>

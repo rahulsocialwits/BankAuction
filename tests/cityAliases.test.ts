@@ -10,6 +10,9 @@ test("owner decision D15: Vasai is the one label for Vasai Virar; spelling varia
   assert.equal(canonCity("Ambarnath"), "Ambernath");
   assert.equal(canonCity("Dombivali"), "Dombivli");
   assert.equal(canonCity("Mira-Bhayandar"), "Mira Bhayandar");
+  assert.equal(canonCity("Mumbai City"), "Mumbai");
+  assert.equal(canonCity("Greater Mumbai"), "Mumbai");
+  assert.equal(canonCity("Navi Mumbai"), "Navi Mumbai", "a different city");
 });
 
 test("Virar and Nallasopara are separate towns: they are not merged into Vasai", () => {
