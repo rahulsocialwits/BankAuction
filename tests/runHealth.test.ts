@@ -58,3 +58,10 @@ test("eAuctionsIndia is never scanned: the site scan returns before it makes any
   const fn = run.slice(run.indexOf("export async function runWebDiscovery"));
   assert.ok(fn.indexOf("isEauctionsIndiaUrl(feed.url)") > 0 && fn.indexOf("isEauctionsIndiaUrl(feed.url)") < fn.indexOf("scanSiteForNew("));
 });
+
+test("a source whose importer says 'Awaiting authorization' is labelled 'Awaiting operator access', not a generic error", () => {
+  const l = classifySourceMessage(true, "error", "Awaiting authorization: robots/access check returned \"disallowed\". The site must allow-list the user agent BankAuctionBot/1.0");
+  assert.equal(l.kind, "awaiting_authorization");
+  assert.match(l.label, /Awaiting operator access/);
+  assert.match(l.action, /Nothing is requested from the site/);
+});
