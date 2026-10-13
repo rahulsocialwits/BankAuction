@@ -17,6 +17,7 @@ const TONE: Record<string, string> = {
   unchanged: "bg-gray-100 text-gray-700",
   zero_yield: "bg-amber-100 text-amber-800",
   unknown_permission: "bg-amber-100 text-amber-800",
+  awaiting_authorization: "bg-blue-100 text-blue-800",
   refused: "bg-red-100 text-red-800",
   error: "bg-red-100 text-red-800",
   off: "bg-gray-100 text-gray-500",
@@ -46,7 +47,7 @@ export default async function RunHealthPage() {
   const cap = dailyCap();
   const tokens = runs24._sum.aiTokens ?? 0;
   const rows = sources.map((s) => ({ s, k: classifySourceMessage(s.active, s.lastStatus, s.lastMessage) }));
-  const attention = rows.filter((r) => ["refused", "error", "unknown_permission", "zero_yield"].includes(r.k.kind)).length;
+  const attention = rows.filter((r) => ["refused", "error", "unknown_permission", "zero_yield", "awaiting_authorization"].includes(r.k.kind)).length;
 
   return (
     <div className="w-full">

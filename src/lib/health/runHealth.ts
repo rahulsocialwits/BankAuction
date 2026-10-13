@@ -17,12 +17,14 @@ export function summarizeTicks(times: Date[], gapLimitMin = 20): TickSummary {
   return { count: t.length, last: t.length ? t[t.length - 1] : null, maxGapMin: t.length > 1 ? Math.round(maxGap) : null, gapsOver20: over };
 }
 
-export type SourceKind = "healthy" | "unchanged" | "zero_yield" | "unknown_permission" | "refused" | "error" | "off";
+export type SourceKind = "awaiting_authorization" | "healthy" | "unchanged" | "zero_yield" | "unknown_permission" | "refused" | "error" | "off";
 export interface SourceLabel { kind: SourceKind; label: string; action: string }
 
 export function classifySourceMessage(active: boolean, lastStatus: string | null, message: string | null): SourceLabel {
   const m = (message ?? "").toLowerCase();
   if (!active) return { kind: "off", label: "Off", action: m.includes("blocked") ? "Paused after the site refused automated access. Do not retry; look for an official feed or use manual Bulk Import." : "Switched off in Admin → Feeds." };
+  // The importer itself says it is waiting for the site operator (permission recorded or not, but access not opened): a state, not a failure.
+  if (/awaiting authorization/i.test(m)) return { kind: "awaiting_authorization", label: "Awaiting operator access", action: "Nothing is requested from the site. The operator must allow-list the crawler or give an export / API (docs/launch/SOURCE_ACCESS_STATUS.md)." };
   if (!lastStatus) return { kind: "unknown_permission", label: "Never run", action: "Not tested yet." };
   if (/robots\.txt says|not allowed|access (denied|refused)|http 40[13]|captcha|verification/.test(m) && !/gave no answer|timeout/.test(m)) {
     return { kind: "refused", label: "Refused by the site", action: "The site said no to automated access. It is not retried or worked around: use an official feed, a permitted notice, or manual Bulk Import." };

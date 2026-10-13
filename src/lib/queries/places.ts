@@ -31,26 +31,34 @@ export interface PlaceData {
  */
 export const getPlaces = unstable_cache(
   async (): Promise<PlaceData> => {
-    const rows = await prisma.property.findMany({
+    // One aggregate query (about 10,000 groups) instead of reading every published property (35,000+ rows with a join): the old version
+    // took 10+ seconds on the server whenever the 5-minute cache had to be rebuilt.
+    const groups = await prisma.property.groupBy({
+      by: ["geoState", "geoCity", "geoLocality", "cityId"],
       where: { status: "PUBLISHED" },
-      select: { geoState: true, geoCity: true, geoLocality: true, city: { select: { name: true, state: { select: { name: true } } } } },
+      _count: { _all: true },
     });
+    const cityIds = [...new Set(groups.filter((g) => !g.geoCity && g.cityId).map((g) => g.cityId as string))];
+    const fallback = new Map(
+      (cityIds.length ? await prisma.city.findMany({ where: { id: { in: cityIds } }, select: { id: true, name: true, state: { select: { name: true } } } }) : []).map((c) => [c.id, c]),
+    );
 
     const states = new Map<string, number>();
     const cities = new Map<string, { city: string; state: string | null; count: number }>();
     const areas = new Map<string, { city: string; area: string }>();
-    for (const r of rows) {
-      const city = canonCity(r.geoCity ?? r.city?.name ?? "");
+    for (const g of groups) {
+      const fb = g.cityId ? fallback.get(g.cityId) : undefined;
+      const city = canonCity(g.geoCity ?? fb?.name ?? "");
       if (!city) continue;
-      const state = r.geoState ? canonState(r.geoState) : (r.city?.state?.name ? canonState(r.city.state.name) : null);
-      const n = 1;
+      const state = g.geoState ? canonState(g.geoState) : fb?.state?.name ? canonState(fb.state.name) : null;
+      const n = g._count._all;
       if (state) states.set(state, (states.get(state) ?? 0) + n);
       // One entry per (city, state): the same city name can exist in two states (Aurangabad in Maharashtra and in Bihar are different places).
       const key = `${city}|${state ?? ""}`;
       const c = cities.get(key) ?? { city, state, count: 0 };
       c.count += n;
       cities.set(key, c);
-      if (r.geoLocality) areas.set(`${city}|${r.geoLocality.toLowerCase()}`, { city, area: r.geoLocality });
+      if (g.geoLocality) areas.set(`${city}|${g.geoLocality.toLowerCase()}`, { city, area: g.geoLocality });
     }
 
     const priority = new Map(PRIORITY_CITIES.map((c, i) => [canonCity(c), i]));
