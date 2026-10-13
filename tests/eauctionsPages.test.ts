@@ -92,3 +92,29 @@ test("the importer: permission check first, robots check next, refusals stop the
   assert.doesNotMatch(readFileSync("src/data-sources/eauctionsindia/parse.ts", "utf8").replace(/\/\*[\s\S]*?\*\//g, ""), /borrower/i);
   assert.match(readFileSync("src/data-sources/authorized/eauctionsindia.ts", "utf8"), /runEauctionsPages\(feed/);
 });
+
+import { requestHeaders } from "../src/data-sources/eauctionsindia/import";
+import { RobotsGate } from "../src/data-sources/feeds/robotsGate";
+
+test("operator allow-list header: sent only when both name and value are set, only a safe header name, never a user-agent change", () => {
+  assert.deepEqual(Object.keys(requestHeaders({})).sort(), ["Accept", "User-Agent"]);
+  assert.equal(requestHeaders({ EAUCTIONS_ALLOW_HEADER_NAME: "X-Crawler-Key", EAUCTIONS_ALLOW_HEADER_VALUE: "s3cret" })["X-Crawler-Key"], "s3cret");
+  assert.equal(requestHeaders({ EAUCTIONS_ALLOW_HEADER_NAME: "X-Crawler-Key" })["X-Crawler-Key"], undefined);
+  assert.equal(requestHeaders({ EAUCTIONS_ALLOW_HEADER_NAME: "bad header\r\nx", EAUCTIONS_ALLOW_HEADER_VALUE: "v" })["bad header\r\nx"], undefined);
+  assert.match(requestHeaders({ EAUCTIONS_ALLOW_HEADER_NAME: "X-Crawler-Key", EAUCTIONS_ALLOW_HEADER_VALUE: "s3cret" })["User-Agent"], /BankAuctionBot/);
+  const src = readFileSync("src/data-sources/eauctionsindia/import.ts", "utf8");
+  assert.doesNotMatch(src, /console\.log|say\([^)]*ALLOW_HEADER_VALUE/, "the secret value is never printed");
+});
+
+test("a challenge page on robots.txt is a refusal for eAuctionsIndia (before: 'no robots file, all allowed' and a page request followed)", async () => {
+  const challenge = (async () => new Response("<html><title>Just a moment...</title><script src='/cdn-cgi/challenge-platform/h/g'></script></html>", { status: 403, headers: { "content-type": "text/html" } })) as unknown as typeof fetch;
+  const real = globalThis.fetch;
+  globalThis.fetch = challenge;
+  try {
+    assert.equal(await new RobotsGate({ challengeIsRefusal: true }).check("https://www.eauctionsindia.com/category/residential"), "disallowed");
+  } finally {
+    globalThis.fetch = real;
+  }
+  assert.match(readFileSync("src/data-sources/eauctionsindia/import.ts", "utf8"), /new RobotsGate\(\{ challengeIsRefusal: true/);
+  assert.doesNotMatch(readFileSync("src/data-sources/feeds/baanknetImport.ts", "utf8"), /challengeIsRefusal/, "BAANKNET behaves as before");
+});

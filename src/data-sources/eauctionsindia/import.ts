@@ -37,6 +37,19 @@ interface PagesState { cats: Record<string, CatCursor>; state: SourceState; last
 
 const fresh = (): CatCursor => ({ page: 1, lastPage: null, done: false, refresh: false, pagesDone: 0, found: 0, created: 0, updated: 0, skipped: 0, rejected: 0 });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/**
+ * Headers of a page request. If the operator gave us an allow-list header for their Cloudflare rule (a secret name/value pair they
+ * configured, so that requests carrying it are not challenged), it is sent from EAUCTIONS_ALLOW_HEADER_NAME / _VALUE. The value is a
+ * secret: it is never printed or logged. This is an operator-approved access method, not a way around the protection.
+ */
+export function requestHeaders(env: Env): Record<string, string> {
+  const h: Record<string, string> = { "User-Agent": UA, Accept: "text/html" };
+  const name = env.EAUCTIONS_ALLOW_HEADER_NAME?.trim();
+  const value = env.EAUCTIONS_ALLOW_HEADER_VALUE?.trim();
+  if (name && value && /^[A-Za-z0-9-]{3,60}$/.test(name)) h[name] = value;
+  return h;
+}
+
 const pageUrl = (slug: string, n: number) => (n <= 1 ? `${BASE}/category/${slug}` : `${BASE}/category/${slug}/${n}`);
 
 async function load(feedId: string): Promise<PagesState> {
@@ -78,7 +91,7 @@ export async function runEauctionsPages(
   const st = o.restart ? { cats: {}, state: "active" as SourceState } : await load(feed.id);
   let sample = 0;
 
-  const gate = new RobotsGate();
+  const gate = new RobotsGate({ challengeIsRefusal: true, headers: requestHeaders(env) }); // a challenge page on robots.txt is a refusal: stop before asking for any listing page
   const decision = await gate.check(pageUrl(cats[0] ?? "residential", 1));
   if (decision !== "allowed") {
     out.state = "awaiting_authorization";
@@ -95,10 +108,10 @@ export async function runEauctionsPages(
     while (!c.done && out.pages < perRun) {
       if (c.refresh && c.page > refreshPages) { c.done = true; c.completedAt = new Date().toISOString(); break; }
       const url = pageUrl(slug, c.page);
-      const got = await fetchWithRetry(url, { headers: { "User-Agent": UA, Accept: "text/html" }, signal: AbortSignal.timeout(30_000) }, { onLog: (l) => say(`[eauctions] ${l}`) });
+      const got = await fetchWithRetry(url, { headers: requestHeaders(env), signal: AbortSignal.timeout(30_000) }, { onLog: (l) => say(l) });
       if (isRefusal(got.status)) {
         out.state = "awaiting_authorization";
-        out.message = `Awaiting authorization: ${describeStatus(got.status, got.http)} Not retried and not worked around; ask the operator to allow-list BankAuctionBot/1.0.`;
+        out.message = `Awaiting authorization: ${describeStatus(got.status, got.http)} Not retried and not worked around; the operator must allow-list BankAuctionBot/1.0 (see docs/launch/SOURCE_ACCESS_STATUS.md).${env.EAUCTIONS_ALLOW_HEADER_NAME ? " The allow-list header was sent and was still challenged: the operator's rule does not match it." : ""}`;
         if (write) await save(feed.id, { ...st, state: out.state, lastError: out.message }, out.message, "error");
         return out;
       }

@@ -1,5 +1,5 @@
 import { UA } from "./webScan";
-import { fetchWithRetry, robotsSkipLine } from "@/lib/fetch/httpStatus";
+import { fetchWithRetry, isRefusal, robotsSkipLine } from "@/lib/fetch/httpStatus";
 import { parseRobots, robotsDecision, type RobotsGroup } from "@/lib/fetch/robotsRules";
 
 /**
@@ -13,13 +13,19 @@ type Entry = { kind: "rules"; groups: RobotsGroup[]; delay: number } | { kind: "
 export class RobotsGate {
   private cache = new Map<string, Entry>();
 
+  /**
+   * `challengeIsRefusal`: a robots.txt that answers with a CAPTCHA / challenge / access-denied page is a refusal (disallowed), not "no robots
+   * file, everything allowed". Off by default so the existing sources behave exactly as before; the eAuctionsIndia importer turns it on.
+   */
+  constructor(private opts: { challengeIsRefusal?: boolean; headers?: Record<string, string> } = {}) {}
+
   private async load(origin: string): Promise<Entry> {
     let e = this.cache.get(origin);
     if (e) return e;
     // a 429 / 503 on robots.txt gets the one polite retry; if the site still does not answer it is "unreachable" (temporary), never "blocked"
-    const out = await fetchWithRetry(`${origin}/robots.txt`, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(15_000) }, { inspectBody: false, onLog: (l) => console.log(`[crawler] ${l}`) });
+    const out = await fetchWithRetry(`${origin}/robots.txt`, { headers: { "User-Agent": UA, ...this.opts.headers }, signal: AbortSignal.timeout(15_000) }, { inspectBody: false, onLog: (l) => console.log(`[crawler] ${l}`) });
     const res = out.res;
-    if (out.status === "unauthorized" || out.status === "forbidden") e = { kind: "disallowed" };
+    if (out.status === "unauthorized" || out.status === "forbidden" || (this.opts.challengeIsRefusal && isRefusal(out.status))) e = { kind: "disallowed" };
     else if (!res) e = { kind: "unreachable" };
     else if (res.status >= 400 && res.status < 500 && res.status !== 429) e = { kind: "rules", groups: [], delay: 0 };
     else if (!res.ok) e = { kind: "unreachable" };

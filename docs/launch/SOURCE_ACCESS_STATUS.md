@@ -59,3 +59,16 @@ The user supplied the real HTML of `/category/residential` and reported that the
 - **What the list page does not give** (so it is empty, never guessed): state, EMD, coordinates, property photos (only generic stock pictures), bank name (an institution logo on some listings), detail-page fields (no sample of a detail page yet).
 - **Size:** 125,451 residential listings = 10,455 pages = at least 4.4 hours of requests at 1.5 s; about 0.75 GB of database at ~6 KB per property. Check the database plan first.
 - **Evidence still missing in the repository:** the operator's written permission itself. Keep it and name it in `EAUCTIONS_AUTH_NOTE`.
+
+## eAuctionsIndia: why the full import still says "awaiting authorization" (13 Oct, investigation)
+- **The application is configured correctly.** With the values from the user's screenshot the permission gate passes (`pagesAuthorization` -> ok), so the run really goes to the site. The environment variables are read; they are only a note for us, NOT proof of authorisation by the website.
+- **The block is external.** The site answers `/robots.txt` and every page with HTTP 403 and a Cloudflare managed challenge. Nothing in our code can or should solve a challenge.
+- **One application-side defect was found and fixed:** `RobotsGate` classified a challenge page on robots.txt as "4xx = no robots file = everything allowed", so the importer then sent a second request (the page) to a site that had just refused it. With `challengeIsRefusal` (turned on only for eAuctionsIndia) the run now stops after the robots.txt answer. BAANKNET and the other sources are unchanged.
+- **Log cosmetics:** the double "[eauctions] [eauctions]" prefix is gone.
+- **What the operator must enable (any ONE):**
+  1. A Cloudflare WAF rule that skips the managed challenge for requests with User-Agent `BankAuctionBot/1.0 (+https://auction.bizsocio.com)` on `/robots.txt`, `/category/*` and `/properties/*` (a user-agent alone can be faked, so they may prefer 2).
+  2. A rule that skips the challenge when a secret request header is present. They choose the header name and value and give them to you; set them as `EAUCTIONS_ALLOW_HEADER_NAME` and `EAUCTIONS_ALLOW_HEADER_VALUE` (the value is a secret: never printed or logged). This also works for the scheduler on Vercel, whose IP addresses change, so it is the practical choice.
+  3. An IP allow-list (only for the script run from one fixed computer; not practical for Vercel).
+  4. An export or API instead of page reading (then the JSON feed adapter in `src/data-sources/authorized/` is used).
+  Note for the operator: Cloudflare's "Bot Fight Mode" on a free plan cannot be skipped by custom rules; if that is what they use, an export / API is the only way.
+- **Not claimed:** no live request has succeeded and no sample import has run. The parser is tested on one saved real page only.
