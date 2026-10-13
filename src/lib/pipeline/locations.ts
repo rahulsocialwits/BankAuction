@@ -22,6 +22,8 @@ const ALIASES: Record<string, string> = {
   "nalla sopara": "Nallasopara",
   ambarnath: "Ambernath",
   dombivali: "Dombivli",
+  "mumbai city": "Mumbai",
+  "greater mumbai": "Mumbai",
   "mira-bhayandar": "Mira Bhayandar",
   "mira road": "Mira Bhayandar",
   "pimpri-chinchwad": "Pimpri Chinchwad",
