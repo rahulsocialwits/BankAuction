@@ -6,7 +6,7 @@ import type { PropertyCardData } from "@/components/PropertyCard";
 import type { CountdownRow } from "@/components/AuctionCountdownTable";
 
 /*
- * Everything the home page needs from the database, in ONE cached call (2 minutes). The home page used to run 14 queries on every
+ * Everything the home page needs from the database, in ONE cached call (10 minutes). The home page used to run 14 queries on every
  * visit; on the server they queue behind each other (one database connection per function), which made the page take about 8 seconds.
  * The cache stores plain JSON only: dates are ISO strings and prices are numbers.
  */
@@ -85,5 +85,5 @@ export const getHomeData = unstable_cache(
     };
   },
   ["home-data-v1"],
-  { revalidate: 120, tags: ["home"] },
+  { revalidate: 600, tags: ["home"] } // counts and lists move slowly: a refresh every 10 minutes keeps most visits on the cached copy,
 );

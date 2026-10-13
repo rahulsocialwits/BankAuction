@@ -3,6 +3,7 @@ import { importRecords } from "@/lib/import/csvImport";
 import { freshFeedCursor, runFeedImport, type AuthorizedFeedClient, type BatchResult, type FeedCursor, type SourceState } from "./engine";
 import { JsonFeedClient, type JsonFeedConfig } from "./jsonFeed";
 import { makeMapper, type FieldMap } from "./fieldMap";
+import { runEauctionsPages } from "../eauctionsindia/import";
 
 /*
  * eAuctionsIndia (https://www.eauctionsindia.com). AUTOMATED ACCESS IS NOT PERMITTED today: its robots.txt answers HTTP 403 with a
@@ -95,6 +96,11 @@ export interface EauctionsRunOptions {
  * import. Without authorisation it answers at once and sends nothing.
  */
 export async function runEauctionsFeed(feed: { id: string; name: string; url: string }, o: EauctionsRunOptions): Promise<{ name: string; message: string; state: SourceState }> {
+  // No feed address configured: the category LIST pages are read by their own parser (eauctionsindia/import.ts), only with a recorded permission.
+  if (!process.env.EAUCTIONS_FEED_URL?.trim()) {
+    const r = await runEauctionsPages(feed, { mode: o.mode, sampleRecords: o.sampleSize, maxPages: o.maxPages, scheduled: o.scheduled, restart: o.restart, log: o.log });
+    return { name: feed.name, message: r.message, state: r.state };
+  }
   const cfg = eauctionsConfig();
   if (!cfg.ready) {
     const message = `${cfg.state === "awaiting_authorization" ? "Awaiting authorization" : "Configuration error"}: ${cfg.reason}`;
