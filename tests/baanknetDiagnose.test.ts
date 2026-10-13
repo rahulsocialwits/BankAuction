@@ -38,3 +38,10 @@ test("the slice importer: explicit authorization flag first, robots check, refus
   assert.match(src, /REAL_ESTATE\.includes/);
   assert.doesNotMatch(src, /baanknetAllProperties|"baanknet"\]/, "the other cursors are not touched");
 });
+
+test("the slice importer can list state names and run chosen states only, without touching the other slices", () => {
+  const src = readFileSync("scripts/baanknet-import-slices.ts", "utf8");
+  assert.match(src, /flag\("list-states"\)/);
+  assert.match(src, /only && !only\.has\(job\.stateId\)/);
+  assert.ok(src.indexOf('flag("list-states")') < src.indexOf("if (!st.planned)"), "listing states needs no plan and writes nothing");
+});

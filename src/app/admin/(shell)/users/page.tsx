@@ -30,6 +30,17 @@ export default async function RegisteredUsersPage({ searchParams }: { searchPara
   });
   const requested = await prisma.payment.findMany({ where: { status: "requested", email: { in: users.map((u) => u.email.toLowerCase()) } }, select: { email: true, planId: true, amount: true, createdAt: true }, orderBy: { createdAt: "desc" } });
   const requestOf = new Map(requested.map((r) => [r.email ?? "", r]));
+  const paidRows = await prisma.payment.findMany({ where: { provider: "razorpay", status: "paid", email: { in: users.map((u) => u.email.toLowerCase()) } }, select: { email: true, amount: true, paidAt: true, createdAt: true } });
+  const paidBy = new Map<string, { total: number; count: number; last: Date }>();
+  for (const r of paidRows) {
+    const k = r.email ?? "";
+    const cur = paidBy.get(k) ?? { total: 0, count: 0, last: new Date(0) };
+    cur.total += r.amount;
+    cur.count += 1;
+    const when = r.paidAt ?? r.createdAt;
+    if (when > cur.last) cur.last = when;
+    paidBy.set(k, cur);
+  }
   const byEmail = new Map<string, typeof rows>();
   for (const r of rows) (byEmail.get(r.email ?? "") ?? byEmail.set(r.email ?? "", []).get(r.email ?? "")!).push(r);
   const now = new Date();
@@ -58,12 +69,13 @@ export default async function RegisteredUsersPage({ searchParams }: { searchPara
       </form>
 
       <div className="bg-white border border-brand-border rounded-xl overflow-x-auto">
-        <table className="w-full text-sm min-w-[760px]">
+        <table className="w-full text-sm min-w-[900px]">
           <thead className="bg-brand-bg text-left text-xs text-brand-muted">
             <tr>
               <th className="px-4 py-2.5">Name</th>
               <th className="px-4 py-2.5">Email</th>
               <th className="px-4 py-2.5">Plan</th>
+              <th className="px-4 py-2.5">Payment</th>
               <th className="px-4 py-2.5">Premium</th>
               <th className="px-4 py-2.5 text-right">Saved</th>
               <th className="px-4 py-2.5 text-right">Alerts</th>
@@ -78,6 +90,15 @@ export default async function RegisteredUsersPage({ searchParams }: { searchPara
                 <td className="px-4 py-2.5">{u.name ?? "—"}</td>
                 <td className="px-4 py-2.5">{u.email}</td>
                 <td className="px-4 py-2.5"><span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">{u.role}</span></td>
+                <td className="px-4 py-2.5 whitespace-nowrap">
+                  {paidBy.get(u.email.toLowerCase()) ? (
+                    <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-800 font-semibold" title="Online payment through Razorpay, confirmed">
+                      Paid ₹{(paidBy.get(u.email.toLowerCase())!.total / 100).toLocaleString("en-IN")} · {paidBy.get(u.email.toLowerCase())!.last.toLocaleDateString("en-IN")}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-brand-muted">Not paid</span>
+                  )}
+                </td>
                 <td className="px-4 py-2.5">
                   <div className="flex items-center gap-2 flex-wrap">
                     <form action={makeResetLink}><input type="hidden" name="userId" value={u.id} /><button className="text-xs border border-brand-border rounded px-2 py-1 hover:bg-brand-bg" title="Create a password reset link">Reset link</button></form>

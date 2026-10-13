@@ -131,3 +131,11 @@ test("checkout page: a plan from the saved plans, a login first, a summary with 
   assert.match(pricing, /href=\{`\/checkout\?plan=\$\{p\.id\}`\}/);
   assert.doesNotMatch(c, /RAZORPAY_KEY_SECRET|keySecret/, "the secret never appears in the page");
 });
+
+test("admin Registered Users: a Payment column shows who paid online (confirmed Razorpay payments only), apart from the Premium column", () => {
+  const p = readFileSync("src/app/admin/(shell)/users/page.tsx", "utf8");
+  assert.match(p, /provider: "razorpay", status: "paid"/);
+  assert.match(p, /Not paid/);
+  assert.match(p, />Payment</);
+  assert.match(readFileSync("src/lib/queries/homeData.ts", "utf8"), /revalidate: 600/);
+});

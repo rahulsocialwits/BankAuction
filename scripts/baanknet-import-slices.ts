@@ -7,6 +7,8 @@
  *   $env:BAANKNET_SPLIT_AUTHORIZED="yes"; npx tsx scripts/baanknet-import-slices.ts --plan-only    (counts only: no import, no database write)
  *   $env:BAANKNET_SPLIT_AUTHORIZED="yes"; npx tsx scripts/baanknet-import-slices.ts                 (plan, then import; resumable)
  *   ... --max-pages=300        stop after this many pages in one run (default: no limit)
+ *   ... --list-states         prints state id -> state name (one tiny request per state; no import, no database write), to pick ids for --states
+ *   ... --states=21,2          only these state ids (e.g. Maharashtra first); the saved cursor keeps every other slice for a later run
  *   ... --slice-pages=N        read at most N pages (N x 50 auctions, the ones closest to today) of EACH slice; default: the whole slice
  *   ... --reset                forget the saved slice cursor (database records are NOT deleted)
  *
@@ -76,6 +78,8 @@ async function main() {
   const planOnly = flag("plan-only");
   const maxPages = num("max-pages") ?? Infinity;
   const slicePages = num("slice-pages") ?? Infinity;
+  const onlyStates = (process.argv.find((a) => a.startsWith("--states=")) ?? "").slice(9).split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  const only = onlyStates.length ? new Set(onlyStates) : null;
 
   const feed = await prisma.feedSource.findFirst({ where: { url: { contains: "baanknet.com" } } });
   if (!feed) throw new Error("No baanknet.com FeedSource exists in this database.");
@@ -112,6 +116,19 @@ async function main() {
   const pause = async () => sleep(Math.max(PAUSE_MS, (await gate.delayFor(API)) * 1000));
   const searchOf = (j: Pick<Job, "stateId" | "typeId" | "subTypeId">) => ({ stateId: j.stateId, propertyTypeId: j.typeId, ...(j.subTypeId ? { propertySubTypeId: [j.subTypeId] } : {}) });
 
+  // ---- 0. --list-states: id -> name, to choose --states ----
+  if (flag("list-states")) {
+    for (const stateId of STATES) {
+      const r = await post({ stateId }, 1, 1);
+      const total = Number(r.body?.data?.total ?? 0);
+      const name = (r.body?.data?.data?.[0]?._source as Record<string, unknown> | undefined)?.stateName;
+      if (r.ok && total > 0) console.log(`state ${String(stateId).padStart(2)}: ${String(name ?? "?")} (${total}${total >= WINDOW ? "+" : ""} auctions)`);
+      await pause();
+    }
+    console.log("\nNothing was imported or written. Use the ids with --states=<id>,<id>.");
+    return;
+  }
+
   // ---- 1. plan: how big is every slice ----
   if (!st.planned) {
     console.log(`Planning: ${STATES.length} states x ${TYPES.length} types (small requests, no import)...`);
@@ -146,6 +163,7 @@ async function main() {
   // ---- 2. import slice by slice (resumable) ----
   let pagesThisRun = 0;
   for (const job of st.planned!) {
+    if (only && !only.has(job.stateId)) continue;
     const c = (st.slices[job.key] ??= freshSlice());
     if (c.done) continue;
     console.log(`\nSlice ${job.key}: about ${job.total}${job.capped ? " (capped: only the first window can be read)" : ""}, from page ${c.page}`);
@@ -176,6 +194,14 @@ async function main() {
     }
   }
 
+  if (only) {
+    const mine = st.planned!.filter((j) => only.has(j.stateId));
+    const done = mine.filter((j) => st.slices[j.key]?.done).length;
+    console.log(`
+Selected states (${[...only].join(", ")}): ${done} of ${mine.length} slices finished. The other states are untouched; run without --states to continue them.`);
+    await save(feed.id, st, `BAANKNET slices: selected states ${[...only].join(",")} ${done}/${mine.length} done.`, "ok");
+    return;
+  }
   const all = Object.values(st.slices);
   const sum = (f: (s: SliceCursor) => number) => all.reduce((n, s) => n + f(s), 0);
   const capped = st.planned!.filter((j) => j.capped);
