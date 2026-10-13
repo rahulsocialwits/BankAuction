@@ -9,6 +9,7 @@
     "lint": "eslint",
     "ingest": "tsx scripts/ingest.ts",
     "test": "tsx --test tests/*.test.ts",
+    "test:eauctions": "vitest run --config vitest.eauctions.config.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -36,6 +37,8 @@
     "prisma": "^6.19.3",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "^6.4.1",
+    "vitest": "^3.2.4"
   }
 }
