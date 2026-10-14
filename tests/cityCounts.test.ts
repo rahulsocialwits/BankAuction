@@ -231,8 +231,9 @@ test("the results filter has no text fallback for city, and the homepage card sh
   const home = read("src/app/(site)/page.tsx");
   // the number on the card is the city total (all published properties) and the link opens the all-status list, so number = list total
   assert.match(home, /city=\$\{encodeURIComponent\(city\)\}&status=all/);
-  assert.match(home, /total: c\.total, active: c\.count/);
-  assert.match(home, /· \{active\.toLocaleString\("en-IN"\)\} active/);
+  // owner request 2026-10-13: the card shows only "N properties"; no "· N active" text
+  assert.match(home, /\{ total: c\.total \}/);
+  assert.ok(!/ active<\/div>/.test(home) && !/\{active\.toLocaleString/.test(home));
   assert.match(read("src/app/(site)/city/[slug]/page.tsx"), /statusGroup: "active"/);
 });
 

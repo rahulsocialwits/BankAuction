@@ -295,6 +295,7 @@ model Auction {
 
   @@index([status, auctionStart])
   @@index([bankId])
+  @@index([externalAuctionId]) // dedup priority #1: the importer matches on it
   @@map("auctions")
 }
 
@@ -327,6 +328,9 @@ model PropertyChange {
   sourceRecord   SourceRecord? @relation(fields: [sourceRecordId], references: [id])
   detectedAt     DateTime  @default(now())
 
+  // Without these two, every provenance read (fieldObservations.latest) scanned the whole table: 71,898 calls, 3,312 s in total (pg_stat_statements, 13 Oct 2026).
+  @@index([propertyId, detectedAt(sort: Desc)])
+  @@index([auctionId])
   @@map("property_changes")
 }
 
@@ -508,6 +512,8 @@ model Media {
   sourceRefs SourceMedia[]
   createdAt  DateTime        @default(now())
 
+  // attachMedia looks a picture up by its address on every import: 272,207 calls, each a full scan (1,927 s in total, 13 Oct 2026).
+  @@index([sourceUrl])
   @@map("media")
 }
 

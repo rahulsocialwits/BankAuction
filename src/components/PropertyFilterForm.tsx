@@ -148,6 +148,7 @@ export default function PropertyFilterForm({ localities, places, banks, categori
               { value: "all", label: "All" },
             ]}
             placeholder="Live & Upcoming"
+            noEmpty
             className={field}
           />
         </div>

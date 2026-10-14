@@ -68,7 +68,8 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
   const PAGE_SIZE = 48;
   const view = parseView(sp.view);
   const validCategory = CATEGORIES.find((c) => c.value === category)?.value;
-  const statusGroup: StatusGroup = status === "completed" || status === "active" ? status : "all";
+  // Default: Live & Upcoming. "All" and "Completed / Past" only when the visitor (or a link such as a city card) asks for them.
+  const statusGroup: StatusGroup = status === "completed" || status === "all" ? status : "active";
 
   const filters: PropertyFilters = { category: validCategory, keyword: q || undefined, state: state || undefined, city: city || undefined, locality: locality || undefined, statusGroup, bankId: bank || undefined, priceMin: priceMin ? Number(priceMin) : undefined, priceMax: priceMax ? Number(priceMax) : undefined };
   const [properties, totalCount, banks, localities, places] = await Promise.all([

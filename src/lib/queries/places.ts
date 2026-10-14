@@ -2,22 +2,9 @@ import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { canonCity, titleCase } from "@/lib/pipeline/locations";
 import { PRIORITY_CITIES } from "@/lib/constants";
+import { canonState } from "@/lib/domain/states";
 
-const STATE_ALIASES: Record<string, string> = {
-  orissa: "Odisha",
-  "telangana state": "Telangana",
-  "andhra pradesh state": "Andhra Pradesh",
-  "nct of delhi": "Delhi",
-  "new delhi": "Delhi",
-  pondicherry: "Puducherry",
-  uttaranchal: "Uttarakhand",
-};
-
-/** One spelling per Indian state ("Orissa" -> "Odisha"). */
-export function canonState(raw: string): string {
-  const k = raw.trim().toLowerCase().replace(/\s+/g, " ");
-  return STATE_ALIASES[k] ?? titleCase(k);
-}
+export { canonState };
 
 export interface PlaceData {
   states: { name: string; count: number }[];
