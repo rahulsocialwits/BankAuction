@@ -16,10 +16,12 @@ interface Props {
   disabled?: boolean;
   searchable?: boolean;
   className?: string;
+  /** no "empty value" entry in the list (for a field that always has a value, like Auction status) */
+  noEmpty?: boolean;
 }
 
 /** Custom select that always opens downward (native selects flip upward near the viewport bottom). */
-export default function Dropdown({ name, options, value, onChange, placeholder, disabled, searchable, className }: Props) {
+export default function Dropdown({ name, options, value, onChange, placeholder, disabled, searchable, className, noEmpty }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -77,11 +79,13 @@ export default function Dropdown({ name, options, value, onChange, placeholder, 
             />
           )}
           <ul role="listbox" className="max-h-60 overflow-y-auto py-1 text-sm">
-            <li>
+            {!noEmpty && (
+              <li>
               <button type="button" onClick={() => pick("")} className={`w-full text-left px-3 py-2 hover:bg-brand-bg ${value === "" ? "font-semibold text-brand" : ""}`}>
                 {placeholder}
               </button>
             </li>
+            )}
             {shown.map((o) => (
               <li key={o.value}>
                 <button

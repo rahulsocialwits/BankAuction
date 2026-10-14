@@ -28,19 +28,28 @@ export const cityKey = (city: string, v: "d" | "m") => `city-${citySlugOf(city)}
 export const bankKey = (slug: string) => `bank-${slug}`;
 export const typeKey = (value: string, v: "d" | "m") => `type-${value}-${v}`;
 
-/** key -> version (updatedAt ms) of every uploaded image. Tiny table; cached 5 minutes and refreshed on upload. */
-export const getImageVersions = unstable_cache(
+/**
+ * key -> version (updatedAt ms) of every uploaded image. Tiny table; cached 5 minutes and refreshed on upload.
+ * A failed read must NOT be cached: it used to be caught inside the cached function, so one database timeout stored an empty map for 5 minutes
+ * and the home page showed plain dark tiles (no hero, city or asset pictures) until the cache expired. The error now escapes the cache
+ * (unstable_cache never stores a thrown error) and is turned into an empty map outside it, for this request only.
+ */
+const cachedImageVersions = unstable_cache(
   async (): Promise<Record<string, number>> => {
-    try {
-      const rows = await prisma.siteImage.findMany({ select: { key: true, updatedAt: true } });
-      return Object.fromEntries(rows.map((r) => [r.key, r.updatedAt.getTime()]));
-    } catch {
-      return {};
-    }
+    const rows = await prisma.siteImage.findMany({ select: { key: true, updatedAt: true } });
+    return Object.fromEntries(rows.map((r) => [r.key, r.updatedAt.getTime()]));
   },
   ["site-image-versions"],
   { revalidate: 300, tags: [IMAGE_TAG] },
 );
+
+export async function getImageVersions(): Promise<Record<string, number>> {
+  try {
+    return await cachedImageVersions();
+  } catch {
+    return {};
+  }
+}
 
 /** Public URL of an uploaded image (versioned so browsers cache it for a year), or null if none was uploaded. */
 export const imageUrl = (versions: Record<string, number>, key: string): string | null => (versions[key] ? `/api/img/${encodeURIComponent(key)}?v=${versions[key]}` : null);

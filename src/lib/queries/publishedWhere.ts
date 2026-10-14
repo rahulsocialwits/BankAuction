@@ -1,5 +1,6 @@
 import type { Prisma, PropertyCategory } from "@prisma/client";
 import { canonCity } from "@/lib/pipeline/locations";
+import { stateVariants } from "@/lib/domain/states";
 import { activeAuctionWhere, inactiveAuctionWhere } from "@/lib/domain/auctionLifecycle";
 
 /*
@@ -90,7 +91,7 @@ export function publishedWhere(filters: PropertyFilters = {}): Prisma.PropertyWh
   // State and locality: AI-verified place first (exact); listings the AI has not checked yet fall back to a text match.
   if (filters.state) {
     const state = filters.state;
-    and.push({ OR: [{ geoState: { equals: state, mode: "insensitive" } }, { AND: [{ geoCheckedAt: null }, textMatch(state)] }] });
+    and.push({ OR: [...stateVariants(state).map((v) => ({ geoState: { equals: v, mode: "insensitive" as const } })), { AND: [{ geoCheckedAt: null }, textMatch(state)] }] });
   }
   // City: the canonical AI-verified geoCity only (domain/cityCounts.ts). No text fallback for unchecked listings: a city name inside a
   // title or address is not a location, and the homepage city cards count exactly this definition.

@@ -318,10 +318,6 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
         );
       })()}
 
-      <p className="mt-8 rounded-xl border border-brand-border bg-[#F8FAFC] p-4 text-xs text-brand-muted">
-        Details are collected from the bank / auction portal notices and may change or be incomplete. Please verify the property, reserve price, EMD and auction date with the bank and read the official notice before bidding. This is not legal or financial advice.
-      </p>
-
       {similar.length > 0 && (
         <section className="mt-12">
           <h2 className="text-xl font-bold text-brand mb-5">Similar Properties</h2>

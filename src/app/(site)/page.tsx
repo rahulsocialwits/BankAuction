@@ -41,7 +41,7 @@ export default async function Home() {
     { label: "Upcoming Auctions", value: upcomingAuctions },
   ];
 
-  const countByCity = new Map(cityCounts.map((c) => [c.city, { total: c.total, active: c.count }]));
+  const countByCity = new Map(cityCounts.map((c) => [c.city, { total: c.total }]));
   // Keep admin-selected cities first, but fill empty slots with the highest-volume real cities.
   // One pass (the old version compared every city with every other one, millions of canonCity calls: about 14 seconds of CPU).
   const homeCities: string[] = [];
@@ -107,7 +107,7 @@ export default async function Home() {
             const city = canonCity(name);
             const d = imageUrl(versions, cityKey(name, "d"));
             const m = imageUrl(versions, cityKey(name, "m"));
-            const { total, active } = countByCity.get(city) ?? { total: 0, active: 0 };
+            const { total } = countByCity.get(city) ?? { total: 0 };
             return (
               <Link key={name} href={`/properties?city=${encodeURIComponent(city)}&status=all`} className="group block text-center">
                 <div className="relative aspect-[221/148] rounded-2xl overflow-hidden bg-gradient-to-br from-brand to-brand-dark shadow-sm group-hover:shadow-lg transition-shadow">
@@ -118,7 +118,7 @@ export default async function Home() {
                   )}
                 </div>
                 <div className="mt-2.5 text-sm font-semibold text-black/90">{name}</div>
-                <div className="text-xs text-brand-muted">{total.toLocaleString("en-IN")} propert{total === 1 ? "y" : "ies"} · {active.toLocaleString("en-IN")} active</div>
+                <div className="text-xs text-brand-muted">{total.toLocaleString("en-IN")} propert{total === 1 ? "y" : "ies"}</div>
               </Link>
             );
           })}
