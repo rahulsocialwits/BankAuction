@@ -1,0 +1,113 @@
+name: eAuctionsIndia Maharashtra import
+
+# SEPARATE from the scheduler tick (tick.yml) and from every other source: it only runs scripts/eauctions-maharashtra-bulk.ts.
+#
+# STATUS: NOT ACTIVE until the owner switches it on. The scheduled run only starts when the repository VARIABLE EAUCTIONS_CRON_ENABLED is "true"
+# (Settings > Secrets and variables > Actions > Variables). A manual run (Actions > "eAuctionsIndia Maharashtra import" > Run workflow) always works.
+# Even when switched on, the import stops at once if eAuctionsIndia refuses automated access (HTTP 403 / Cloudflare challenge / robots.txt): that
+# is recorded in the run log and nothing is bypassed. Live collection needs the operator to allow-list our crawler or to give an export / API.
+#
+# Schedule: every day at 21:30 UTC = 03:00 IST (India Standard Time, UTC+5:30), a quiet hour for the site and for the 5-minute tick.
+# Overlap: one run at a time (concurrency group below); a second trigger waits, and nothing is cancelled half-way.
+# Resume: the crawler checkpoint, the staging files and the "already imported" list are kept between runs with the Actions cache.
+#
+# Secrets (Settings > Secrets and variables > Actions > Secrets), never printed: DATABASE_URL, DIRECT_URL, EAUCTIONS_AUTH_NOTE (where the operator's written
+# permission is kept), and optionally EAUCTIONS_ALLOW_HEADER_NAME / EAUCTIONS_ALLOW_HEADER_VALUE (only if the operator gave an allow-list header).
+# Variables: EAUCTIONS_CRON_ENABLED ("true" to switch the schedule on), EAUCTIONS_SCOPE_AUTOMATED ("yes" ONLY after the operator's written permission covers automated collection).
+on:
+  schedule:
+    - cron: "30 21 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: read pages and plan only, write nothing (recommended first)"
+        type: boolean
+        default: true
+      max_pages:
+        description: "Maximum pages to read in this run"
+        type: string
+        default: "50"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eauctions-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    if: github.event_name == 'workflow_dispatch' || vars.EAUCTIONS_CRON_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      EAUCTIONS_AUTHORIZED: ${{ vars.EAUCTIONS_SCOPE_AUTOMATED == 'yes' && 'yes' || 'no' }}
+      EAUCTIONS_AUTH_NOTE: ${{ secrets.EAUCTIONS_AUTH_NOTE }}
+      EAUCTIONS_SCOPE_AUTOMATED: ${{ vars.EAUCTIONS_SCOPE_AUTOMATED }}
+      EAUCTIONS_ALLOW_HEADER_NAME: ${{ secrets.EAUCTIONS_ALLOW_HEADER_NAME }}
+      EAUCTIONS_ALLOW_HEADER_VALUE: ${{ secrets.EAUCTIONS_ALLOW_HEADER_VALUE }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Restore resume state
+        uses: actions/cache@v4
+        with:
+          path: |
+            staging
+            import-state
+          key: eauctions-state-${{ github.run_id }}
+          restore-keys: |
+            eauctions-state-
+
+      - name: Check the configuration (no secret is printed)
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error title=eAuctions import not run::DATABASE_URL secret is missing"
+            exit 1
+          fi
+          if [ "$EAUCTIONS_SCOPE_AUTOMATED" != "yes" ] && [ "${{ inputs.dry_run }}" != "true" ]; then
+            echo "::warning title=Import will be refused::EAUCTIONS_SCOPE_AUTOMATED is not 'yes': only a dry run is possible until the operator's written permission covers automated collection."
+          fi
+
+      - name: Run the import
+        shell: bash
+        run: |
+          set -o pipefail
+          MAXP="${{ inputs.max_pages || '100' }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="--live --dry-run --check-duplicates --max-pages=2"
+          else
+            ARGS="--live --confirm-import --max-pages=$MAXP"
+          fi
+          # exit code 1 = a safe stop (access refused, nothing imported, or the write gate closed): shown as a warning, not hidden
+          npx tsx scripts/eauctions-maharashtra-bulk.ts $ARGS --pages-dir=none 2>&1 | tee run.log || echo "::warning title=eAuctions import stopped::see the run log (access refused or write gate closed)"
+
+      - name: Run summary
+        if: always()
+        run: |
+          {
+            echo "### eAuctionsIndia Maharashtra import"
+            echo '```'
+            grep -E "LIVE CRAWL|QUALIFICATION|SUMMARY|cards parsed|crawler pages|database|VERIFIED|state:|IMPORT REFUSED|report:" run.log || echo "no summary lines"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eauctions-import-reports
+          path: |
+            import-reports
+            run.log
+          if-no-files-found: ignore
+          retention-days: 30

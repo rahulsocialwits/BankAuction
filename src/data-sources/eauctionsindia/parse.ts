@@ -89,7 +89,7 @@ export function parseEauctionsPage(html: string, siteCategory = "residential"): 
       category,
       location: place,
       geo_city: district ? canonCity(district) : area ? canonCity(area) : "",
-      geo_locality: district && area ? titleCase(area) : "",
+      geo_locality: district && area ? titleCase(area.replace(/[.,;]+$/, "")) : "",
       description: description.slice(0, 1500),
       reserve_price: reserve,
       auction_start: parseEauctionsDate(when),
