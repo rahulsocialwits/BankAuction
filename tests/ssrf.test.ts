@@ -13,6 +13,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { isPrivateAddress, assertPublicUrl, SsrfBlockedError } from "../src/lib/fetch/assertPublicUrl";
 
 // ---- isPrivateAddress ---- //
@@ -126,8 +128,8 @@ test("assertPublicUrl: rejects IP-literal private RFC 1918", async () => {
 // ---- assertPublicUrl applied to fetchWithRetry (structural check) ---- //
 
 test("fetchWithRetry source imports assertPublicUrl (structural wiring check)", () => {
-  const src = require("node:fs").readFileSync(
-    require("node:path").join(__dirname, "..", "src", "lib", "fetch", "httpStatus.ts"),
+  const src = readFileSync(
+    join(__dirname, "..", "src", "lib", "fetch", "httpStatus.ts"),
     "utf8",
   );
   assert.match(src, /assertPublicUrl/, "httpStatus.ts must import and call assertPublicUrl");
