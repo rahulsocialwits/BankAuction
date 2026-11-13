@@ -296,6 +296,11 @@ model Auction {
   @@index([status, auctionStart])
   @@index([bankId])
   @@index([externalAuctionId]) // dedup priority #1: the importer matches on it
+  // NULL values are always distinct in PostgreSQL unique indexes, so two rows where bankId IS NULL
+  // and externalAuctionId IS NULL do NOT conflict. Only rows where BOTH columns are non-NULL
+  // and equal trigger a P2002. Re-auction rounds are already blocked at application level
+  // (addReauctionRound returns false when the external ID matches an existing round for the bank).
+  @@unique([bankId, externalAuctionId])
   @@map("auctions")
 }
 

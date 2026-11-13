@@ -453,6 +453,7 @@ export async function importRecords(
     const col = (name: string) => String(rec[name] ?? "").trim();
     let deepFail = ""; // why this listing's own page could not be read (shown in the rejection)
     let orphan: string | null = null; // a property whose auction could not be saved must not stay behind as an empty listing
+    let p2002Context: { bankId: string; extId: string; list: Known[]; reservePrice: number; validStart: Date | null; titleTokens: Set<string> } | null = null;
     try {
       const title = col("title");
       // The project's do-not-fetch list applies to EVERY route into the database (link source, sheet, CSV, bulk import): such a listing is never stored.
@@ -591,6 +592,13 @@ export async function importRecords(
         }
       }
 
+      // Capture context needed for P2002 recovery in the catch block.
+      // bank/list/reservePrice/validStart/titleTokens are all declared inside try, so they are saved
+      // into p2002Context (declared before try) for access from the catch block.
+      if (col("external_id") && bank) {
+        p2002Context = { bankId: bank.id, extId: col("external_id"), list, reservePrice, validStart, titleTokens };
+      }
+
       const base = slugify(title);
       const slug = (await prisma.property.findUnique({ where: { slug: base } })) ? `${base}-${Date.now()}-${created}` : base;
       const catRaw = col("category").toUpperCase().replace(/[ &]+/g, "_");
@@ -651,6 +659,33 @@ export async function importRecords(
       list.push({ tokens: titleTokens, reserve: reservePrice > 0 ? reservePrice : null, start: validStart, auctionId: auction.id, propertyId: property.id, ext: col("external_id") || null });
       created++;
     } catch (e) {
+      // P2002 = Prisma unique constraint violation. The @@unique([bankId, externalAuctionId])
+      // constraint fires when two concurrent ticks both pass the last-mile findFirst check
+      // before either has committed. Recover by looking up the winning row so this batch can
+      // continue without leaving an orphan property behind.
+      const isPrismaP2002 = e instanceof Error && "code" in e && (e as { code: unknown }).code === "P2002";
+      if (isPrismaP2002 && p2002Context) {
+        const { bankId: ctxBankId, extId, list: ctxList, reservePrice: ctxReserve, validStart: ctxStart, titleTokens: ctxTokens } = p2002Context;
+        const existing = await prisma.auction.findFirst({
+          where: { externalAuctionId: extId, bankId: ctxBankId },
+          select: { id: true, propertyId: true },
+        }).catch(() => null);
+        if (existing) {
+          // Clean up the orphan property that was created before the auction insert conflicted.
+          if (orphan && orphan !== existing.propertyId) {
+            const id = orphan;
+            await prisma.propertyAttribute.deleteMany({ where: { propertyId: id } }).catch(() => undefined);
+            await prisma.propertyDocument.deleteMany({ where: { propertyId: id } }).catch(() => undefined);
+            await prisma.auction.deleteMany({ where: { propertyId: id } }).catch(() => undefined);
+            await prisma.property.delete({ where: { id } }).catch(() => undefined);
+          }
+          orphan = null;
+          ctxList.push({ tokens: ctxTokens, reserve: ctxReserve > 0 ? ctxReserve : null, start: ctxStart, auctionId: existing.id, propertyId: existing.propertyId, ext: extId });
+          seenIds.add(existing.propertyId);
+          skipped++;
+          continue;
+        }
+      }
       reject(String(rec.title ?? ""), `import_error: ${e instanceof Error ? e.message.split("\n")[0].slice(0, 120) : "unknown"}`);
       if (orphan) {
         const id = orphan;
