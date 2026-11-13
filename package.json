@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "ingest": "tsx scripts/ingest.ts",
+    "eauctions:maharashtra:preview": "tsx scripts/eauctions-maharashtra-bulk.ts --dry-run --check-duplicates",
+    "eauctions:maharashtra:import": "tsx scripts/eauctions-maharashtra-bulk.ts --live --confirm-import",
     "test": "tsx --test tests/*.test.ts",
     "postinstall": "prisma generate"
   },

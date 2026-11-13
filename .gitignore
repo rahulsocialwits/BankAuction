@@ -40,3 +40,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .claude/scheduled_tasks.lock
+eauctions-maharashtra.html
+
+# hand-saved eAuctionsIndia pages contain a per-session csrf token: never commit
+/eauctions-*.html
+/demo-output/
+/import-state/
+/import-logs/
+/staging/
+/import-reports/

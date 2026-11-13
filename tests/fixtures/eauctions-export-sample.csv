@@ -1,0 +1,9 @@
+Auction ID,Bank,Auction Type,Property Type,Address,City,State,Pincode,Reserve Price,EMD,Auction Start,Auction End,Notice URL
+900001,Test Bank,SARFAESI,Flat,Sector 1,Pune,Maharashtra,411001,"₹45,00,000.00","4,50,000",26-12-2026 11:00,26-12-2026 16:00,https://www.eauctionsindia.com/properties/900001
+900002,Test Bank,DRT Auction,Plot,Gat 12,Sangli,Maharashtra,416310,12000000,1200000,2026-12-30T10:30:00+05:30,,
+900002,Test Bank,DRT Auction,Plot,Gat 12,Sangli,Maharashtra,416310,12000000,1200000,2026-12-30T10:30:00+05:30,,
+900003,Test Bank,SARFAESI,Flat,Road 5,Delhi,Delhi,110001,9000000,900000,26-12-2026 11:00,,
+900004,Test Bank,SARFAESI,Flat,Road 6,Thane,Maharashtra,400601,not stated,,,,
+900005,Test Bank,SARFAESI,Car,Garage,Mumbai,Maharashtra,400001,300000,,26-12-2026 11:00,,
+,Test Bank,SARFAESI,Flat,Road 7,Nashik,Maharashtra,422001,5000000,,26-12-2026 11:00,,
+900007,Test Bank,SARFAESI,House,Road 8,Nashik,Maharashtra,,6000000,,,,https://evil.example.com/properties/900007
