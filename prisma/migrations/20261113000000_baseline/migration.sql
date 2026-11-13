@@ -1,4 +1,4 @@
-﻿-- Baseline migration: marks the current schema state as the starting point for Prisma migrate.
+-- Baseline migration: marks the current schema state as the starting point for Prisma migrate.
 -- This project previously used prisma db push with no migrations directory.
 -- The tables already exist in production; this file is a no-op for existing databases
 -- and is here only so that prisma migrate deploy and prisma migrate diff have a baseline.
