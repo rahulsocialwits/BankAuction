@@ -477,8 +477,11 @@ export async function importRecords(
       const list = await known(bank?.id ?? null);
       // The source's own listing id is the surest match (the built-in crawler stores the same id).
       // A source-qualified id ("src:<site>:<id>", set by the site readers) identifies the SAME listing on every visit: it is updated, never duplicated.
+      // A bare id (e.g. "2608") is also used here because knownByBank is already scoped by bankId, so a bare id collision
+      // across different banks is harmless. Previously the bare-id path was guarded by opts.enrich, which caused feed sources
+      // that do not set enrich (web-scan feeds) to ignore external_id entirely and create duplicate Property+Auction rows.
       const sourceQualified = col("external_id").startsWith("src:");
-      const sameId = (opts.enrich || sourceQualified) && col("external_id") ? list.find((k) => k.ext === col("external_id")) : undefined;
+      const sameId = col("external_id") ? list.find((k) => k.ext === col("external_id")) : undefined;
       const matched: { d?: MatchDecision } = {}; // why the listing was matched (for the merge log)
       const hit =
         sameId ??
@@ -566,6 +569,23 @@ export async function importRecords(
         }
         if (dupOf) {
           if (dupOf.d.rule !== "same_source_id") await recordMerge(dupOf.propertyId, "listing matched", formatMergeNote(dupOf.d.rule!, statusSource, `\"${title.slice(0, 120)}\" matched this property: ${dupOf.d.reason}`));
+          skipped++;
+          continue;
+        }
+      }
+
+      // Concurrent-safety: knownByBank was loaded at run start. A concurrent scheduler tick may have committed the
+      // same (externalAuctionId, bankId) pair between then and now. One final DB read prevents creating a duplicate
+      // Property + Auction pair. This narrows the remaining race window to sub-millisecond (between this read and the
+      // create below); a future migration adding @@unique([bankId, externalAuctionId]) will close it entirely.
+      if (col("external_id") && bank) {
+        const concurrent = await prisma.auction.findFirst({
+          where: { externalAuctionId: col("external_id"), bankId: bank.id },
+          select: { id: true, propertyId: true },
+        });
+        if (concurrent) {
+          list.push({ tokens: titleTokens, reserve: reservePrice > 0 ? reservePrice : null, start: validStart, auctionId: concurrent.id, propertyId: concurrent.propertyId, ext: col("external_id") });
+          seenIds.add(concurrent.propertyId);
           skipped++;
           continue;
         }
