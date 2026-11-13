@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { acquireTickLease, releaseTickLease, runTick } from "@/lib/pipeline/tick";
 
 export const runtime = "nodejs";
@@ -18,7 +19,10 @@ export async function GET(request: NextRequest) {
   const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   const secret = request.nextUrl.searchParams.get("secret") ?? request.headers.get("x-cron-secret") ?? bearer;
   if (!process.env.CRON_SECRET) return NextResponse.json({ ok: false, error: "CRON_SECRET is not set on the server" }, { status: 500 });
-  if (secret !== process.env.CRON_SECRET) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const expected = Buffer.from(process.env.CRON_SECRET, "utf8");
+  const received = Buffer.from(secret ?? "", "utf8");
+  const authorized = expected.length === received.length && timingSafeEqual(expected, received);
+  if (!authorized) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const limit = Number(request.nextUrl.searchParams.get("limit") ?? "100");
   const started = Date.now();

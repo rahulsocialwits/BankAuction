@@ -1,3 +1,5 @@
+import { assertPublicUrl, SsrfBlockedError } from "./assertPublicUrl";
+
 /*
  * Honest classification of what a website answered, and ONE polite retry for temporary answers.
  *
@@ -131,6 +133,22 @@ async function once(url: string, init: RequestInit, o: RetryOptions): Promise<{ 
 export async function fetchWithRetry(url: string, init: RequestInit = {}, o: RetryOptions = {}): Promise<FetchOutcome> {
   const log: string[] = [];
   const say = (line: string) => { log.push(line); o.onLog?.(line); };
+
+  // SSRF protection: reject requests to private/internal addresses before any network I/O.
+  // Skipped when a custom fetchFn is supplied (test harnesses use it; they mock at the network
+  // layer and are not making real outbound requests).
+  if (!o.fetchFn) {
+    try {
+      await assertPublicUrl(url);
+    } catch (e) {
+      if (e instanceof SsrfBlockedError) {
+        say(`SSRF policy block: ${e.message}`);
+        return { status: "internal_policy_block", res: null, http: null, attempts: 0, waitedSec: 0, log };
+      }
+      throw e;
+    }
+  }
+
   const maxWait = o.maxWaitSec ?? MAX_RETRY_WAIT_SEC;
   const sleep = o.sleep ?? nap;
 

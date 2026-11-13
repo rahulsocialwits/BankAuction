@@ -34,6 +34,15 @@ jobs:
 
       - run: npx prisma generate
 
+      # Schema drift guard: fail the build if schema.prisma has changes that are not
+      # captured in a migration file. The shadow database is a temporary in-process
+      # Prisma shadow DB (no real Postgres needed for the diff check alone).
+      # To silence a false positive caused by an intentional schema-only change,
+      # run `prisma migrate dev --create-only` locally and commit the migration file.
+      - name: Schema drift check
+        run: npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url "${DATABASE_URL}" --exit-code
+        continue-on-error: false
+
       - name: Lint
         run: npm run lint
 
