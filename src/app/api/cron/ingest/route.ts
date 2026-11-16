@@ -12,8 +12,10 @@ export const dynamic = "force-dynamic";
  * a second, independent pinger (cron-job.org, UptimeRobot; see docs/SCHEDULER.md) can call it too: a tick lease keeps them from overlapping. Without one, visitor traffic triggers a tick by itself (see /api/me).
  * Auth: ?secret=<CRON_SECRET>, header x-cron-secret, or "Authorization: Bearer <CRON_SECRET>".
  *
- * The tick runs INSIDE this request and the response is sent only after it finished, so the scheduler sees HTTP 200 only when the
- * work was really done. A failure is returned as HTTP 500 with the real error (never swallowed, never reported as "ok").
+ * Returns 202 Accepted immediately after the tick is accepted (lease acquired). The tick runs as a background promise
+ * that Vercel keeps alive until maxDuration (300 s). This avoids cron-job.org's 30-second response timeout while
+ * still guaranteeing the full tick runs; results are visible in Admin → Engine → History as usual.
+ * A "skipped" response (202 with skipped:true) means another trigger already owns this tick window.
  */
 export async function GET(request: NextRequest) {
   const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -27,16 +29,17 @@ export async function GET(request: NextRequest) {
   const limit = Number(request.nextUrl.searchParams.get("limit") ?? "100");
   const started = Date.now();
   // Several triggers may call this endpoint (GitHub Actions, an external pinger): only one tick runs at a time. A trigger that finds
-  // another tick running (or one that just ran) answers 200 "skipped" and does nothing, so a second pinger is always safe.
+  // another tick running (or one that just ran) answers 202 "skipped" and does nothing, so a second pinger is always safe.
   const lease = await acquireTickLease("HTTP");
   if ("skipped" in lease) return NextResponse.json({ ok: true, skipped: true, reason: lease.skipped, ms: Date.now() - started });
-  try {
-    const result = await runTick({ limit: Number.isFinite(limit) && limit > 0 ? limit : 100, via: "HTTP", trigger: "cron", claimId: lease.id });
-    return NextResponse.json({ ok: true, ms: Date.now() - started, result });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    console.error("[cron/ingest] tick failed:", e);
-    await releaseTickLease(lease.id);
-    return NextResponse.json({ ok: false, ms: Date.now() - started, error: message }, { status: 500 });
-  }
+
+  // Run the tick as a background promise so the HTTP response can be returned immediately.
+  // Vercel continues executing until maxDuration (300 s) after the response is sent.
+  // runTick() releases the lease in its own finally block regardless of outcome.
+  const safeLimit = Number.isFinite(limit) && limit > 0 ? limit : 100;
+  void runTick({ limit: safeLimit, via: "HTTP", trigger: "cron", claimId: lease.id }).catch((e: unknown) => {
+    console.error("[cron/ingest] background tick failed:", e instanceof Error ? e.message : String(e));
+  });
+
+  return NextResponse.json({ ok: true, status: "accepted", claimId: lease.id, ms: Date.now() - started }, { status: 202 });
 }
