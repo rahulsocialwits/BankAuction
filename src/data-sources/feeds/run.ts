@@ -16,6 +16,7 @@ import { DEEP_MAX_LISTINGS, makeDeepener } from "./deepScan";
 import { scanSiteForNew, webStateOf, withWebState } from "./siteScan";
 import { recordYield } from "@/lib/pipeline/yieldMonitor";
 import { keepYieldState, type YieldRun } from "@/lib/pipeline/zeroYield";
+import { checkStagnation, stagnationRunFromMessage } from "@/lib/pipeline/stagnation";
 
 /** Saved in a feed's last message while its first import is not finished; the scheduler keeps it going on every tick. */
 export const MORE_PENDING = "Continues automatically.";
@@ -310,6 +311,31 @@ export async function runFeedSource(id: string, trigger: "schedule" | "manual" =
         },
       });
     else if (aiFeed) await logRun({ source: feed.name, kind: "feed", trigger, status: "skipped", aiTokens: 0, message: `${message} · ai_called=false`, startedAt });
+
+    // Stagnation check: query the last STAGNATION_RUNS+1 runs of this source and warn if
+    // it has been unchanged for STAGNATION_RUNS consecutive runs (excluding paginating runs).
+    // Only runs by the scheduler are checked (manual runs are intentional re-checks by the owner).
+    // A source that has never been productive is already gated by zero-yield; this only warns.
+    if (trigger === "schedule") {
+      try {
+        const recentLogs = await prisma.sourceRunLog.findMany({
+          where: { source: feed.name, kind: "feed" },
+          orderBy: { startedAt: "desc" },
+          take: STAGNATION_RUNS + 1,
+          select: { message: true, created: true },
+        });
+        const runs = recentLogs.map((r) => stagnationRunFromMessage(r.message, r.created ?? 0)).reverse();
+        const result = checkStagnation(runs);
+        if (result.stagnant && result.warning) {
+          await prisma.sourceRunLog.create({
+            data: { source: feed.name, kind: "stagnation_check", trigger, status: "warning", created: 0, updated: 0, duplicates: 0, rejected: 0, aiTokens: 0, message: result.warning, startedAt: new Date(), durationMs: 0 },
+          });
+        }
+      } catch {
+        // Stagnation check is advisory; never block or fail the run
+      }
+    }
+
     return { name: feed.name, message };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
