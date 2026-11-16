@@ -32,7 +32,8 @@ export async function GET(request: NextRequest) {
   // Several triggers may call this endpoint (GitHub Actions, an external pinger): only one tick runs at a time. A trigger that finds
   // another tick running (or one that just ran) answers 202 "skipped" and does nothing, so a second pinger is always safe.
   const lease = await acquireTickLease("HTTP");
-  if ("skipped" in lease) return NextResponse.json({ ok: true, skipped: true, reason: lease.skipped, ms: Date.now() - started });
+  // 202 for both accepted and skipped so cron-job.org only needs one success code configured.
+  if ("skipped" in lease) return NextResponse.json({ ok: true, skipped: true, reason: lease.skipped, ms: Date.now() - started }, { status: 202 });
 
   // Schedule the tick to run after the response is sent, using next/server `after()`.
   // `after()` is the Vercel-native API for background work: it registers the callback in Vercel's
