@@ -29,6 +29,7 @@ export interface NormalizedAuctionRecord {
   branchName: string | null;
 
   externalAuctionId: string | null;
+  sourcePublishedAt: Date | null;
   auctionType: string | null;
   auctionMethod: string | null;
   borrower: string | null;
@@ -93,6 +94,12 @@ export function normalizeBankAuctionsRecord(record: RawAuctionRecord): Normalize
     branchName: nullIfPlaceholder(firstField(record, "Institution Branch")),
 
     externalAuctionId: nullIfPlaceholder(firstField(record, "Listing ID")),
+    // "Notice Date" / "Published Date" / "Date of Publication" — bankauctions.in label varies by notice type
+    sourcePublishedAt:
+      parseIndianDateTime(firstField(record, "Notice Date")) ??
+      parseIndianDateTime(firstField(record, "Published Date")) ??
+      parseIndianDateTime(firstField(record, "Date of Publication")) ??
+      null,
     auctionType: nullIfPlaceholder(firstField(record, "Listing Type")),
     auctionMethod: nullIfPlaceholder(firstField(record, "Auction Details")),
     borrower: nullIfPlaceholder(firstField(record, "Borrower Name")),
