@@ -18,20 +18,15 @@ describe("P1.1 — cron ingest async (cron-job.org timeout fix)", () => {
     assert.ok(src.includes("status: 202"), "response must use HTTP 202 Accepted");
   });
 
-  it("does not await runTick before returning the response", () => {
-    // The response must come before runTick resolves.
-    // Pattern: void runTick(...).catch(...) followed by return NextResponse.json(...)
-    const voidRunTickIdx = src.indexOf("void runTick(");
-    const returnJsonIdx = src.indexOf("return NextResponse.json(", voidRunTickIdx);
-    assert.ok(voidRunTickIdx !== -1, "runTick must be fire-and-forget (void runTick(...))");
-    assert.ok(returnJsonIdx > voidRunTickIdx, "return must come after the void runTick(...) call");
+  it("schedules tick via after() not a bare void promise", () => {
+    // after() from next/server registers work in Vercel's waitUntil mechanism —
+    // the platform guarantees the callback runs even after the HTTP response is flushed.
+    assert.ok(src.includes("after("), "must use after() from next/server for background work");
+    assert.ok(!src.includes("void runTick("), "must not use bare void runTick() fire-and-forget");
   });
 
-  it("does not use await runTick in the main path", () => {
-    // 'await runTick' anywhere after the lease acquisition means synchronous execution
-    // We allow 'await acquireTickLease' but not 'await runTick'
-    const awaitRunTick = /await\s+runTick\s*\(/.test(src);
-    assert.ok(!awaitRunTick, "runTick must not be awaited on the response path");
+  it("imports after from next/server", () => {
+    assert.ok(src.includes("after") && src.includes("next/server"), "after must be imported from next/server");
   });
 
   it("includes status:accepted in the response body", () => {

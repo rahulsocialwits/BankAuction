@@ -1,6 +1,7 @@
+import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
-import { acquireTickLease, releaseTickLease, runTick } from "@/lib/pipeline/tick";
+import { acquireTickLease, runTick } from "@/lib/pipeline/tick";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -33,12 +34,18 @@ export async function GET(request: NextRequest) {
   const lease = await acquireTickLease("HTTP");
   if ("skipped" in lease) return NextResponse.json({ ok: true, skipped: true, reason: lease.skipped, ms: Date.now() - started });
 
-  // Run the tick as a background promise so the HTTP response can be returned immediately.
-  // Vercel continues executing until maxDuration (300 s) after the response is sent.
-  // runTick() releases the lease in its own finally block regardless of outcome.
+  // Schedule the tick to run after the response is sent, using next/server `after()`.
+  // `after()` is the Vercel-native API for background work: it registers the callback in Vercel's
+  // waitUntil mechanism rather than relying on a dangling promise, so the platform guarantees
+  // the work runs even after the HTTP response is flushed. maxDuration = 300 caps the total
+  // function lifetime (response + background) to 300 s.
   const safeLimit = Number.isFinite(limit) && limit > 0 ? limit : 100;
-  void runTick({ limit: safeLimit, via: "HTTP", trigger: "cron", claimId: lease.id }).catch((e: unknown) => {
-    console.error("[cron/ingest] background tick failed:", e instanceof Error ? e.message : String(e));
+  after(async () => {
+    try {
+      await runTick({ limit: safeLimit, via: "HTTP", trigger: "cron", claimId: lease.id });
+    } catch (e: unknown) {
+      console.error("[cron/ingest] background tick failed:", e instanceof Error ? e.message : String(e));
+    }
   });
 
   return NextResponse.json({ ok: true, status: "accepted", claimId: lease.id, ms: Date.now() - started }, { status: 202 });
