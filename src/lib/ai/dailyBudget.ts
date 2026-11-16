@@ -39,6 +39,11 @@ const ESTIMATED_TOKENS_PER_CALL = 2_000;
 
 let cache: { at: number; used: number } | null = null;
 
+/** Drop the in-process cache so the next call re-reads from the DB. Call after recording AI tokens. */
+export function invalidateBudgetCache(): void {
+  cache = null;
+}
+
 /** Tokens used in the last 24 hours (cached for one minute so the check costs almost nothing). */
 export async function tokensUsedLast24h(): Promise<number> {
   if (cache && Date.now() - cache.at < 60_000) return cache.used;
@@ -103,7 +108,7 @@ export async function completeReservation(id: string, actualTokens: number): Pro
       where: { id },
       data: { kind: "ai_usage", status: "ok", aiTokens: actualTokens },
     });
-    cache = null;
+    cache = null; // invalidate so next budget check sees the actual usage
   } catch {
     // best-effort
   }

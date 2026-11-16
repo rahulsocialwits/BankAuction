@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { invalidateBudgetCache } from "@/lib/ai/dailyBudget";
 import {
   buildSourceBaseline,
   evaluateCompleteness,
@@ -168,6 +169,8 @@ export async function logRun(input: RunLogInput) {
         ...(typeof input.cursorPage === "number" && { cursorPage: input.cursorPage }),
       },
     });
+    // Drop the in-process budget cache so the next AI call sees the tokens just recorded.
+    if ((input.aiTokens ?? 0) > 0) invalidateBudgetCache();
     // A COMPLETE, HEALTHY pass of a source that tracks its passes: look for listings it no longer shows (FLAG ONLY, see lastSeen.ts).
     // The protection is re-read from the stored history (which now holds this verdict) and the gate fails closed.
     if (verdict && input.metrics) {

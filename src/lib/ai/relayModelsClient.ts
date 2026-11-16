@@ -25,6 +25,7 @@ export async function chatJSONDetailed<T>(systemPrompt: string, userPrompt: stri
   }
   // A masked/placeholder value (e.g. "sk-••••") pasted into the env var breaks the HTTP header.
   if (!cfg.keyValid) {
+    if (reservationId) await discardReservation(reservationId);
     throw new Error("AI_API_KEY contains invalid characters (looks like a masked value). Re-paste the real key in the environment settings.");
   }
 
@@ -44,20 +45,15 @@ export async function chatJSONDetailed<T>(systemPrompt: string, userPrompt: stri
     });
 
   // Try the configured model, then the fallback, then a couple of cheap models from other vendors.
-  // Moving on is only done for "model unavailable" and "provider content filter" errors: the vendor's
-  // safety filter sometimes rejects ordinary auction notices (borrower names, legal text), and a
-  // different vendor's model reads the same page fine.
   const chain = [...new Set([cfg.model, cfg.fallbackModel, "deepseek-v4-flash", "qwen3.7-plus"])];
   const TRANSIENT = /capacity_unavailable|temporarily unavailable|overloaded|rate.?limit|timeout/i;
   const MOVE_ON = /model_not_found|No available channel|unsafe or sensitive|"code":"?1301|capacity_unavailable|temporarily unavailable/i;
 
-  // One model: short retries with backoff for temporary provider trouble (503/429/capacity).
   const attempt = async (m: string) => {
     let r: Response;
     try {
       r = await request(m);
     } catch (e) {
-      // A request that ran past the time limit: try the same model once more before giving up.
       if (!(e instanceof Error) || !/abort|timeout/i.test(`${e.name} ${e.message}`)) throw e;
       r = await request(m);
     }
