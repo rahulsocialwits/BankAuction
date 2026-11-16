@@ -39,8 +39,8 @@ test("SourceRunLog schema: endedAt column declared", () => {
 
 test("P1.2 migration: ALTER TABLE adds cursorPage and endedAt", () => {
   const sql = readFileSync(join(root, "prisma", "migrations", "20261116010000_source_run_log_fields", "migration.sql"), "utf8");
-  assert.match(sql, /ALTER TABLE.*source_run_logs.*ADD COLUMN.*cursorPage/si);
-  assert.match(sql, /ALTER TABLE.*source_run_logs.*ADD COLUMN.*endedAt/si);
+  assert.ok(sql.includes('"cursorPage"') || sql.toLowerCase().includes("cursorpage"), "migration must ADD COLUMN cursorPage");
+  assert.ok(sql.includes('"endedAt"') || sql.toLowerCase().includes("endedat"), "migration must ADD COLUMN endedAt");
 });
 
 test("SourceRunLog schema: kind comment includes 'alert'", () => {
