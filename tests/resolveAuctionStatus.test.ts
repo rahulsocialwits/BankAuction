@@ -64,7 +64,12 @@ test("WIRING: every automatic re-derivation site goes through resolveAuctionStat
   const adapter = read("src/data-sources/bankauctions/adapter.ts");
   assert.match(adapter, /resolveAuctionStatus\(/);
   assert.match(adapter, /status: resolvedStatus/);
-  assert.doesNotMatch(adapter.slice(adapter.indexOf("if (existingAuction)"), adapter.indexOf("const existingProperty")), /status: derivedStatus/, "update path must not write the raw date-derived status");
+  // Slice the "update existing auction" branch: from `if (resolvedAuction) {` to `} else {`
+  // (the else begins the new-auction/AI-dedup path). derivedStatus must never be written directly
+  // in the update path; it must go through resolveAuctionStatus first.
+  const updatePathStart = adapter.indexOf("if (resolvedAuction) {");
+  const updatePathEnd = adapter.indexOf("  } else {", updatePathStart);
+  assert.doesNotMatch(adapter.slice(updatePathStart, updatePathEnd), /status: derivedStatus/, "update path must not write the raw date-derived status");
   const csv = read("src/lib/import/csvImport.ts");
   assert.match(csv, /resolveAuctionStatus\(/);
   assert.doesNotMatch(csv, /data: \{ status: deriveAuctionStatusFromDates\(prev/, "superseded round must not be re-derived blindly");
