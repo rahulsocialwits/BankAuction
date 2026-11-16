@@ -57,6 +57,7 @@ export interface NormalizedAuctionRecord {
   extensionTrigger: string | null;
 
   documents: NormalizedDocument[];
+  imageUrls: string[];
 }
 
 function classifyDocumentType(label: string): DocumentType {
@@ -134,5 +135,6 @@ export function normalizeBankAuctionsRecord(record: RawAuctionRecord): Normalize
     extensionTrigger: nullIfPlaceholder(timeExtensionsText),
 
     documents: normalizeDocuments(record.documents),
+    imageUrls: record.imageUrls,
   };
 }

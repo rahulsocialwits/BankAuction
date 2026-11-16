@@ -125,7 +125,7 @@ function fromTable(content: string, title: string): RawAuctionRecord {
     if (!value || /^\\?-+$/.test(value.replace(/\\/g, ""))) continue;
     (fields[label] ??= []).push(value.replace(/\s+/g, " "));
   }
-  return { title, fields, documents };
+  return { title, fields, documents, imageUrls: [] };
 }
 
 /** Layout B: JSON with a "fields" object. */
@@ -138,7 +138,7 @@ function fromJson(content: string, title: string, docUrls: string[]): RawAuction
       const s = String(v ?? "").trim();
       if (s && !/^download\b/i.test(k) && k !== "Submit Application") fields[k] = [s];
     }
-    return { title, fields, documents: docUrls.map((href) => ({ label: labelFromUrl(href), href })) };
+    return { title, fields, documents: docUrls.map((href) => ({ label: labelFromUrl(href), href })), imageUrls: [] };
   } catch {
     return null;
   }

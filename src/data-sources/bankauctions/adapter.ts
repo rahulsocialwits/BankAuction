@@ -16,6 +16,22 @@ import { findDuplicatePropertyViaAI } from "@/lib/deduplication/aiDuplicateCheck
 const SOURCE_KEY = "bankauctions";
 const SITEMAP_PATH = "/wp-sitemap-auctions-1.xml";
 
+/** Upsert Media rows for property images and link them via PropertyMedia (sortOrder = insertion order). */
+async function attachPropertyImages(propertyId: string, imageUrls: string[]): Promise<void> {
+  for (let i = 0; i < Math.min(imageUrls.length, 8); i++) {
+    const url = imageUrls[i];
+    const row =
+      (await prisma.media.findFirst({ where: { sourceUrl: url } })) ??
+      (await prisma.media.create({ data: { sourceUrl: url, type: "PHOTO" } }));
+    const exists = await prisma.propertyMedia.findUnique({
+      where: { propertyId_mediaId: { propertyId, mediaId: row.id } },
+    });
+    if (!exists) {
+      await prisma.propertyMedia.create({ data: { propertyId, mediaId: row.id, sortOrder: i } });
+    }
+  }
+}
+
 export interface IngestionSummary {
   jobId: string;
   pagesChecked: number;
@@ -392,6 +408,7 @@ async function ingestOnePage(
         status: "PUBLISHED",
       },
     });
+    if (normalized.imageUrls.length > 0) await attachPropertyImages(propertyId, normalized.imageUrls);
     summary.updatedProperties++;
     summary.updatedAuctions++;
   } else {
@@ -452,6 +469,7 @@ async function ingestOnePage(
         },
       });
       auctionId = auction.id;
+      if (normalized.imageUrls.length > 0) await attachPropertyImages(propertyId, normalized.imageUrls);
       summary.updatedProperties++;
       summary.newAuctions++;
       await observeListing({ propertyId, auctionId }, { reserve: normalized.reservePrice, start: normalized.auctionStart, address: normalized.cityRaw }, { statusSource: "BankAuctions.in", method: "html", document: url });
@@ -532,6 +550,7 @@ async function ingestOnePage(
       },
     });
     auctionId = auction.id;
+    if (normalized.imageUrls.length > 0) await attachPropertyImages(propertyId, normalized.imageUrls);
     summary.newProperties++;
     summary.newAuctions++;
   }
