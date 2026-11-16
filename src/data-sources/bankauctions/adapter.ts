@@ -455,7 +455,7 @@ async function ingestOnePage(
         summary.documentsFound++;
       }
 
-      await upsertSourceRecord(sourceId, url, contentHash, normalized, validation.needsReview ? "PENDING_REVIEW" : "PROCESSED", propertyId, auctionId);
+      await upsertSourceRecord(sourceId, url, contentHash, normalized, validation.needsReview ? "PENDING_REVIEW" : "PROCESSED", propertyId, auctionId, normalized.sourcePublishedAt);
       return;
     }
 
@@ -536,7 +536,7 @@ async function ingestOnePage(
   // Provenance: what bankauctions.in showed for this listing (append-only; an unchanged value adds nothing).
   await observeListing({ propertyId, auctionId }, { reserve: normalized.reservePrice, start: normalized.auctionStart, address: normalized.cityRaw }, { statusSource: "BankAuctions.in", method: "html", document: url });
 
-  await upsertSourceRecord(sourceId, url, contentHash, normalized, validation.needsReview ? "PENDING_REVIEW" : "PROCESSED", propertyId, auctionId);
+  await upsertSourceRecord(sourceId, url, contentHash, normalized, validation.needsReview ? "PENDING_REVIEW" : "PROCESSED", propertyId, auctionId, normalized.sourcePublishedAt);
 }
 
 function extractPhone(contactRaw: string | null): string | null {
@@ -552,7 +552,8 @@ async function upsertSourceRecord(
   normalized: unknown,
   status: "PROCESSED" | "PENDING_REVIEW" | "FAILED" | "IGNORED",
   propertyId: string | null,
-  auctionId: string | null
+  auctionId: string | null,
+  sourcePublishedAt?: Date | null
 ) {
   await prisma.sourceRecord.upsert({
     where: { sourceId_sourceUrl: { sourceId, sourceUrl: url } },
@@ -565,6 +566,7 @@ async function upsertSourceRecord(
       propertyId: propertyId ?? undefined,
       auctionId: auctionId ?? undefined,
       extractionMethod: "html_parser",
+      ...(sourcePublishedAt !== undefined && { sourcePublishedAt }),
     },
     create: {
       sourceId,
@@ -575,6 +577,7 @@ async function upsertSourceRecord(
       propertyId: propertyId ?? undefined,
       auctionId: auctionId ?? undefined,
       extractionMethod: "html_parser",
+      sourcePublishedAt: sourcePublishedAt ?? null,
     },
   });
 }
