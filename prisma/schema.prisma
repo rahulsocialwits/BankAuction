@@ -744,7 +744,7 @@ model FeedSource {
 model SourceRunLog {
   id          String    @id @default(cuid())
   source      String    // display name of the source
-  kind        String    // builtin | feed | csv | cron
+  kind        String    // builtin | feed | csv | cron | alert
   trigger     String    // schedule | manual | cron | import
   status      String    // ok | error | skipped | blocked
   created     Int       @default(0)
@@ -755,6 +755,8 @@ model SourceRunLog {
   message     String?   @db.Text
   startedAt   DateTime  @default(now())
   durationMs  Int       @default(0)
+  cursorPage  Int?      // pagination cursor at end of run (BAANKNET page number, etc.); null for non-paginated sources
+  endedAt     DateTime? // wall-clock time when the run finished; more authoritative than startedAt+durationMs
 
   @@index([startedAt])
   @@map("source_run_logs")
