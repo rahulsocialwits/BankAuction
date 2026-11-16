@@ -24,7 +24,8 @@ export async function recordYield(feedId: string, channel: YieldChannel, run: Yi
     let sevenDayMedian = 0;
     if (recentRows.length > 0) {
       const sorted = recentRows.map((r) => r.created ?? 0).sort((a, b) => a - b);
-      sevenDayMedian = sorted[Math.floor(sorted.length / 2)];
+      const mid = Math.floor(sorted.length / 2);
+      sevenDayMedian = sorted.length % 2 === 0 ? Math.floor((sorted[mid - 1] + sorted[mid]) / 2) : sorted[mid];
     }
 
     const state = yieldStateOf(feed.sheetState);

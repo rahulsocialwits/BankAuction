@@ -6,6 +6,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { nextChannelYield, ZERO_YIELD_AFTER_RUNS, type YieldRun } from "../src/lib/pipeline/zeroYield";
 
 const zero = (sevenDayMedian?: number): YieldRun => ({ discovered: 0, created: 0, duplicates: 0, rejected: 0, sevenDayMedian });
@@ -83,8 +85,6 @@ describe("P1.2 — exact zero-yield threshold", () => {
   // --- yieldMonitor integration guard ---
 
   it("yieldMonitor queries 7-day median and passes sevenDayMedian to run", () => {
-    const { readFileSync } = require("node:fs");
-    const { resolve } = require("node:path");
     const src = readFileSync(resolve("src/lib/pipeline/yieldMonitor.ts"), "utf8");
     assert.ok(src.includes("sevenDayMedian"), "yieldMonitor must pass sevenDayMedian to nextChannelYield");
     assert.ok(src.includes("source_run_logs") || src.includes("sourceRunLog"), "yieldMonitor must query run logs for the median");
