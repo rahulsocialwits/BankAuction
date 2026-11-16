@@ -24,7 +24,15 @@ export function budgetLevel(used: number, cap: number): BudgetLevel {
   return used >= cap * 0.8 ? "warning" : "ok";
 }
 
-export const dailyCap = () => Number(process.env.AI_DAILY_TOKEN_CAP ?? "0") || 0;
+/** Default cap when AI_DAILY_TOKEN_CAP is unset: 50,000 tokens per 24 hours. */
+export const DEFAULT_DAILY_TOKEN_CAP = 50_000;
+
+export const dailyCap = () => {
+  const raw = process.env.AI_DAILY_TOKEN_CAP;
+  if (raw === undefined || raw === null || raw.trim() === "") return DEFAULT_DAILY_TOKEN_CAP;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_DAILY_TOKEN_CAP;
+};
 
 /** Default estimated tokens per AI call (pre-reservation). Actual usage is recorded after the call. */
 const ESTIMATED_TOKENS_PER_CALL = 2_000;
@@ -61,21 +69,24 @@ export async function checkAndReserve(estimated = ESTIMATED_TOKENS_PER_CALL): Pr
   const cap = dailyCap();
   if (!(cap > 0)) return { allowed: true, reservationId: null };
   try {
-    // Fresh DB read — bypass the 1-minute cache so concurrent instances see each other's reservations
-    const agg = await prisma.sourceRunLog.aggregate({
-      where: { startedAt: { gte: new Date(Date.now() - 24 * 3600_000) } },
-      _sum: { aiTokens: true },
-    });
-    const used = agg._sum.aiTokens ?? 0;
-    if (budgetLevel(used + estimated, cap) === "exceeded") {
-      return { allowed: false, reservationId: null };
-    }
-    const row = await prisma.sourceRunLog.create({
-      data: { source: "ai_budget", kind: "ai_reservation", trigger: "reservation", status: "pending", aiTokens: estimated },
-      select: { id: true },
-    });
-    // Invalidate the cache so the next read reflects the new reservation
+    // Use a SERIALIZABLE transaction so the aggregate-check + insert is atomic across concurrent
+    // Vercel instances: no two instances can both read "under cap" and both insert a reservation
+    // for the same budget window without one of them seeing the other's reservation.
+    const row = await prisma.$transaction(async (tx) => {
+      const agg = await tx.sourceRunLog.aggregate({
+        where: { startedAt: { gte: new Date(Date.now() - 24 * 3600_000) } },
+        _sum: { aiTokens: true },
+      });
+      const used = agg._sum.aiTokens ?? 0;
+      if (budgetLevel(used + estimated, cap) === "exceeded") return null;
+      return tx.sourceRunLog.create({
+        data: { source: "ai_budget", kind: "ai_reservation", trigger: "reservation", status: "pending", aiTokens: estimated },
+        select: { id: true },
+      });
+    }, { isolationLevel: "Serializable" });
+
     cache = null;
+    if (!row) return { allowed: false, reservationId: null };
     return { allowed: true, reservationId: row.id };
   } catch {
     return { allowed: true, reservationId: null }; // fail-open: DB error must not block AI
