@@ -2,6 +2,8 @@ import { DocumentType } from "@prisma/client";
 import { RawAuctionRecord, RawDocumentRef, firstField } from "./extract";
 import { classifyPropertyType } from "@/lib/normalization/classifyPropertyType";
 import {
+  extractDesignation,
+  extractEmail,
   nullIfPlaceholder,
   parseExtensionMinutes,
   parseIndianDate,
@@ -35,6 +37,8 @@ export interface NormalizedAuctionRecord {
   auctionMethod: string | null;
   borrower: string | null;
   contactDetailsRaw: string | null;
+  officerDesignation: string | null;
+  officerEmail: string | null;
   inspectionContactRaw: string | null;
   possessionStatus: string | null;
 
@@ -110,6 +114,8 @@ export function normalizeBankAuctionsRecord(record: RawAuctionRecord): Normalize
     auctionMethod: nullIfPlaceholder(firstField(record, "Auction Details")),
     borrower: nullIfPlaceholder(firstField(record, "Borrower Name")),
     contactDetailsRaw: nullIfPlaceholder(firstField(record, "Contact Details")),
+    officerDesignation: extractDesignation(firstField(record, "Contact Details")),
+    officerEmail: extractEmail(firstField(record, "Contact Details")),
     inspectionContactRaw: nullIfPlaceholder(firstField(record, "Inspection Details")),
     possessionStatus: nullIfPlaceholder(firstField(record, "Possession Status")),
 
