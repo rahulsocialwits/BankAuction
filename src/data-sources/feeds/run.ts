@@ -16,7 +16,7 @@ import { DEEP_MAX_LISTINGS, makeDeepener } from "./deepScan";
 import { scanSiteForNew, webStateOf, withWebState } from "./siteScan";
 import { recordYield } from "@/lib/pipeline/yieldMonitor";
 import { keepYieldState, type YieldRun } from "@/lib/pipeline/zeroYield";
-import { checkStagnation, stagnationRunFromMessage } from "@/lib/pipeline/stagnation";
+import { checkStagnation, stagnationRunFromMessage, STAGNATION_RUNS } from "@/lib/pipeline/stagnation";
 
 /** Saved in a feed's last message while its first import is not finished; the scheduler keeps it going on every tick. */
 export const MORE_PENDING = "Continues automatically.";
