@@ -759,7 +759,6 @@ model SourceRunLog {
   endedAt     DateTime? // wall-clock time when the run finished; more authoritative than startedAt+durationMs
 
   @@index([startedAt])
-  @@index([source, startedAt])
   @@map("source_run_logs")
 }
 

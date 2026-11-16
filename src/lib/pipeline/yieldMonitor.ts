@@ -18,8 +18,10 @@ export async function recordYield(feedId: string, channel: YieldChannel, run: Yi
     state[channel] = next;
     await prisma.feedSource.update({ where: { id: feedId }, data: { sheetState: withYieldState(feed.sheetState, state) } });
     const overall = overallYield(state);
-    // Fire alert when the overall verdict becomes (or stays) a problem. notifyZeroYield handles suppression.
-    if (overall && overall !== "PRODUCTIVE" && overall !== "EMPTY") {
+    // Always call notifyZeroYield — even for PRODUCTIVE — so a recovery resets the suppression
+    // state and the next problem fires a fresh alert. The function handles all verdicts: fires an
+    // alert row for problems, silently resets on PRODUCTIVE/EMPTY.
+    if (overall) {
       await notifyZeroYield(feedId, feedName ?? feed.name, overall);
     }
     return { channel, verdict: overall === "PRODUCTIVE" ? "PRODUCTIVE" : next.verdict, discovered: run.discovered, streak: next.zeroStreak };

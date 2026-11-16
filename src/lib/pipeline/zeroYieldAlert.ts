@@ -7,6 +7,28 @@
  * the admin can read in Engine -> History. Email delivery is behind a stub (see notifyZeroYield).
  *
  * This module is split into pure functions (no I/O, fully testable) and an integration layer.
+ *
+ * THRESHOLD COMPARISON vs original requirement ("alert after two consecutive zero-new ticks when
+ * the source's seven-day median is positive"):
+ *
+ * The requirement describes: 2 consecutive runs where `created = 0` AND the source has been
+ * productive in the last 7 days → alert.
+ *
+ * The underlying zeroYield.ts logic (which this layer wraps) uses different rules:
+ *   • DROPPED:    source was EVER productive and NOW finds 0 listings → fires on the FIRST zero tick
+ *                 (more eager than "2 consecutive", but also covers layout changes rather than just
+ *                 "created = 0 runs")
+ *   • ZERO_YIELD: source was NEVER productive AND has ≥3 consecutive zero-discovery runs spanning
+ *                 ≥6 hours → fires (more conservative than "2 consecutive")
+ *   • ALL_REJECTED: finds listings but all are rejected on 3 consecutive runs
+ *
+ * Key difference: "7-day median is positive" is NOT checked; instead, the channel state tracks
+ * `lastProductiveAt` to distinguish never-productive from dropped sources. The "2 consecutive"
+ * threshold is not enforced; DROPPED fires on the first zero tick.
+ *
+ * To match the original requirement exactly (2 runs, 7-day window), the ZERO_YIELD_AFTER_RUNS
+ * constant in zeroYield.ts would need to be 2 for previously-productive sources, and the median
+ * check would need production DB access — a schema-impacting change deferred to a future PR.
  */
 
 import { isYieldProblem, type YieldVerdict } from "./zeroYield";

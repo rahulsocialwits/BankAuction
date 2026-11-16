@@ -154,3 +154,80 @@ test("alertStateOf: handles malformed JSON gracefully", () => {
   const s = alertStateOf("{not valid json}");
   assert.equal(s.lastAlertedVerdict, null);
 });
+
+// ---- persistence simulation: multi-tick state machine ---- //
+// These tests simulate the full sequence that the integration layer (zeroYieldAlertMonitor.ts)
+// runs across multiple ticks, using in-memory state to stand in for FeedSource.sheetState.
+// They verify persistence, recovery, and suppression without a live database.
+
+function simulateTick(
+  sheetState: string | null,
+  verdict: ReturnType<typeof import("../src/lib/pipeline/zeroYield")["overallYield"]>,
+): { sheetState: string; fired: boolean } {
+  if (!verdict) return { sheetState: sheetState ?? "{}", fired: false };
+  const alertState = alertStateOf(sheetState);
+  const { newState, fire } = advanceAlertState(verdict, alertState);
+  const nextSheet = withAlertState(sheetState, newState);
+  return { sheetState: nextSheet, fired: fire };
+}
+
+test("persistence: suppression survives multiple ticks (simulated store)", () => {
+  let sheet: string | null = null;
+  // Tick 1: first DROPPED → alert fires
+  { const r = simulateTick(sheet, "DROPPED"); sheet = r.sheetState; assert.equal(r.fired, true); }
+  // Tick 2: same DROPPED → suppressed
+  { const r = simulateTick(sheet, "DROPPED"); sheet = r.sheetState; assert.equal(r.fired, false); }
+  // Tick 3: still DROPPED → suppressed, counter = 2
+  { const r = simulateTick(sheet, "DROPPED"); sheet = r.sheetState; assert.equal(r.fired, false); }
+  const state = alertStateOf(sheet);
+  assert.equal(state.suppressedCount, 2);
+  assert.equal(state.lastAlertedVerdict, "DROPPED");
+});
+
+test("recovery: PRODUCTIVE resets state; subsequent problem fires again", () => {
+  let sheet: string | null = null;
+  // Enter ZERO_YIELD
+  { const r = simulateTick(sheet, "ZERO_YIELD"); sheet = r.sheetState; assert.equal(r.fired, true); }
+  // Suppress once
+  { const r = simulateTick(sheet, "ZERO_YIELD"); sheet = r.sheetState; assert.equal(r.fired, false); }
+  // Recover to PRODUCTIVE — this is the path that was broken (not calling notifyZeroYield for PRODUCTIVE)
+  { const r = simulateTick(sheet, "PRODUCTIVE"); sheet = r.sheetState; assert.equal(r.fired, false); }
+  // State must be reset
+  const state = alertStateOf(sheet);
+  assert.equal(state.lastAlertedVerdict, null, "recovery must clear lastAlertedVerdict");
+  assert.equal(state.suppressedCount, 0, "recovery must reset suppressedCount");
+  // Problem again after recovery → fires again
+  { const r = simulateTick(sheet, "DROPPED"); sheet = r.sheetState; assert.equal(r.fired, true); }
+});
+
+test("concurrent suppression: second concurrent tick sees same state and fires duplicate without lock", () => {
+  // This test documents the race: two ticks reading the same (pre-fire) state would both fire.
+  // The fix is SELECT FOR UPDATE in zeroYieldAlertMonitor.ts.
+  const sheet: string | null = null; // shared state before either tick writes
+  const r1 = simulateTick(sheet, "ZERO_YIELD");
+  const r2 = simulateTick(sheet, "ZERO_YIELD"); // reads SAME initial state: also fires
+  assert.equal(r1.fired, true, "tick 1 fires");
+  assert.equal(r2.fired, true, "tick 2 also fires when reading stale state (the race)");
+  // With SELECT FOR UPDATE the second tick reads r1's written state and suppresses
+  const r3 = simulateTick(r1.sheetState, "ZERO_YIELD"); // reads post-tick-1 state
+  assert.equal(r3.fired, false, "tick 2 with updated state correctly suppresses");
+});
+
+test("monitor call path: yieldMonitor calls notifyZeroYield for PRODUCTIVE", () => {
+  // Verify the source code fix: yieldMonitor.ts must call notifyZeroYield even for non-problem verdicts
+  const src = readFileSync(join(root, "src", "lib", "pipeline", "yieldMonitor.ts"), "utf8");
+  // The old broken code had: overall !== "PRODUCTIVE" && overall !== "EMPTY"
+  assert.doesNotMatch(
+    src,
+    /overall !== ["']PRODUCTIVE["']/,
+    "yieldMonitor must NOT gate notifyZeroYield on overall !== PRODUCTIVE (recovery path broken)",
+  );
+  // The fixed code calls notifyZeroYield for all non-null verdicts
+  assert.match(src, /notifyZeroYield/, "yieldMonitor must import and call notifyZeroYield");
+});
+
+test("zeroYieldAlertMonitor: uses SELECT FOR UPDATE for concurrency safety", () => {
+  const src = readFileSync(join(root, "src", "lib", "pipeline", "zeroYieldAlertMonitor.ts"), "utf8");
+  assert.match(src, /FOR UPDATE/, "notifyZeroYield must use SELECT FOR UPDATE to prevent concurrent duplicate alerts");
+  assert.match(src, /\$transaction/, "notifyZeroYield must use a transaction");
+});

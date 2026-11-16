@@ -4,34 +4,61 @@
  *
  * Pure logic lives in zeroYieldAlert.ts (no Prisma, fully testable).
  * Email delivery is behind a stub — replace the TODO comment when ADMIN_ALERT_EMAIL is approved.
+ *
+ * CONCURRENCY: the alert state is a read-modify-write on a JSON column. Two scheduler ticks
+ * running concurrently would both read the same state, both decide to fire, and produce duplicate
+ * alerts. We prevent this by locking the row with SELECT FOR UPDATE inside a transaction before
+ * reading and writing sheetState.
  */
 
 import { prisma } from "@/lib/db/prisma";
 import { advanceAlertState, alertStateOf, verdictNote, withAlertState } from "./zeroYieldAlert";
 import { logRun } from "./runLog";
-import type { YieldVerdict } from "./zeroYield";
+import { isYieldProblem, type YieldVerdict } from "./zeroYield";
 
 /**
- * Check the suppression state for a source, fire an alert if warranted, and persist the new state.
+ * Update the per-source alert suppression state and fire an alert row when warranted.
+ *
+ * Call this for EVERY verdict (including PRODUCTIVE and EMPTY), not only for problems:
+ * a PRODUCTIVE verdict must reach here to reset suppression state so the next problem fires fresh.
+ *
  * Never throws: alert delivery must not break a run.
  */
 export async function notifyZeroYield(feedId: string, sourceName: string, verdict: YieldVerdict): Promise<void> {
+  let shouldFireAlert = false;
+  let firedVerdict: YieldVerdict | null = null;
   try {
-    const feed = await prisma.feedSource.findUnique({ where: { id: feedId }, select: { sheetState: true } });
-    if (!feed) return;
-    const alertState = alertStateOf(feed.sheetState);
-    const { newState, fire } = advanceAlertState(verdict, alertState);
-    await prisma.feedSource.update({ where: { id: feedId }, data: { sheetState: withAlertState(feed.sheetState, newState) } });
-    if (!fire) return;
-    // Operational log: visible in Admin -> Engine -> History as an "alert" kind row.
-    // TODO: also send an email to process.env.ADMIN_ALERT_EMAIL when a provider is configured.
-    await logRun({
-      source: sourceName,
-      kind: "alert",
-      trigger: "schedule",
-      status: "ok",
-      message: `Zero-yield alert: source entered ${verdict}. ${verdictNote(verdict)} Suppression resets on recovery to PRODUCTIVE.`,
+    // SELECT FOR UPDATE locks the FeedSource row for the duration of the transaction,
+    // preventing a concurrent tick from reading stale alert state and firing a duplicate.
+    await prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ sheetState: string | null }>>`
+        SELECT "sheetState" FROM "feed_sources" WHERE id = ${feedId} FOR UPDATE
+      `;
+      if (!rows.length) return;
+      const sheetState = rows[0].sheetState;
+      const alertState = alertStateOf(sheetState);
+      const { newState, fire } = advanceAlertState(verdict, alertState);
+      await tx.feedSource.update({
+        where: { id: feedId },
+        data: { sheetState: withAlertState(sheetState, newState) },
+      });
+      if (fire) {
+        shouldFireAlert = true;
+        firedVerdict = verdict;
+      }
     });
+    // Write the run-log row outside the transaction: logRun reads historical runs and
+    // has its own writes; keeping it inside would hold the row lock too long.
+    if (shouldFireAlert && firedVerdict && isYieldProblem(firedVerdict)) {
+      // TODO: also send an email to process.env.ADMIN_ALERT_EMAIL when a provider is approved.
+      await logRun({
+        source: sourceName,
+        kind: "alert",
+        trigger: "schedule",
+        status: "ok",
+        message: `Zero-yield alert: source entered ${firedVerdict}. ${verdictNote(firedVerdict)} Suppression resets on recovery to PRODUCTIVE.`,
+      });
+    }
   } catch {
     /* alert delivery must not break a run */
   }
