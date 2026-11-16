@@ -39,6 +39,21 @@ function formatDate(d: Date | null): string {
   return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }).format(d);
 }
 
+/** Returns a human-readable freshness string like "2 hours ago" or "3 days ago". */
+function freshnessLabel(d: Date): string {
+  const diffMs = Date.now() - d.getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 60) return mins <= 1 ? "just now" : `${mins} minutes ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "1 day ago";
+  if (days < 30) return `${days} days ago`;
+  const months = Math.floor(days / 30);
+  if (months === 1) return "1 month ago";
+  return `${months} months ago`;
+}
+
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
@@ -187,6 +202,11 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
                 </dd>
               </div>
             </dl>
+            {auction?.updatedAt && (
+              <p className="text-xs text-brand-muted mt-3">
+                Last verified: {freshnessLabel(auction.updatedAt)}
+              </p>
+            )}
           </section>
 
           {earlier.length > 0 && (
