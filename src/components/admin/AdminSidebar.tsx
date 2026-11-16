@@ -23,6 +23,7 @@ const NAV: NavItem[] = [
   // One sourcing area: overview, link sources, bulk import, history and duplicates are tabs inside it.
   { href: "/admin/engine", label: "Data Engine", also: ["/admin/feeds", "/admin/properties/import"], master: true },
   { href: "/admin/health", label: "Run Health", master: true },
+  { href: "/admin/data-quality", label: "Data Quality", master: true },
   { href: "/admin/home", label: "Home Page", master: true },
   { href: "/admin/pages", label: "Pages (About, Policies, FAQ)", master: true },
   { href: "/admin/media", label: "Media Library", master: true },
