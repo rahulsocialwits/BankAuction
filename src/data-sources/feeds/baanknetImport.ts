@@ -240,6 +240,7 @@ export async function runBaanknetImport(feed: FeedSource, trigger: "schedule" | 
     rejected: st.rejected,
     message,
     startedAt,
+    cursorPage: st.page,
     metrics: {
       inventoryCount: st.records,
       discoveredCount: Object.values(st.totalRecords).reduce((a, b) => a + (b ?? 0), 0),
