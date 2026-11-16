@@ -138,3 +138,29 @@ export function exactTitleMergeAllowed(a: IdentityFacts, b: IdentityFacts): bool
 
 /** Text stored with a merge so a person can see why two listings were treated as one. */
 export const formatMergeNote = (rule: MatchRule | "exact_title", source: string, detail: string): string => `[merge:${rule}] ${source}: ${detail}`.slice(0, 480);
+
+/**
+ * P2.6 — Two-tier duplicate classification.
+ * "same"      → safe to auto-merge: strong identity evidence (source id, address match, distinctive title)
+ * "ambiguous" → human review needed: similar but distinguishing attributes (unit, floor, survey, plot) differ
+ * "different" → clearly different properties: different stable ids or address conflict
+ */
+export type PairClass = "same" | "ambiguous" | "different";
+
+export function classifyPair(a: IdentityFacts, b: IdentityFacts): PairClass {
+  // Matching non-null external ids from the same importer context are always the same listing.
+  if (a.externalId && b.externalId && a.externalId === b.externalId) return "same";
+  // Different external ids ⇒ clearly different
+  if (a.externalId && b.externalId && a.externalId !== b.externalId) return "different";
+  const decision = decideSameProperty(a, b);
+  if (decision.match) {
+    // Even a confident "same" becomes ambiguous when distinguishing attributes conflict.
+    const addrRel = addressRelation(a.address, b.address);
+    if (addrRel === "conflict") return "ambiguous";
+    return "same";
+  }
+  // Address conflict ⇒ clearly different
+  if (addressRelation(a.address, b.address) === "different") return "different";
+  // Otherwise: some overlap but no strong identity proof ⇒ ambiguous
+  return "ambiguous";
+}

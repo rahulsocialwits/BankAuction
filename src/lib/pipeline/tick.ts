@@ -82,6 +82,8 @@ export async function runTick(opts: { limit?: number; trigger?: TickTrigger; via
  * cannot be read or written, no tick is started by this trigger (the next trigger tries again).
  */
 export async function acquireTickLease(who: string): Promise<{ id: string } | { skipped: string }> {
+  // Expire stale leases (from functions cut off before releasing) so they never block forever.
+  await clearStaleLeases().catch(() => undefined);
   try {
     const now = new Date();
     const rows = await prisma.sourceRunLog.findMany({
@@ -103,6 +105,24 @@ export async function acquireTickLease(who: string): Promise<{ id: string } | { 
 /** Ends a lease: the claim row stops blocking the next tick. Never throws. */
 export async function releaseTickLease(id: string): Promise<void> {
   await prisma.sourceRunLog.update({ where: { id }, data: { kind: "claim_done" } }).catch(() => undefined);
+}
+
+/**
+ * Watchdog: expire any "claim" rows older than CLAIM_STALE_MS (they belong to functions that were
+ * cut off before releasing their lease). Called by acquireTickLease so a stale lease never blocks
+ * the scheduler indefinitely. Never throws.
+ */
+export async function clearStaleLeases(): Promise<number> {
+  try {
+    const staleAt = new Date(Date.now() - CLAIM_STALE_MS);
+    const { count } = await prisma.sourceRunLog.updateMany({
+      where: { kind: "claim", startedAt: { lt: staleAt } },
+      data: { kind: "claim_expired", status: "expired" },
+    });
+    return count;
+  } catch {
+    return 0;
+  }
 }
 
 const TICK_EVERY_MS = 35 * 60 * 1000;

@@ -18,7 +18,8 @@ const NAV: NavItem[] = [
   { href: "/admin/properties", label: "Properties" },
   { href: "/admin/properties/new", label: "Add Property" },
   { href: "/admin/blog", label: "Blog" },
-  { href: "/admin/localities", label: "Locations" },
+  { href: "/admin/locations", label: "Location Management", also: ["/admin/localities"], master: true },
+  { href: "/admin/localities", label: "Locations (Suggestions)" },
   // Master admin only:
   // One sourcing area: overview, link sources, bulk import, history and duplicates are tabs inside it.
   { href: "/admin/engine", label: "Data Engine", also: ["/admin/feeds", "/admin/properties/import"], master: true },
