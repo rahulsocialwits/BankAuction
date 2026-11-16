@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  ZERO_YIELD_MIN_SPAN_MS,
   describeYield,
   formatYieldMarker,
   isYieldProblem,
@@ -33,28 +32,33 @@ test("finding listings that are all already known is still PRODUCTIVE (nothing n
   assert.equal(nextChannelYield(undefined, found(20, 0), t0).verdict, "PRODUCTIVE");
 });
 
-test("the first empty run is only EMPTY; it takes several runs over several hours to call ZERO_YIELD", () => {
-  let s = nextChannelYield(undefined, empty, at(0));
+test("the first empty run is only EMPTY; two consecutive runs with a positive 7-day median trigger ZERO_YIELD", () => {
+  const emptyWithMedian: YieldRun = { ...empty, sevenDayMedian: 5 };
+  let s = nextChannelYield(undefined, emptyWithMedian, at(0));
   assert.equal(s.verdict, "EMPTY");
-  s = nextChannelYield(s, empty, at(1));
-  s = nextChannelYield(s, empty, at(2));
-  assert.equal(s.zeroStreak, 3);
-  assert.equal(s.verdict, "EMPTY", "3 runs but only 2 hours apart: a burst of manual runs must not trigger the alarm");
-  s = nextChannelYield(s, empty, at(ZERO_YIELD_MIN_SPAN_MS / H + 0.1));
+  assert.equal(s.zeroStreak, 1);
+  s = nextChannelYield(s, emptyWithMedian, at(1));
+  assert.equal(s.zeroStreak, 2);
   assert.equal(s.verdict, "ZERO_YIELD");
 });
 
-test("a source that worked and now finds nothing is DROPPED immediately", () => {
+test("a source that worked and now finds nothing is DROPPED after 2 consecutive empty runs with positive median", () => {
+  const emptyWithMedian: YieldRun = { ...empty, sevenDayMedian: 5 };
   const ok = nextChannelYield(undefined, found(40, 5), at(0));
-  const s = nextChannelYield(ok, empty, at(1));
+  let s = nextChannelYield(ok, emptyWithMedian, at(1));
+  assert.equal(s.verdict, "EMPTY", "first empty tick is not yet DROPPED");
+  s = nextChannelYield(s, emptyWithMedian, at(2));
   assert.equal(s.verdict, "DROPPED");
   assert.ok(s.lastProductiveAt);
 });
 
 test("DROPPED recovers as soon as listings are found again, and the streak resets", () => {
-  let s = nextChannelYield(nextChannelYield(undefined, found(10), at(0)), empty, at(1));
+  const emptyWithMedian: YieldRun = { ...empty, sevenDayMedian: 5 };
+  let s = nextChannelYield(undefined, found(10), at(0));
+  s = nextChannelYield(s, emptyWithMedian, at(1));
+  s = nextChannelYield(s, emptyWithMedian, at(2));
   assert.equal(s.verdict, "DROPPED");
-  s = nextChannelYield(s, found(8, 1), at(2));
+  s = nextChannelYield(s, found(8, 1), at(3));
   assert.equal(s.verdict, "PRODUCTIVE");
   assert.equal(s.zeroStreak, 0);
   assert.equal(s.firstZeroAt, undefined);
@@ -79,9 +83,11 @@ test("a source is PRODUCTIVE overall if any channel recently found listings (emp
 });
 
 test("overall verdict is the worst channel when none is productive, and null when never measured", () => {
-  const dropped = nextChannelYield(nextChannelYield(undefined, found(5), at(0)), empty, at(1));
-  const emptyOnly = nextChannelYield(undefined, empty, at(1));
-  assert.equal(overallYield({ site: emptyOnly, list: dropped }, at(2)), "DROPPED");
+  const emptyWithMedian: YieldRun = { ...empty, sevenDayMedian: 5 };
+  const afterProductive = nextChannelYield(undefined, found(5), at(0));
+  const dropped = nextChannelYield(nextChannelYield(afterProductive, emptyWithMedian, at(1)), emptyWithMedian, at(2));
+  const emptyOnly = nextChannelYield(undefined, emptyWithMedian, at(1));
+  assert.equal(overallYield({ site: emptyOnly, list: dropped }, at(3)), "DROPPED");
   assert.equal(overallYield({}, at(2)), null);
   assert.equal(overallYield(null, at(2)), null);
 });
