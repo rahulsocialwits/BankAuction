@@ -14,6 +14,21 @@ export function parseIndianDateTime(raw: string | null | undefined): Date | null
   return isNaN(date.getTime()) ? null : date;
 }
 
+/**
+ * Parses a date-only string in Indian formats:
+ *   DD/MM/YYYY  DD-MM-YYYY  DD.MM.YYYY
+ * Returns midnight UTC for that calendar date, or null if unrecognised.
+ * Used for source publication dates where no time component is available.
+ */
+export function parseIndianDate(raw: string | null | undefined): Date | null {
+  if (!raw) return null;
+  const m = raw.trim().match(/^(\d{1,2})[\/\-.·](\d{1,2})[\/\-.·](\d{4})$/);
+  if (!m) return null;
+  const [, dd, mm, yyyy] = m;
+  const date = new Date(Date.UTC(parseInt(yyyy, 10), parseInt(mm, 10) - 1, parseInt(dd, 10)));
+  return isNaN(date.getTime()) ? null : date;
+}
+
 /** Parses a rupee amount like "3221000" or "32,21,000" into a plain number, or null if absent/placeholder. */
 export function parseMoney(raw: string | null | undefined): number | null {
   if (!raw) return null;

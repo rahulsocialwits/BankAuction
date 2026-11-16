@@ -4,6 +4,7 @@ import { classifyPropertyType } from "@/lib/normalization/classifyPropertyType";
 import {
   nullIfPlaceholder,
   parseExtensionMinutes,
+  parseIndianDate,
   parseIndianDateTime,
   parseMoney,
   parseYesNo,
@@ -29,6 +30,7 @@ export interface NormalizedAuctionRecord {
   branchName: string | null;
 
   externalAuctionId: string | null;
+  sourcePublishedAt: Date | null;
   auctionType: string | null;
   auctionMethod: string | null;
   borrower: string | null;
@@ -93,6 +95,17 @@ export function normalizeBankAuctionsRecord(record: RawAuctionRecord): Normalize
     branchName: nullIfPlaceholder(firstField(record, "Institution Branch")),
 
     externalAuctionId: nullIfPlaceholder(firstField(record, "Listing ID")),
+    // "Notice Date" / "Published Date" / "Date of Publication" — bankauctions.in label varies by notice type.
+    // These fields are date-only (DD/MM/YYYY); parseIndianDate handles that. parseIndianDateTime is kept
+    // as a fallback in case a future source variant includes a time component.
+    sourcePublishedAt: (() => {
+      for (const key of ["Notice Date", "Published Date", "Date of Publication"]) {
+        const raw = firstField(record, key);
+        const d = parseIndianDate(raw) ?? parseIndianDateTime(raw);
+        if (d) return d;
+      }
+      return null;
+    })(),
     auctionType: nullIfPlaceholder(firstField(record, "Listing Type")),
     auctionMethod: nullIfPlaceholder(firstField(record, "Auction Details")),
     borrower: nullIfPlaceholder(firstField(record, "Borrower Name")),
