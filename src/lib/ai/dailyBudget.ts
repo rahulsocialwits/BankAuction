@@ -19,6 +19,8 @@ export function budgetLevel(used: number, cap: number): BudgetLevel {
 export const dailyCap = () => Number(process.env.AI_DAILY_TOKEN_CAP ?? "0") || 0;
 
 let cache: { at: number; used: number } | null = null;
+/** Tokens reserved by in-flight AI calls that have not yet been written to the DB. */
+let pendingTokens = 0;
 
 /** Drop the in-process cache so the next call re-reads from the DB. Call after recording AI tokens. */
 export function invalidateBudgetCache(): void {
@@ -33,11 +35,39 @@ export async function tokensUsedLast24h(): Promise<number> {
   return cache.used;
 }
 
+/**
+ * Reserve `estimated` tokens before an AI call and check the budget atomically.
+ * Concurrent callers each add to the shared pending counter before checking, so the cap
+ * is enforced even when several calls start in the same millisecond.
+ * Returns { ok, release }: call release() when the call finishes (success or error).
+ */
+export async function checkAndReserve(estimated: number): Promise<{ ok: boolean; release: () => void }> {
+  pendingTokens += estimated;
+  const cap = dailyCap();
+  if (!(cap > 0)) {
+    // No cap configured — always allow; still track pending so the counter stays meaningful.
+    let released = false;
+    return { ok: true, release: () => { if (!released) { pendingTokens = Math.max(0, pendingTokens - estimated); released = true; } } };
+  }
+  let exceeded = false;
+  try {
+    exceeded = budgetLevel(await tokensUsedLast24h() + pendingTokens, cap) === "exceeded";
+  } catch {
+    // DB read failure: allow the call (same policy as dailyBudgetExceeded).
+  }
+  if (exceeded) {
+    pendingTokens = Math.max(0, pendingTokens - estimated);
+    return { ok: false, release: () => {} };
+  }
+  let released = false;
+  return { ok: true, release: () => { if (!released) { pendingTokens = Math.max(0, pendingTokens - estimated); released = true; } } };
+}
+
 export async function dailyBudgetExceeded(): Promise<boolean> {
   const cap = dailyCap();
   if (!(cap > 0)) return false;
   try {
-    return budgetLevel(await tokensUsedLast24h(), cap) === "exceeded";
+    return budgetLevel(await tokensUsedLast24h() + pendingTokens, cap) === "exceeded";
   } catch {
     return false; // a database hiccup must never stop the engine
   }

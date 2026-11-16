@@ -64,4 +64,19 @@ describe("P1.6 — daily AI token budget", () => {
   it("invalidateBudgetCache is guarded by aiTokens > 0 to avoid unnecessary invalidations", () => {
     assert.ok(runLogSrc.includes("aiTokens") && runLogSrc.includes("invalidateBudgetCache()"), "invalidateBudgetCache call must be guarded");
   });
+
+  it("dailyBudget.ts exports checkAndReserve for atomic reservation", () => {
+    assert.ok(budgetSrc.includes("export async function checkAndReserve"), "dailyBudget.ts must export checkAndReserve");
+  });
+
+  it("checkAndReserve includes pendingTokens in the budget check before allowing the call", () => {
+    assert.ok(budgetSrc.includes("pendingTokens"), "checkAndReserve must use a pendingTokens counter");
+    assert.ok(budgetSrc.includes("pendingTokens + pending") || budgetSrc.includes("pendingTokens,") || budgetSrc.includes("+ pendingTokens"), "budget check must include pendingTokens");
+  });
+
+  it("relayModelsClient.ts uses checkAndReserve instead of a bare budget check", () => {
+    const relaySrc = readFileSync(resolve("src/lib/ai/relayModelsClient.ts"), "utf8");
+    assert.ok(relaySrc.includes("checkAndReserve"), "relayModelsClient must call checkAndReserve before each AI call");
+    assert.ok(relaySrc.includes("release()"), "relayModelsClient must release the reservation after the call");
+  });
 });
