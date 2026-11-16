@@ -24,7 +24,7 @@ import { isUsable, parseRenderedProperty, toListingRecord } from "./renderedPars
  * that refuses automated access (robots.txt, HTTP 401/403, the do-not-fetch list).
  */
 
-export const DEEP_MAX_LISTINGS = 8; // deep scans per source per run
+export const DEEP_MAX_LISTINGS = 50; // deep scans per source per run (P2.1: increased from 8)
 const DETAIL_CHARS = 14_000;
 const PDF_CHARS = 12_000;
 const MAX_PDFS = 4;
@@ -207,12 +207,14 @@ HOW TO READ AN INDIAN BANK-AUCTION NOTICE (where each value usually hides):
 - Amounts are rupees. Convert "Rs. 25.50 Lakh" -> 2550000, "1.2 Cr" -> 12000000, "Rs. 12,50,000/-" -> 1250000. Digits only. If one number is clearly per-lot, use the number of THAT lot.
 - Dates are day-first (10-11-2026 = 10 November 2026). Write them as ISO IST: 2026-11-10T11:00. auction_start = "Date & time of e-auction" (start); auction_end = the end time / "auction closes". application_deadline = "last date for submission of EMD / bids / application". inspection_text = "date and time of inspection" as written.
 - Address: the "Description / Schedule of the immovable property" table or paragraph (flat / plot / survey no., building, village, taluka, district, boundaries, area in sq ft / sq m, pincode). location = area, city, state (+ pincode). title = a short plain title such as "3 BHK flat in Andheri West, Mumbai" or "Residential plot in Una, Himachal Pradesh" built only from the text.
+- Distinguishing attributes: unit_or_door_number (flat/shop/unit/door number), floor_number (e.g. "3rd Floor"), building_name (society/complex/tower name), survey_or_khasra (survey no. / khasra no. / gat no.), plot_number (plot no. / gut no.), area_sqft (total area in sq ft as a number; convert sq m × 10.764 if only sq m is given), area_type ("carpet" / "built-up" / "super built-up" / "plot" / "site" — whatever the notice says; leave out if not stated), inspection_date (the date/time of property inspection as ISO IST if present, e.g. "2026-11-20T11:00").
 - Bank and branch: the secured creditor / authorised officer's branch. officer_name / officer_phone / officer_email: the "Authorised Officer" and contact details. borrower: "Borrower / Guarantor / Mortgagor" names.
 - possession_status: Symbolic / Physical / Constructive. auction_method: E-Auction, Online, Tender-cum-auction. external_id / notice_number: the listing / auction / notice number shown.
 - Encumbrances, known dues and "as is where is" terms: mention them in description in one or two sentences.
 Keys (strings; leave a key out when the text does not say it; never guess, never calculate, never copy a value from a different lot):
 title, bank, branch, category (RESIDENTIAL, COMMERCIAL, INDUSTRIAL, LAND_PLOT or AGRICULTURAL),
-location, address, description, borrower, reserve_price, emd, minimum_increment, auction_start, auction_end, application_deadline, inspection_text, auction_method, possession_status, officer_name, officer_phone, officer_email, notice_number, external_id.
+location, address, description, borrower, reserve_price, emd, minimum_increment, auction_start, auction_end, application_deadline, inspection_text, inspection_date, auction_method, possession_status, officer_name, officer_phone, officer_email, notice_number, external_id,
+unit_or_door_number, floor_number, building_name, survey_or_khasra, plot_number, area_sqft, area_type.
 Only real-estate listings (land, buildings, flats, houses, shops, offices, factories, plots, farms). NEVER vehicles, machinery, stock, gold or other movables: skip them.
 If the text is only a general notice with no property details, return [].`;
 
@@ -417,6 +419,15 @@ export function toListings(data: unknown, docs: { type: string; title: string; u
       source_url: source.sourceUrl,
       documents: JSON.stringify(docs),
       deep_done: "1",
+      // P2.3 distinguishing attributes extracted from PDF/detail page
+      unit_or_door_number: str(r.unit_or_door_number, 60) || undefined,
+      floor_number: str(r.floor_number, 40) || undefined,
+      building_name: str(r.building_name, 160) || undefined,
+      survey_or_khasra: str(r.survey_or_khasra, 160) || undefined,
+      plot_number: str(r.plot_number, 80) || undefined,
+      area_sqft: typeof r.area_sqft === "number" && r.area_sqft > 0 ? r.area_sqft : undefined,
+      area_type: str(r.area_type, 40) || undefined,
+      inspection_date: str(r.inspection_date, 30) || undefined,
     });
   }
   return out;
