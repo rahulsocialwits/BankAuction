@@ -8,4 +8,4 @@
 --
 -- This is additive: no data is changed, removed, or rewritten.
 
-CREATE INDEX "source_run_logs_source_startedAt_idx" ON "source_run_logs"("source", "startedAt" DESC);
+CREATE INDEX "source_run_logs_source_startedAt_idx" ON "source_run_logs"("source", "startedAt");
