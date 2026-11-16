@@ -1,5 +1,5 @@
 import { getAiConfig } from "./aiConfig";
-import { dailyBudgetExceeded } from "./dailyBudget";
+import { checkAndReserve } from "./dailyBudget";
 
 /**
  * Minimal OpenAI-compatible chat client for the Relay Models provider.
@@ -17,8 +17,12 @@ export async function chatJSONDetailed<T>(systemPrompt: string, userPrompt: stri
   const cfg = await getAiConfig();
   const apiKey = process.env.AI_API_KEY?.trim();
   if (!cfg.enabled) throw new Error("AI is switched off (Admin → AI Admin).");
-  if (await dailyBudgetExceeded()) throw new Error("AI daily token budget reached (AI_DAILY_TOKEN_CAP). AI work resumes when the last 24 hours use fewer tokens; importing and refreshing continue without AI.");
-  if (!apiKey || !cfg.baseUrl) return { data: null, tokens: 0, model: cfg.model };
+  // Reserve a conservative per-call estimate so concurrent callers each count against the cap
+  // before any of them has written actual tokens. 2 000 tokens is a typical property extraction.
+  const ESTIMATED_TOKENS = 2_000;
+  const { ok: budgetOk, release } = await checkAndReserve(ESTIMATED_TOKENS);
+  if (!budgetOk) throw new Error("AI daily token budget reached (AI_DAILY_TOKEN_CAP). AI work resumes when the last 24 hours use fewer tokens; importing and refreshing continue without AI.");
+  if (!apiKey || !cfg.baseUrl) { release(); return { data: null, tokens: 0, model: cfg.model }; }
   // A masked/placeholder value (e.g. "sk-••••") pasted into the env var breaks the HTTP header.
   if (!cfg.keyValid) {
     throw new Error("AI_API_KEY contains invalid characters (looks like a masked value). Re-paste the real key in the environment settings.");
@@ -66,27 +70,31 @@ export async function chatJSONDetailed<T>(systemPrompt: string, userPrompt: stri
     return { r, body };
   };
 
-  let model = chain[0];
-  let { r: res, body: errorBody } = await attempt(model);
-  for (let i = 1; !res.ok && i < chain.length && MOVE_ON.test(errorBody); i++) {
-    model = chain[i];
-    ({ r: res, body: errorBody } = await attempt(model));
-  }
-  if (!res.ok) throw new Error(`Relay Models request failed: HTTP ${res.status} ${errorBody.slice(0, 400)}`);
-
-  const json = await res.json();
-  const tokens = Number(json.usage?.total_tokens ?? 0) || 0;
-  const content = json.choices?.[0]?.message?.content;
-  if (!content) return { data: null, tokens, model };
-
-  // Some models wrap JSON in a ```json fence even when asked not to -- strip
-  // that defensively rather than relying on response_format (not every
-  // OpenAI-compatible proxy supports it consistently).
-  const cleaned = String(content).replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, "").trim();
   try {
-    return { data: JSON.parse(cleaned) as T, tokens, model };
-  } catch {
-    return { data: null, tokens, model };
+    let model = chain[0];
+    let { r: res, body: errorBody } = await attempt(model);
+    for (let i = 1; !res.ok && i < chain.length && MOVE_ON.test(errorBody); i++) {
+      model = chain[i];
+      ({ r: res, body: errorBody } = await attempt(model));
+    }
+    if (!res.ok) throw new Error(`Relay Models request failed: HTTP ${res.status} ${errorBody.slice(0, 400)}`);
+
+    const json = await res.json();
+    const tokens = Number(json.usage?.total_tokens ?? 0) || 0;
+    const content = json.choices?.[0]?.message?.content;
+    if (!content) return { data: null, tokens, model };
+
+    // Some models wrap JSON in a ```json fence even when asked not to -- strip
+    // that defensively rather than relying on response_format (not every
+    // OpenAI-compatible proxy supports it consistently).
+    const cleaned = String(content).replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, "").trim();
+    try {
+      return { data: JSON.parse(cleaned) as T, tokens, model };
+    } catch {
+      return { data: null, tokens, model };
+    }
+  } finally {
+    release(); // decrement pending reservation; actual tokens are written by the caller via logRun
   }
 }
 
