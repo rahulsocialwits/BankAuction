@@ -757,6 +757,7 @@ model SourceRunLog {
   durationMs  Int       @default(0)
 
   @@index([startedAt])
+  @@index([source, startedAt])
   @@map("source_run_logs")
 }
 
