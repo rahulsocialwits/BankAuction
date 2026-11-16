@@ -316,25 +316,37 @@ async function ingestOnePage(
       })
     : null;
 
+  // Dedup priority #2: this URL was already ingested once (SourceRecord.auctionId links to it).
+  // Re-reading a changed page (content hash changed) must update the existing auction, not AI-match
+  // a new one, which would create a duplicate round for the same listing.
+  const existingAuctionByUrl = !existingAuction && existingRecord?.auctionId
+    ? await prisma.auction.findUnique({ where: { id: existingRecord.auctionId }, include: { property: true } })
+    : null;
+
+  const resolvedAuction = existingAuction ?? existingAuctionByUrl;
+
   const derivedStatus = deriveAuctionStatusFromDates(normalized.auctionStart, normalized.auctionEnd);
 
   let propertyId: string;
   let auctionId: string;
 
-  if (existingAuction) {
-    summary.duplicatesFound++;
-    propertyId = existingAuction.propertyId;
-    auctionId = existingAuction.id;
+  if (resolvedAuction) {
+    // Priority #1 or #2 match: update the existing auction (same external ID, or same URL we already ingested).
+    // Only count as a duplicate when it was priority #1 (another record sharing the same external ID); a
+    // content-changed re-read of this very URL is an update, not a duplicate.
+    if (existingAuction) summary.duplicatesFound++;
+    propertyId = resolvedAuction.propertyId;
+    auctionId = resolvedAuction.id;
 
-    await logFieldChanges(existingAuction, normalized, propertyId, auctionId);
+    await logFieldChanges(resolvedAuction, normalized, propertyId, auctionId);
 
     // A postponed / cancelled auction keeps that status until its date changes; plain date derivation would reset it to UPCOMING.
     const resolvedStatus = resolveAuctionStatus({
-      current: existingAuction.status,
+      current: resolvedAuction.status,
       derived: derivedStatus,
-      dateChanged: auctionDateChanged(existingAuction.auctionStart, normalized.auctionStart),
+      dateChanged: auctionDateChanged(resolvedAuction.auctionStart, normalized.auctionStart),
     });
-    const statusHeld = isHeldStatus(resolvedStatus) && resolvedStatus === existingAuction.status;
+    const statusHeld = isHeldStatus(resolvedStatus) && resolvedStatus === resolvedAuction.status;
 
     await prisma.auction.update({
       where: { id: auctionId },
@@ -363,8 +375,7 @@ async function ingestOnePage(
         sourceUrl: url,
       },
     });
-    await recordAuctionStatusChange(auctionId, existingAuction.status, resolvedStatus, "Source re-read: status follows the auction dates");
-    const existingProperty = existingAuction.property;
+    await recordAuctionStatusChange(auctionId, resolvedAuction.status, resolvedStatus, "Source re-read: status follows the auction dates");
     await prisma.property.update({
       where: { id: propertyId },
       data: {
