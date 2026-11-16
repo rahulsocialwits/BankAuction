@@ -1,5 +1,5 @@
 import { getAiConfig } from "./aiConfig";
-import { dailyBudgetExceeded } from "./dailyBudget";
+import { checkAndReserve, completeReservation, discardReservation } from "./dailyBudget";
 
 /**
  * Minimal OpenAI-compatible chat client for the Relay Models provider.
@@ -17,8 +17,12 @@ export async function chatJSONDetailed<T>(systemPrompt: string, userPrompt: stri
   const cfg = await getAiConfig();
   const apiKey = process.env.AI_API_KEY?.trim();
   if (!cfg.enabled) throw new Error("AI is switched off (Admin → AI Admin).");
-  if (await dailyBudgetExceeded()) throw new Error("AI daily token budget reached (AI_DAILY_TOKEN_CAP). AI work resumes when the last 24 hours use fewer tokens; importing and refreshing continue without AI.");
-  if (!apiKey || !cfg.baseUrl) return { data: null, tokens: 0, model: cfg.model };
+  const { allowed, reservationId } = await checkAndReserve();
+  if (!allowed) throw new Error("AI daily token budget reached (AI_DAILY_TOKEN_CAP). AI work resumes when the last 24 hours use fewer tokens; importing and refreshing continue without AI.");
+  if (!apiKey || !cfg.baseUrl) {
+    if (reservationId) await discardReservation(reservationId);
+    return { data: null, tokens: 0, model: cfg.model };
+  }
   // A masked/placeholder value (e.g. "sk-••••") pasted into the env var breaks the HTTP header.
   if (!cfg.keyValid) {
     throw new Error("AI_API_KEY contains invalid characters (looks like a masked value). Re-paste the real key in the environment settings.");
@@ -72,10 +76,14 @@ export async function chatJSONDetailed<T>(systemPrompt: string, userPrompt: stri
     model = chain[i];
     ({ r: res, body: errorBody } = await attempt(model));
   }
-  if (!res.ok) throw new Error(`Relay Models request failed: HTTP ${res.status} ${errorBody.slice(0, 400)}`);
+  if (!res.ok) {
+    if (reservationId) await discardReservation(reservationId);
+    throw new Error(`Relay Models request failed: HTTP ${res.status} ${errorBody.slice(0, 400)}`);
+  }
 
   const json = await res.json();
   const tokens = Number(json.usage?.total_tokens ?? 0) || 0;
+  if (reservationId) await completeReservation(reservationId, tokens);
   const content = json.choices?.[0]?.message?.content;
   if (!content) return { data: null, tokens, model };
 
@@ -95,7 +103,12 @@ export async function chatText(system: string, messages: { role: "user" | "assis
   const cfg = await getAiConfig();
   const apiKey = process.env.AI_API_KEY?.trim();
   if (!cfg.enabled) throw new Error("AI is switched off.");
-  if (!apiKey || !cfg.baseUrl || !cfg.keyValid) throw new Error("AI key or base URL is not set up correctly (see Status above).");
+  const { allowed, reservationId: chatReservationId } = await checkAndReserve();
+  if (!allowed) throw new Error("AI daily token budget reached (AI_DAILY_TOKEN_CAP).");
+  if (!apiKey || !cfg.baseUrl || !cfg.keyValid) {
+    if (chatReservationId) await discardReservation(chatReservationId);
+    throw new Error("AI key or base URL is not set up correctly (see Status above).");
+  }
 
   const call = (model: string) =>
     fetch(`${cfg.baseUrl}/chat/completions`, {
@@ -114,9 +127,14 @@ export async function chatText(system: string, messages: { role: "user" | "assis
     res = await call(model);
     body = res.ok ? "" : await res.text();
   }
-  if (!res.ok) throw new Error(`Relay Models request failed: HTTP ${res.status} ${body.slice(0, 300)}`);
+  if (!res.ok) {
+    if (chatReservationId) await discardReservation(chatReservationId);
+    throw new Error(`Relay Models request failed: HTTP ${res.status} ${body.slice(0, 300)}`);
+  }
   const json = await res.json();
-  return { reply: String(json.choices?.[0]?.message?.content ?? "").trim(), tokens: Number(json.usage?.total_tokens ?? 0) || 0, model };
+  const tokens = Number(json.usage?.total_tokens ?? 0) || 0;
+  if (chatReservationId) await completeReservation(chatReservationId, tokens);
+  return { reply: String(json.choices?.[0]?.message?.content ?? "").trim(), tokens, model };
 }
 
 export async function chatJSON<T>(systemPrompt: string, userPrompt: string): Promise<T | null> {
