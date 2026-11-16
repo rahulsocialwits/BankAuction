@@ -20,6 +20,11 @@ export const dailyCap = () => Number(process.env.AI_DAILY_TOKEN_CAP ?? "0") || 0
 
 let cache: { at: number; used: number } | null = null;
 
+/** Drop the in-process cache so the next call re-reads from the DB. Call after recording AI tokens. */
+export function invalidateBudgetCache(): void {
+  cache = null;
+}
+
 /** Tokens used in the last 24 hours (cached for one minute so the check costs almost nothing). */
 export async function tokensUsedLast24h(): Promise<number> {
   if (cache && Date.now() - cache.at < 60_000) return cache.used;
