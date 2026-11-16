@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
-import { assignCity, unassignCity } from "./actions";
+import { assignCity, unassignCity, bulkAssignCityByText, renameCity } from "./actions";
+import SubmitButton from "@/components/admin/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -161,12 +162,43 @@ export default async function LocationsPage({
         )}
       </div>
 
-      {/* Unassigned banner */}
+      {/* Unassigned banner + bulk assign tool */}
       {unassigned > 0 && (
-        <div className="mt-6 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-          <strong>{unassigned} properties</strong> have no assigned city (geoCity is blank). These will not appear in city-filtered searches or the homepage Browse by Location section. Run the geo enrichment from Admin → Engine to assign cities automatically, or assign manually via the property edit page.
+        <div className="mt-6 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 space-y-3">
+          <div><strong>{unassigned} properties</strong> have no assigned city (geoCity is blank). These will not appear in city-filtered searches or the Browse by Location section.</div>
+          <div className="flex flex-wrap items-end gap-3">
+            <form action={bulkAssignCityByText} className="flex gap-2 items-end">
+              <div>
+                <label className="block text-xs font-medium mb-1 text-amber-900">Bulk assign by address text</label>
+                <input name="city" placeholder="e.g. Mumbai" required className="border border-amber-300 rounded-lg px-3 py-1.5 text-sm bg-white w-48" />
+              </div>
+              <SubmitButton className="bg-amber-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-amber-700">
+                Assign to unassigned
+              </SubmitButton>
+              <span className="text-xs text-amber-700">Only assigns where addressText contains the city name. Never overwrites existing assignments.</span>
+            </form>
+          </div>
         </div>
       )}
+
+      {/* Rename city tool */}
+      <div className="mt-4 bg-white border border-brand-border rounded-xl p-4">
+        <div className="font-semibold text-sm mb-3">Rename a city</div>
+        <form action={renameCity} className="flex flex-wrap gap-3 items-end">
+          <div>
+            <label className="block text-xs text-brand-muted mb-1">Current name</label>
+            <input name="oldCity" placeholder="e.g. Mumbay" required className="border border-brand-border rounded-lg px-3 py-1.5 text-sm w-40" />
+          </div>
+          <div>
+            <label className="block text-xs text-brand-muted mb-1">New name</label>
+            <input name="newCity" placeholder="e.g. Mumbai" required className="border border-brand-border rounded-lg px-3 py-1.5 text-sm w-40" />
+          </div>
+          <SubmitButton className="border border-brand-border rounded-lg px-4 py-1.5 text-sm hover:bg-brand-bg">
+            Rename all
+          </SubmitButton>
+          <span className="text-xs text-brand-muted self-center">Updates geoCity on all matching properties.</span>
+        </form>
+      </div>
     </div>
   );
 }

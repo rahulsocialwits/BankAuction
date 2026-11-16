@@ -31,8 +31,11 @@ const STYLES: Record<string, string> = {
 
 const small = "text-xs border border-brand-border rounded-lg px-2.5 py-1 hover:bg-brand-bg";
 
-export default async function AdminPropertiesPage({ searchParams }: { searchParams: Promise<{ status?: string; q?: string; source?: string; bank?: string; issue?: string; bulk?: string; published?: string }> }) {
-  const { status, q, source: srcF, bank: bankF, issue, bulk, published } = await searchParams;
+const PAGE_SIZE = 50;
+
+export default async function AdminPropertiesPage({ searchParams }: { searchParams: Promise<{ status?: string; q?: string; source?: string; bank?: string; issue?: string; bulk?: string; published?: string; page?: string }> }) {
+  const { status, q, source: srcF, bank: bankF, issue, bulk, published, page: pageParam } = await searchParams;
+  const pageNum = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
   const master = await isMasterAdmin();
   // A normal admin never sees pipeline concepts (duplicates, sources); they only manage listings.
   const tabs = master ? TABS : TABS.filter(([, v]) => v !== "DUPLICATE");
@@ -43,6 +46,7 @@ export default async function AdminPropertiesPage({ searchParams }: { searchPara
     const m = { status: active, q, source: srcF, bank: bankF, issue, ...o };
     return "?" + Object.entries(m).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`).join("&");
   };
+  const pageQs = (p: number) => qs({ page: p > 1 ? String(p) : undefined });
   const [sources, banks] = master
     ? await Promise.all([
         prisma.auction.groupBy({ by: ["statusSource"], _count: { _all: true }, where: { statusSource: { not: null } }, orderBy: { _count: { statusSource: "desc" } } }),
@@ -60,10 +64,12 @@ export default async function AdminPropertiesPage({ searchParams }: { searchPara
         auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 },
         sourceRecords: { include: { source: true }, take: 1 },
       },
-      take: 100,
+      take: PAGE_SIZE,
+      skip: (pageNum - 1) * PAGE_SIZE,
     }),
     prisma.property.count({ where }),
   ]);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
     <div className="space-y-5">
@@ -203,6 +209,15 @@ export default async function AdminPropertiesPage({ searchParams }: { searchPara
           </table>
           {properties.length === 0 && <div className="p-12 text-center text-sm text-brand-muted">No property records in this view.</div>}
         </div>
+        {totalPages > 1 && (
+          <div className="px-4 py-3 border-t border-brand-border flex items-center justify-between text-xs text-brand-muted">
+            <span>Showing {(pageNum - 1) * PAGE_SIZE + 1}–{Math.min(pageNum * PAGE_SIZE, total)} of {total}</span>
+            <div className="flex gap-2">
+              {pageNum > 1 && <Link href={pageQs(pageNum - 1)} className="border border-brand-border rounded px-3 py-1 hover:border-brand">← Prev</Link>}
+              {pageNum < totalPages && <Link href={pageQs(pageNum + 1)} className="border border-brand-border rounded px-3 py-1 hover:border-brand">Next →</Link>}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
