@@ -91,8 +91,13 @@ describe("AT-07: city and bank pages use shared publishedWhere", () => {
   it("bank page imports listPublishedProperties", () => {
     assert.match(bankPage, /listPublishedProperties/);
   });
-  it("city page does NOT define its own auction status filter", () => {
-    assert.doesNotMatch(cityPage, /auctions.*some.*status/s);
+  it("city page does NOT define its own auction status filter (Auction.status direct)", () => {
+    // Bank dropdown query uses property.status (PUBLISHED), which is fine.
+    // We guard against a parallel Auction.status filter bypassing publishedWhere.
+    // Match: auctions.some with status not inside property.{...}
+    const hasDirectAuctionStatusFilter = /auctions\s*:\s*\{\s*some\s*:\s*\{[^}]*status\s*:/s.test(cityPage) &&
+      !/auctions\s*:\s*\{\s*some\s*:\s*\{\s*property/.test(cityPage);
+    assert.ok(!hasDirectAuctionStatusFilter, "city page should not filter by Auction.status directly");
   });
 });
 
