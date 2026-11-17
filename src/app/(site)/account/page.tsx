@@ -69,9 +69,10 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
         )}
       </section>
 
-      <div className="flex gap-4 text-sm">
+      <div className="flex flex-wrap gap-4 text-sm">
         <Link href="/saved-properties" className="text-brand hover:underline">Saved properties</Link>
         <Link href="/my-alerts" className="text-brand hover:underline">My alerts</Link>
+        <Link href="/account/settings" className="text-brand hover:underline">Settings &amp; privacy</Link>
       </div>
     </main>
   );

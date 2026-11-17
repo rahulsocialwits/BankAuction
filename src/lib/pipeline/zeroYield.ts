@@ -24,6 +24,12 @@ export interface YieldRun {
   created: number;
   duplicates: number;
   rejected: number;
+  /**
+   * Median `created` count over the last 7 days for this source (queried from source_run_logs by the caller).
+   * When > 0 the source has historically produced listings, so consecutive zero ticks are genuinely anomalous.
+   * When 0 or undefined the source has never reliably produced and the alert is suppressed.
+   */
+  sevenDayMedian?: number;
 }
 
 export interface ChannelYield {
@@ -38,9 +44,12 @@ export interface ChannelYield {
 
 export type YieldState = Partial<Record<YieldChannel, ChannelYield>>;
 
-/** Consecutive empty runs needed, and the minimum time they must span, before a never-productive source is called ZERO_YIELD. */
-export const ZERO_YIELD_AFTER_RUNS = 3;
-export const ZERO_YIELD_MIN_SPAN_MS = 6 * 3_600_000;
+/**
+ * Consecutive zero-new-listings ticks required before alerting. Applies to both DROPPED (was productive) and
+ * ZERO_YIELD (never productive). The 7-day median guard (sevenDayMedian > 0) is applied separately.
+ */
+export const ZERO_YIELD_AFTER_RUNS = 2;
+export const ZERO_YIELD_MIN_SPAN_MS = 6 * 3_600_000; // kept for callers that read it; no longer used in verdict logic
 export const ALL_REJECTED_AFTER_RUNS = 3;
 /** A channel that has not run for this long no longer vouches for the source being productive. */
 export const PRODUCTIVE_FRESH_MS = 14 * 864e5;
@@ -68,10 +77,15 @@ export function nextChannelYield(prev: ChannelYield | undefined, run: YieldRun, 
   const zeroStreak = (prev?.zeroStreak ?? 0) + 1;
   const firstZeroAt = prev?.firstZeroAt ?? nowIso;
   const lastProductiveAt = prev?.lastProductiveAt;
+  // Alert only after ZERO_YIELD_AFTER_RUNS (2) consecutive zero-new-listings ticks AND a positive 7-day median.
+  // A zero or missing median means the source has not historically produced, so silence the alert.
+  const median = run.sevenDayMedian ?? 0;
   let verdict: YieldVerdict;
-  if (lastProductiveAt) verdict = "DROPPED"; // it worked before: do not wait for a streak, a human should look
-  else if (zeroStreak >= ZERO_YIELD_AFTER_RUNS && now.getTime() - Date.parse(firstZeroAt) >= ZERO_YIELD_MIN_SPAN_MS) verdict = "ZERO_YIELD";
-  else verdict = "EMPTY";
+  if (zeroStreak >= ZERO_YIELD_AFTER_RUNS && median > 0) {
+    verdict = lastProductiveAt ? "DROPPED" : "ZERO_YIELD";
+  } else {
+    verdict = "EMPTY";
+  }
   return { verdict, zeroStreak, rejectStreak: 0, lastDiscovered: 0, lastRunAt: nowIso, firstZeroAt, lastProductiveAt };
 }
 

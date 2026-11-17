@@ -174,6 +174,14 @@ function auctionExtras(rec: ListingRecord) {
     extensionDurationMins: rec.extension_mins ? Number(rec.extension_mins) || null : null,
     extensionTrigger: rec.extension_trigger || null,
     status: resolveAuctionStatus({ current: null, derived: deriveAuctionStatusFromDates(start, end), explicit: detectExplicitStatus(rec.auction_status) }),
+    // P2.3 distinguishing attributes
+    unitOrDoorNumber: rec.unit_or_door_number || null,
+    floorNumber: rec.floor_number || null,
+    buildingName: rec.building_name || null,
+    surveyOrKhasra: rec.survey_or_khasra || null,
+    plotNumber: rec.plot_number || null,
+    areaSqft: rec.area_sqft ? (Number(rec.area_sqft) > 0 ? Number(rec.area_sqft) : null) : null,
+    areaType: rec.area_type || null,
   };
 }
 
@@ -241,6 +249,14 @@ export async function enrichExisting(hit: Known, rec: ListingRecord, statusSourc
   if (rec.auction_method && !a.auctionMethod) data.auctionMethod = rec.auction_method;
   if (rec.borrower && !a.borrower) data.borrower = rec.borrower;
   if (rec.possession_status && !a.possessionStatus) data.possessionStatus = rec.possession_status;
+  // P2.3 distinguishing attributes — fill when missing
+  fill("unitOrDoorNumber", a.unitOrDoorNumber);
+  fill("floorNumber", a.floorNumber);
+  fill("buildingName", a.buildingName);
+  fill("surveyOrKhasra", a.surveyOrKhasra);
+  fill("plotNumber", a.plotNumber);
+  fill("areaSqft", a.areaSqft);
+  if (rec.area_type && !a.areaType) data.areaType = rec.area_type;
   const reserve = money(rec.reserve_price);
   const emd = money(rec.emd);
   if (reserve && (!a.reservePrice || (Number(a.reservePrice) < 1000 && reserve >= Number(a.reservePrice) * 100))) data.reservePrice = reserve;

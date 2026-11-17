@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { invalidateBudgetCache } from "@/lib/ai/dailyBudget";
 import {
   buildSourceBaseline,
   evaluateCompleteness,
@@ -19,7 +20,7 @@ import { formatYieldMarker, type YieldMarker } from "./zeroYield";
 
 export interface RunLogInput {
   source: string;
-  kind: "builtin" | "feed" | "csv" | "cron";
+  kind: "builtin" | "feed" | "csv" | "cron" | "alert";
   trigger: "schedule" | "manual" | "cron" | "import";
   status: "ok" | "error" | "skipped" | "blocked" | "policy_block";
   created?: number;
@@ -29,6 +30,10 @@ export interface RunLogInput {
   aiTokens?: number;
   message?: string;
   startedAt?: Date;
+  /** Wall-clock time when the run finished. If omitted, recorded as now() at logRun call time. */
+  endedAt?: Date;
+  /** Pagination cursor (page number) at the end of this run, for paginated sources like BAANKNET. */
+  cursorPage?: number;
   /** Optional source inventory/run metrics. Stored in the existing message column; no schema migration required. */
   metrics?: SourceRunMetrics;
   /** Zero-yield verdict of a generic source (see zeroYield.ts). Written as a marker line at the start of the human text. */
@@ -145,6 +150,7 @@ export async function logRun(input: RunLogInput) {
       verdict = result.status;
     }
 
+    const endedAt = input.endedAt ?? new Date();
     await prisma.sourceRunLog.create({
       data: {
         source: input.source,
@@ -158,9 +164,13 @@ export async function logRun(input: RunLogInput) {
         aiTokens: input.aiTokens ?? 0,
         message,
         startedAt,
-        durationMs: Date.now() - startedAt.getTime(),
+        durationMs: endedAt.getTime() - startedAt.getTime(),
+        endedAt,
+        ...(typeof input.cursorPage === "number" && { cursorPage: input.cursorPage }),
       },
     });
+    // Drop the in-process budget cache so the next AI call sees the tokens just recorded.
+    if ((input.aiTokens ?? 0) > 0) invalidateBudgetCache();
     // A COMPLETE, HEALTHY pass of a source that tracks its passes: look for listings it no longer shows (FLAG ONLY, see lastSeen.ts).
     // The protection is re-read from the stored history (which now holds this verdict) and the gate fails closed.
     if (verdict && input.metrics) {

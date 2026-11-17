@@ -16,6 +16,22 @@ import { findDuplicatePropertyViaAI } from "@/lib/deduplication/aiDuplicateCheck
 const SOURCE_KEY = "bankauctions";
 const SITEMAP_PATH = "/wp-sitemap-auctions-1.xml";
 
+/** Upsert Media rows for property images and link them via PropertyMedia (sortOrder = insertion order). */
+async function attachPropertyImages(propertyId: string, imageUrls: string[]): Promise<void> {
+  for (let i = 0; i < Math.min(imageUrls.length, 8); i++) {
+    const url = imageUrls[i];
+    const row =
+      (await prisma.media.findFirst({ where: { sourceUrl: url } })) ??
+      (await prisma.media.create({ data: { sourceUrl: url, type: "PHOTO" } }));
+    const exists = await prisma.propertyMedia.findUnique({
+      where: { propertyId_mediaId: { propertyId, mediaId: row.id } },
+    });
+    if (!exists) {
+      await prisma.propertyMedia.create({ data: { propertyId, mediaId: row.id, sortOrder: i } });
+    }
+  }
+}
+
 export interface IngestionSummary {
   jobId: string;
   pagesChecked: number;
@@ -316,25 +332,37 @@ async function ingestOnePage(
       })
     : null;
 
+  // Dedup priority #2: this URL was already ingested once (SourceRecord.auctionId links to it).
+  // Re-reading a changed page (content hash changed) must update the existing auction, not AI-match
+  // a new one, which would create a duplicate round for the same listing.
+  const existingAuctionByUrl = !existingAuction && existingRecord?.auctionId
+    ? await prisma.auction.findUnique({ where: { id: existingRecord.auctionId }, include: { property: true } })
+    : null;
+
+  const resolvedAuction = existingAuction ?? existingAuctionByUrl;
+
   const derivedStatus = deriveAuctionStatusFromDates(normalized.auctionStart, normalized.auctionEnd);
 
   let propertyId: string;
   let auctionId: string;
 
-  if (existingAuction) {
-    summary.duplicatesFound++;
-    propertyId = existingAuction.propertyId;
-    auctionId = existingAuction.id;
+  if (resolvedAuction) {
+    // Priority #1 or #2 match: update the existing auction (same external ID, or same URL we already ingested).
+    // Only count as a duplicate when it was priority #1 (another record sharing the same external ID); a
+    // content-changed re-read of this very URL is an update, not a duplicate.
+    if (existingAuction) summary.duplicatesFound++;
+    propertyId = resolvedAuction.propertyId;
+    auctionId = resolvedAuction.id;
 
-    await logFieldChanges(existingAuction, normalized, propertyId, auctionId);
+    await logFieldChanges(resolvedAuction, normalized, propertyId, auctionId);
 
     // A postponed / cancelled auction keeps that status until its date changes; plain date derivation would reset it to UPCOMING.
     const resolvedStatus = resolveAuctionStatus({
-      current: existingAuction.status,
+      current: resolvedAuction.status,
       derived: derivedStatus,
-      dateChanged: auctionDateChanged(existingAuction.auctionStart, normalized.auctionStart),
+      dateChanged: auctionDateChanged(resolvedAuction.auctionStart, normalized.auctionStart),
     });
-    const statusHeld = isHeldStatus(resolvedStatus) && resolvedStatus === existingAuction.status;
+    const statusHeld = isHeldStatus(resolvedStatus) && resolvedStatus === resolvedAuction.status;
 
     await prisma.auction.update({
       where: { id: auctionId },
@@ -345,6 +373,8 @@ async function ingestOnePage(
         auctionMethod: normalized.auctionMethod,
         borrower: normalized.borrower,
         officerPhone: extractPhone(normalized.contactDetailsRaw),
+        officerDesignation: normalized.officerDesignation,
+        officerEmail: normalized.officerEmail,
         inspectionContact: normalized.inspectionContactRaw,
         possessionStatus: normalized.possessionStatus,
         reservePrice: normalized.reservePrice ?? undefined,
@@ -363,8 +393,7 @@ async function ingestOnePage(
         sourceUrl: url,
       },
     });
-    await recordAuctionStatusChange(auctionId, existingAuction.status, resolvedStatus, "Source re-read: status follows the auction dates");
-    const existingProperty = existingAuction.property;
+    await recordAuctionStatusChange(auctionId, resolvedAuction.status, resolvedStatus, "Source re-read: status follows the auction dates");
     await prisma.property.update({
       where: { id: propertyId },
       data: {
@@ -379,6 +408,7 @@ async function ingestOnePage(
         status: "PUBLISHED",
       },
     });
+    if (normalized.imageUrls.length > 0) await attachPropertyImages(propertyId, normalized.imageUrls);
     summary.updatedProperties++;
     summary.updatedAuctions++;
   } else {
@@ -418,6 +448,8 @@ async function ingestOnePage(
           auctionMethod: normalized.auctionMethod,
           borrower: normalized.borrower,
           officerPhone: extractPhone(normalized.contactDetailsRaw),
+          officerDesignation: normalized.officerDesignation,
+          officerEmail: normalized.officerEmail,
           inspectionContact: normalized.inspectionContactRaw,
           possessionStatus: normalized.possessionStatus,
           reservePrice: normalized.reservePrice ?? undefined,
@@ -437,6 +469,7 @@ async function ingestOnePage(
         },
       });
       auctionId = auction.id;
+      if (normalized.imageUrls.length > 0) await attachPropertyImages(propertyId, normalized.imageUrls);
       summary.updatedProperties++;
       summary.newAuctions++;
       await observeListing({ propertyId, auctionId }, { reserve: normalized.reservePrice, start: normalized.auctionStart, address: normalized.cityRaw }, { statusSource: "BankAuctions.in", method: "html", document: url });
@@ -455,7 +488,7 @@ async function ingestOnePage(
         summary.documentsFound++;
       }
 
-      await upsertSourceRecord(sourceId, url, contentHash, normalized, validation.needsReview ? "PENDING_REVIEW" : "PROCESSED", propertyId, auctionId);
+      await upsertSourceRecord(sourceId, url, contentHash, normalized, validation.needsReview ? "PENDING_REVIEW" : "PROCESSED", propertyId, auctionId, normalized.sourcePublishedAt);
       return;
     }
 
@@ -496,6 +529,8 @@ async function ingestOnePage(
         auctionMethod: normalized.auctionMethod,
         borrower: normalized.borrower,
         officerPhone: extractPhone(normalized.contactDetailsRaw),
+        officerDesignation: normalized.officerDesignation,
+        officerEmail: normalized.officerEmail,
         inspectionContact: normalized.inspectionContactRaw,
         possessionStatus: normalized.possessionStatus,
         reservePrice: normalized.reservePrice ?? undefined,
@@ -515,6 +550,7 @@ async function ingestOnePage(
       },
     });
     auctionId = auction.id;
+    if (normalized.imageUrls.length > 0) await attachPropertyImages(propertyId, normalized.imageUrls);
     summary.newProperties++;
     summary.newAuctions++;
   }
@@ -536,7 +572,7 @@ async function ingestOnePage(
   // Provenance: what bankauctions.in showed for this listing (append-only; an unchanged value adds nothing).
   await observeListing({ propertyId, auctionId }, { reserve: normalized.reservePrice, start: normalized.auctionStart, address: normalized.cityRaw }, { statusSource: "BankAuctions.in", method: "html", document: url });
 
-  await upsertSourceRecord(sourceId, url, contentHash, normalized, validation.needsReview ? "PENDING_REVIEW" : "PROCESSED", propertyId, auctionId);
+  await upsertSourceRecord(sourceId, url, contentHash, normalized, validation.needsReview ? "PENDING_REVIEW" : "PROCESSED", propertyId, auctionId, normalized.sourcePublishedAt);
 }
 
 function extractPhone(contactRaw: string | null): string | null {
@@ -552,7 +588,8 @@ async function upsertSourceRecord(
   normalized: unknown,
   status: "PROCESSED" | "PENDING_REVIEW" | "FAILED" | "IGNORED",
   propertyId: string | null,
-  auctionId: string | null
+  auctionId: string | null,
+  sourcePublishedAt?: Date | null
 ) {
   await prisma.sourceRecord.upsert({
     where: { sourceId_sourceUrl: { sourceId, sourceUrl: url } },
@@ -565,6 +602,7 @@ async function upsertSourceRecord(
       propertyId: propertyId ?? undefined,
       auctionId: auctionId ?? undefined,
       extractionMethod: "html_parser",
+      ...(sourcePublishedAt !== undefined && { sourcePublishedAt }),
     },
     create: {
       sourceId,
@@ -575,6 +613,7 @@ async function upsertSourceRecord(
       propertyId: propertyId ?? undefined,
       auctionId: auctionId ?? undefined,
       extractionMethod: "html_parser",
+      sourcePublishedAt: sourcePublishedAt ?? null,
     },
   });
 }

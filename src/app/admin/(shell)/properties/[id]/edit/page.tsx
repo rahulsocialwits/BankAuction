@@ -48,7 +48,10 @@ export default async function EditPropertyPage({ params, searchParams }: { param
 
   return (
     <div className="max-w-3xl">
-      <Link href="/admin/properties" className="text-xs text-brand-muted hover:text-brand">← Back to properties</Link>
+      <div className="flex items-center justify-between">
+        <Link href="/admin/properties" className="text-xs text-brand-muted hover:text-brand">← Back to properties</Link>
+        <Link href={`/admin/properties/${id}/history`} className="text-xs text-brand-muted hover:text-brand">Change history →</Link>
+      </div>
       <h1 className="text-2xl font-semibold text-brand mt-2 mb-1">Edit property</h1>
       <p className="text-xs text-brand-muted mb-5">
         {a?.bank ? a.bank.name : ""}

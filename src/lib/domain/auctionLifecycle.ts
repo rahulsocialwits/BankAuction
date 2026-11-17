@@ -119,7 +119,28 @@ export function auctionStatusWhere(statuses: readonly AuctionStatusName[], now: 
   return { OR: clauses };
 }
 
-/** Auctions that are open right now (not over). */
+/** Auctions that are open right now (not over). Includes dateless open auctions. */
 export const activeAuctionWhere = (now: Date = new Date()) => auctionStatusWhere(OPEN_STATUSES, now);
 /** Everything that is not open right now: ended (including open-but-over), postponed, cancelled, expired. */
 export const inactiveAuctionWhere = (now: Date = new Date()) => auctionStatusWhere(["COMPLETED", "POSTPONED", "CANCELLED", "EXPIRED"], now);
+
+/**
+ * Open auctions with no auction date at all (auctionStart = null, auctionEnd = null).
+ * Per D01: these are excluded from the active headline count and reported separately.
+ * They remain stored as UPCOMING and are shown to visitors, but admin counts exclude them from "active".
+ */
+export const undatedAuctionWhere = () => ({
+  status: { in: [...OPEN_STATUSES] as AuctionStatusName[] },
+  auctionStart: null,
+  auctionEnd: null,
+} as const);
+
+/**
+ * Active auctions that have at least a start date — the "headline active" count per D01.
+ * Does not use runtime now-comparisons; callers who need an exact live count should use
+ * activeAuctionWhere and subtract undatedAuctionWhere in the application layer.
+ */
+export const datedOpenAuctionWhere = () => ({
+  status: { in: [...OPEN_STATUSES] as AuctionStatusName[] },
+  auctionStart: { not: null },
+} as const);

@@ -18,9 +18,13 @@ export interface PropertyFilters {
   state?: string;
   city?: string;
   locality?: string;
+  pin?: string;
   statusGroup?: StatusGroup;
   priceMin?: number;
   priceMax?: number;
+  auctionDateFrom?: Date;
+  auctionDateTo?: Date;
+  possession?: string;
 }
 
 function textMatch(term: string): Prisma.PropertyWhereInput {
@@ -99,6 +103,7 @@ export function publishedWhere(filters: PropertyFilters = {}): Prisma.PropertyWh
   if (filters.locality) {
     and.push({ OR: [{ geoLocality: { equals: filters.locality, mode: "insensitive" } }, { AND: [{ geoCheckedAt: null }, textMatch(filters.locality)] }] });
   }
+  if (filters.pin) and.push({ addressText: { contains: filters.pin, mode: "insensitive" } });
 
   return {
     status: "PUBLISHED",
@@ -108,6 +113,10 @@ export function publishedWhere(filters: PropertyFilters = {}): Prisma.PropertyWh
       some: {
         bankId: filters.bankId,
         reservePrice: priceFilter,
+        ...(filters.auctionDateFrom !== undefined || filters.auctionDateTo !== undefined
+          ? { auctionStart: { gte: filters.auctionDateFrom, lte: filters.auctionDateTo } }
+          : {}),
+        ...(filters.possession ? { possessionStatus: { contains: filters.possession, mode: "insensitive" } } : {}),
         AND: statusFilter ? [statusFilter] : undefined,
       },
     },

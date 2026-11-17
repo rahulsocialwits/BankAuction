@@ -36,10 +36,18 @@ test("AI daily budget: no cap means no limit; warning from 80 percent; exceeded 
   assert.equal(budgetLevel(1000, 1000), "exceeded");
 });
 
-test("the budget check runs before an AI call is made and never touches data; the run-health page is master-only", () => {
+test("the budget reservation runs before an AI call is made; the run-health page is master-only", () => {
   const client = readFileSync("src/lib/ai/relayModelsClient.ts", "utf8");
-  assert.ok(client.indexOf("dailyBudgetExceeded()") < client.indexOf("fetch(`${cfg.baseUrl}/chat/completions`"), "checked before the request");
-  assert.doesNotMatch(readFileSync("src/lib/ai/dailyBudget.ts", "utf8"), /\.(create|update|updateMany|delete|deleteMany|upsert)\(/);
+  // P1.6: checkAndReserve() replaced dailyBudgetExceeded() — it must appear before the fetch call
+  assert.ok(
+    client.indexOf("checkAndReserve()") < client.indexOf("fetch(`${cfg.baseUrl}/chat/completions`"),
+    "checkAndReserve() must be called before the HTTP request",
+  );
+  // The reservation pattern intentionally writes to SourceRunLog; completeReservation and
+  // discardReservation are also expected. What must NOT be in dailyBudget.ts is direct
+  // auction/property data writes — only SourceRunLog reservation rows.
+  const budget = readFileSync("src/lib/ai/dailyBudget.ts", "utf8");
+  assert.doesNotMatch(budget, /prisma\.(auction|property|sourceRecord|feed|auctionEvent|propertyChange)\.(create|update|delete)/);
   assert.match(readFileSync("src/app/admin/(shell)/health/page.tsx", "utf8"), /await requireMaster\(\)/);
 });
 

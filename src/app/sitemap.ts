@@ -11,7 +11,7 @@ export const revalidate = 3600;
 /** Every public page, so search engines can find new listings, cities, banks and articles without waiting to be linked. */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
-  const staticPages = ["", "/properties", "/banks", "/cities", "/property-types", "/how-it-works", "/blog", "/pricing", "/about", "/faq", "/contact", "/privacy-policy", "/terms-and-conditions", "/disclaimer"];
+  const staticPages = ["", "/properties", "/auctions", "/auctions/calendar", "/banks", "/cities", "/property-types", "/how-it-works", "/blog", "/pricing", "/about", "/faq", "/contact", "/privacy-policy", "/terms-and-conditions", "/disclaimer"];
 
   const [properties, banks, posts, cities] = await Promise.all([
     prisma.property.findMany({ where: { status: "PUBLISHED" }, select: { slug: true, updatedAt: true }, orderBy: { updatedAt: "desc" }, take: 40000 }).catch(() => []),

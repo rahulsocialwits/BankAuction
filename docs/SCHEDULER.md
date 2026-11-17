@@ -75,6 +75,45 @@ GitHub's schedule is best-effort and can stop on its own, so add an independent 
 3. Turn on failure notifications for the job (e-mail). A duplicate trigger is harmless: it answers `skipped`.
 4. Create a second cron job: URL `https://auction.bizsocio.com/api/cron/health`, every 15 minutes, same header, and enable notifications on failure. It answers 503 when the scheduler has been late for about 60 minutes, so you get an e-mail even if GitHub is down.
 
+### Verifying the cron-job.org setup (after P1.1 configuration)
+
+**Expected response bodies — read the body, not just the HTTP status**
+
+`/api/cron/ingest` can return 200 in two distinct cases; only the body says which:
+```jsonc
+// The tick actually ran (normal):
+{ "ok": true, "ms": 12345, "result": { "newProperties": N, "feeds": [...] } }
+
+// Another trigger already holds the lease (harmless — do NOT treat as failure):
+{ "ok": true, "skipped": true, "reason": "another tick is running / last tick was N min ago" }
+```
+A response in 232 ms or under ~2 s is almost certainly `skipped:true` — a full tick takes 60–300 s. If cron-job.org always shows 200 but the body is always `skipped:true`, the two triggers are racing and the lease is preventing double-runs correctly. Check Admin → Engine → History to confirm ingestion rows appear; if they do, the system is working.
+
+A response without `"ok":true` in the body is a failure regardless of HTTP status — configure cron-job.org failure keywords or check the body manually.
+
+`/api/cron/health`:
+```jsonc
+// Scheduler healthy:
+{ "ok": true, "minutesSinceLastSuccessfulTick": 3 }
+
+// Scheduler late (no successful tick in ~60 min):
+503  { "minutesSinceLastSuccessfulTick": 75 }
+```
+
+**Verifying automatic execution history (owner must do this — requires cron-job.org login)**
+1. Log in to cron-job.org and open the dashboard for the `/api/cron/ingest` job.
+2. Click "History". Each row shows the execution time, HTTP status, response time, and the first few hundred bytes of the response body.
+3. Confirm: (a) runs appear every ~5 minutes, (b) at least some show response bodies with `"ok":true` and `"result"` (not all `"skipped":true`).
+4. If every run is `"skipped":true`, GitHub Actions is running first and the lease is always held — that is fine and expected when GitHub is healthy.
+
+**Verifying failure email notifications (owner must do this)**
+- In the cron-job.org job settings, confirm "Notify on failure" is ticked and the notification email is set to your address.
+- Failure = any run that returns a non-2xx HTTP status OR (optionally) where the body does not contain `"ok":true`. cron-job.org supports both a status-code filter and a "must contain" body keyword.
+- For the `/api/cron/health` job: "notify on failure" + no body-keyword filter is sufficient (the endpoint returns 503 on a late scheduler, which triggers the notification).
+
+**Verifying that the actual ingestion pipeline ran (not just the endpoint)**
+After at least one authenticated run (not skipped), open Admin → Engine → History. A new `cron` row with status `ok` should appear within 5 minutes. If none appears after 10 minutes and the pinger shows HTTP 200, check the response body for `"error"` or `"skipped"` and also check Vercel runtime logs for the `/api/cron/ingest` request.
+
 
 
 ## Workflow hardening (GitHub Actions only)

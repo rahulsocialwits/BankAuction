@@ -18,11 +18,14 @@ const NAV: NavItem[] = [
   { href: "/admin/properties", label: "Properties" },
   { href: "/admin/properties/new", label: "Add Property" },
   { href: "/admin/blog", label: "Blog" },
-  { href: "/admin/localities", label: "Locations" },
+  { href: "/admin/locations", label: "Location Management", also: ["/admin/localities"], master: true },
+  { href: "/admin/localities", label: "Locations (Suggestions)" },
   // Master admin only:
   // One sourcing area: overview, link sources, bulk import, history and duplicates are tabs inside it.
+  { href: "/admin/duplicates", label: "Duplicate Review", master: true },
   { href: "/admin/engine", label: "Data Engine", also: ["/admin/feeds", "/admin/properties/import"], master: true },
   { href: "/admin/health", label: "Run Health", master: true },
+  { href: "/admin/data-quality", label: "Data Quality", master: true },
   { href: "/admin/home", label: "Home Page", master: true },
   { href: "/admin/pages", label: "Pages (About, Policies, FAQ)", master: true },
   { href: "/admin/media", label: "Media Library", master: true },
@@ -33,6 +36,8 @@ const NAV: NavItem[] = [
   { href: "/admin/api", label: "API", master: true },
   { href: "/admin/scrap-demo", label: "AI Python Scrap — DEMO", master: true },
   { href: "/admin/admins", label: "Admin Team", master: true },
+  { href: "/admin/support", label: "Support Tickets", master: false },
+  { href: "/admin/audit", label: "Audit Log", master: true },
   { href: "/admin/settings", label: "Settings", master: true },
 ];
 

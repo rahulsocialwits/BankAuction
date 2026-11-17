@@ -16,6 +16,9 @@ import BorrowerNote from "@/components/BorrowerNote";
 import { qualityOf } from "@/lib/map/mapPins";
 import { toPropertyCardData } from "@/lib/queries/listProperties";
 import { effectiveAuctionStatus } from "@/lib/domain/auctionLifecycle";
+import JsonLd from "@/components/JsonLd";
+import { SITE_URL } from "@/lib/seo";
+import { reportPropertyError } from "./actions";
 
 export const revalidate = 120;
 
@@ -37,6 +40,21 @@ function formatMoney(v: unknown): string {
 function formatDate(d: Date | null): string {
   if (!d) return "Not Available";
   return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }).format(d);
+}
+
+/** Returns a human-readable freshness string like "2 hours ago" or "3 days ago". */
+function freshnessLabel(d: Date): string {
+  const diffMs = Date.now() - d.getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 60) return mins <= 1 ? "just now" : `${mins} minutes ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "1 day ago";
+  if (days < 30) return `${days} days ago`;
+  const months = Math.floor(days / 30);
+  if (months === 1) return "1 month ago";
+  return `${months} months ago`;
 }
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -88,8 +106,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   };
 }
 
-export default async function PropertyPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
+export default async function PropertyPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ reported?: string }> }) {
+  const [{ slug }, sp] = await Promise.all([params, searchParams]);
+  const reported = sp.reported === "1";
 
   const property = await prisma.property.findUnique({
     where: { slug },
@@ -133,8 +152,30 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
     .filter((a) => a.value && !HIDDEN_ATTRS.has(a.key))
     .map((a) => ({ key: a.key, label: a.key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()), value: a.value as string }));
 
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: property.title,
+    description: tidyText(property.description) || undefined,
+    url: `${SITE_URL}/property/${property.slug}`,
+    ...(property.media[0] ? { image: property.media[0].media.sourceUrl } : {}),
+    ...(auction?.reservePrice != null
+      ? { offers: { "@type": "Offer", price: Number(auction.reservePrice), priceCurrency: "INR", availability: "https://schema.org/InStock", seller: { "@type": "Organization", name: auction.bank?.name ?? "Bank" } } }
+      : {}),
+  };
+  const breadcrumbData = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+      { "@type": "ListItem", position: 2, name: "Properties", item: `${SITE_URL}/properties` },
+      { "@type": "ListItem", position: 3, name: property.title, item: `${SITE_URL}/property/${property.slug}` },
+    ],
+  };
+
   return (
     <main className="w-full px-5 lg:px-10 xl:px-16 py-10">
+      <JsonLd data={[structuredData, breadcrumbData]} />
       <nav className="text-xs text-brand-muted mb-4">
         <Link href="/" className="hover:text-brand">Home</Link> / <Link href="/properties" className="hover:text-brand">Properties</Link> / <span>{property.title}</span>
       </nav>
@@ -187,6 +228,11 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
                 </dd>
               </div>
             </dl>
+            {auction?.updatedAt && (
+              <p className="text-xs text-brand-muted mt-3">
+                Last verified: {freshnessLabel(auction.updatedAt)}
+              </p>
+            )}
           </section>
 
           {earlier.length > 0 && (
@@ -324,6 +370,57 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
           <PropertyCarousel properties={similar.map(toPropertyCardData)} />
         </section>
       )}
+
+      <section className="mt-8 border border-brand-border rounded-2xl p-5">
+        {reported ? (
+          <p className="text-sm text-green-700 font-medium">Thank you — your report has been submitted. Our team will review it.</p>
+        ) : (
+          <details>
+            <summary className="text-sm text-brand-muted cursor-pointer hover:text-brand">Report an error in this listing</summary>
+            <form
+              action={async (formData: FormData) => {
+                "use server";
+                await reportPropertyError(slug, formData);
+              }}
+              className="mt-4 space-y-3"
+            >
+              <div>
+                <label className="block text-xs font-medium text-brand mb-1">What is wrong? <span className="text-red-500">*</span></label>
+                <select name="subject" required className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand">
+                  <option value="">Select a reason…</option>
+                  <option value="Wrong reserve price">Wrong reserve price</option>
+                  <option value="Wrong auction date">Wrong auction date</option>
+                  <option value="Wrong location / address">Wrong location / address</option>
+                  <option value="Listing already sold or withdrawn">Listing already sold or withdrawn</option>
+                  <option value="Duplicate listing">Duplicate listing</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-brand mb-1">Details</label>
+                <textarea name="body" rows={3} maxLength={2000} placeholder="Describe the error (optional)" className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand resize-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-brand mb-1">Your email (optional — for follow-up)</label>
+                <input name="email" type="email" className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+              </div>
+              <button type="submit" className="bg-brand text-white text-sm font-medium rounded-lg px-5 py-2 hover:bg-brand-dark">Submit report</button>
+            </form>
+          </details>
+        )}
+      </section>
+
+      <section className="mt-10 bg-amber-50 border border-amber-200 rounded-2xl p-5 text-xs text-amber-900 leading-relaxed">
+        <p className="font-semibold mb-1">Important Disclaimer</p>
+        <p>
+          BankAuction.co aggregates auction notices from public sources for informational purposes only.
+          Details shown here — including reserve price, auction date, EMD and possession status — are sourced from bank or institutional notices and may change.
+          Always verify all details against the official auction notice and bank documents before participating.
+          BankAuction.co does not represent any bank, financial institution or borrower, and does not guarantee the accuracy or completeness of any listing.
+          This is not a legal, financial or investment advice platform.
+          Participation in a bank auction involves legal and financial risk. Seek independent professional advice before bidding.
+        </p>
+      </section>
     </main>
   );
 }

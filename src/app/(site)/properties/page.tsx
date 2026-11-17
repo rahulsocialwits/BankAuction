@@ -9,7 +9,7 @@ import SaveSearchButton from "@/components/SaveSearchButton";
 import PropertyMapView from "@/components/PropertyMapView";
 import ViewToggle from "@/components/ViewToggle";
 import { parseView } from "@/lib/map/coordinates";
-import { listPublishedProperties, countPublishedProperties, toPropertyCardData, StatusGroup, type PropertyFilters } from "@/lib/queries/listProperties";
+import { listPublishedProperties, countPublishedProperties, toPropertyCardData, StatusGroup, type PropertyFilters, type SortOption } from "@/lib/queries/listProperties";
 import { getLocalityMap } from "@/lib/queries/localities";
 import { getPlaces } from "@/lib/queries/places";
 import { prisma } from "@/lib/db/prisma";
@@ -25,7 +25,7 @@ const CATEGORIES: { label: string; value: PropertyCategory }[] = [
   { label: "Agricultural", value: "AGRICULTURAL" },
 ];
 
-type SP = { category?: string; q?: string; keyword?: string; bank?: string; state?: string; city?: string; locality?: string; status?: string; priceMin?: string; priceMax?: string; page?: string; view?: string };
+type SP = { category?: string; q?: string; keyword?: string; bank?: string; state?: string; city?: string; locality?: string; status?: string; priceMin?: string; priceMax?: string; pin?: string; dateFrom?: string; dateTo?: string; possession?: string; page?: string; view?: string; sort?: string };
 
 function placeLabel(sp: SP) {
   if (sp.locality && sp.city) return `${sp.locality}, ${sp.city}`;
@@ -63,31 +63,22 @@ function selectedAreas(map: Record<string, string[]>, city: string | undefined):
 export default async function PropertiesPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const q = (sp.q ?? sp.keyword)?.trim() || undefined;
-  const { category, bank, state, city, locality, status, priceMin, priceMax } = sp;
+  const { category, bank, state, city, locality, status, priceMin, priceMax, pin, dateFrom, dateTo, possession } = sp;
+  const VALID_SORTS: SortOption[] = ["relevance", "newest", "deadline", "price_asc", "price_desc"];
+  const sort: SortOption = VALID_SORTS.includes(sp.sort as SortOption) ? (sp.sort as SortOption) : "relevance";
   const page = Math.max(1, Number(sp.page ?? "1") || 1);
   const PAGE_SIZE = 48;
   const view = parseView(sp.view);
   const validCategory = CATEGORIES.find((c) => c.value === category)?.value;
   // Default: Live & Upcoming. "All" and "Completed / Past" only when the visitor (or a link such as a city card) asks for them.
   const statusGroup: StatusGroup = status === "completed" || status === "all" ? status : "active";
+  const auctionDateFrom = dateFrom ? new Date(dateFrom) : undefined;
+  const auctionDateTo = dateTo ? new Date(dateTo + "T23:59:59.999Z") : undefined;
+  const validPin = pin && /^\d{4,6}$/.test(pin.trim()) ? pin.trim() : undefined;
 
-  const filters: PropertyFilters = { category: validCategory, keyword: q || undefined, state: state || undefined, city: city || undefined, locality: locality || undefined, statusGroup, bankId: bank || undefined, priceMin: priceMin ? Number(priceMin) : undefined, priceMax: priceMax ? Number(priceMax) : undefined };
+  const filters: PropertyFilters = { category: validCategory, keyword: q || undefined, state: state || undefined, city: city || undefined, locality: locality || undefined, pin: validPin, statusGroup, bankId: bank || undefined, priceMin: priceMin ? Number(priceMin) : undefined, priceMax: priceMax ? Number(priceMax) : undefined, auctionDateFrom, auctionDateTo, possession: possession || undefined };
   const [properties, totalCount, banks, localities, places] = await Promise.all([
-    listPublishedProperties(
-      {
-        category: validCategory,
-        keyword: q || undefined,
-        state: state || undefined,
-        city: city || undefined,
-        locality: locality || undefined,
-        statusGroup,
-        bankId: bank || undefined,
-        priceMin: priceMin ? Number(priceMin) : undefined,
-        priceMax: priceMax ? Number(priceMax) : undefined,
-      },
-      PAGE_SIZE,
-      (page - 1) * PAGE_SIZE,
-    ),
+    listPublishedProperties(filters, PAGE_SIZE, (page - 1) * PAGE_SIZE, sort),
     countPublishedProperties(filters),
     prisma.bank.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     getLocalityMap(),
@@ -110,12 +101,12 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
         places={{ ...places, areas: [] }}
         banks={banks}
         categories={CATEGORIES}
-        initial={{ q, state, city, locality, category: validCategory, bank, status: statusGroup, priceMin, priceMax, view }}
+        initial={{ q, state, city, locality, category: validCategory, bank, status: statusGroup, priceMin, priceMax, pin: validPin, dateFrom, dateTo, possession: possession || undefined, view, sort }}
       />
 
       <div className="flex items-center justify-between gap-3 mb-5">
         <div className="flex flex-wrap items-center gap-3">
-          <ViewToggle params={{ category, q, bank, state, city, locality, status: statusGroup, priceMin, priceMax, page: sp.page }} view={view} />
+          <ViewToggle params={{ category, q, bank, state, city, locality, status: statusGroup, priceMin, priceMax, pin: validPin, dateFrom, dateTo, possession: possession || undefined, sort: sort !== "relevance" ? sort : undefined, page: sp.page }} view={view} />
           <Suspense fallback={null}><SaveSearchButton label={place ? `Properties in ${place}` : "Bank auction properties"} /></Suspense>
         </div>
       </div>
@@ -142,7 +133,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
       {totalCount > PAGE_SIZE && (() => {
         const totalPages = Math.ceil(totalCount / PAGE_SIZE);
         const params = new URLSearchParams();
-        for (const [key, value] of Object.entries({ category, q, bank, state, city, locality, status: statusGroup, priceMin, priceMax, view: view === "map" ? "map" : undefined })) {
+        for (const [key, value] of Object.entries({ category, q, bank, state, city, locality, status: statusGroup, priceMin, priceMax, pin: validPin, dateFrom, dateTo, possession: possession || undefined, sort: sort !== "relevance" ? sort : undefined, view: view === "map" ? "map" : undefined })) {
           if (value) params.set(key, value);
         }
         return (

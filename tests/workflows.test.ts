@@ -115,8 +115,16 @@ test("TICK: a completed tick (200, ok:true) succeeds", () => {
   assert.match(r.sum, /Tick completed/);
 });
 
+test("TICK: HTTP 202 accepted (after() background tick) is a success", () => {
+  const r = run(TICK, { code: "202", body: '{"ok":true,"status":"accepted","claimId":"abc123","ms":40}' });
+  assert.equal(r.status, 0);
+  assert.match(r.out, /curl exit code: 0, HTTP status: 202/);
+  assert.match(r.sum, /accepted.*202|202.*accepted/i);
+});
+
 test("TICK: a SKIPPED tick (another trigger had it) is not a failure", () => {
-  const r = run(TICK, { code: "200", body: '{"ok":true,"skipped":true,"reason":"a tick just ran","ms":40}' });
+  // skipped now also returns 202 so cron-job.org only needs one success code
+  const r = run(TICK, { code: "202", body: '{"ok":true,"skipped":true,"reason":"a tick just ran","ms":40}' });
   assert.equal(r.status, 0);
   assert.match(r.out, /::notice title=Tick skipped/);
   assert.match(r.sum, /skipped/i);

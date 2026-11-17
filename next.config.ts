@@ -39,9 +39,24 @@ const nextConfig: NextConfig = {
     "/api/me": BROWSER_FILES,
     "/admin/*": BROWSER_FILES,
   },
-  // Basic security headers. No Content-Security-Policy yet: photos come from many bank CDNs and the map from OSM tiles, so a CSP
-  // needs its own tested change.
   async headers() {
+    // CSP: allow self + bank CDN images (wildcard *.cdn.*, *.s3.*, *.cloudfront.net),
+    // OpenStreetMap tiles for the map view, Google Fonts, and Razorpay JS.
+    // 'unsafe-inline' styles are needed by Tailwind CSS; no eval.
+    const csp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com https://www.googletagmanager.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      // Bank CDNs: S3, CloudFront, common CDN patterns; also allow data: for base64 thumbnails.
+      "img-src 'self' data: blob: https://*.s3.amazonaws.com https://*.s3.ap-south-1.amazonaws.com https://*.cloudfront.net https://*.cdn.bankauctions.in https://*.bankauctions.in https://bankauctions.in https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://*.bizsocio.com",
+      "connect-src 'self' https://checkout.razorpay.com https://api.razorpay.com",
+      "frame-src https://api.razorpay.com",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join("; ");
+
     return [
       {
         source: "/:path*",
@@ -50,6 +65,7 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+          { key: "Content-Security-Policy", value: csp },
         ],
       },
     ];

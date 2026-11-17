@@ -1,10 +1,10 @@
 name: Scheduler tick
 
 # Calls the site's own /api/cron/ingest roughly every 5 minutes.
-# The endpoint runs the whole tick INSIDE the request and answers only when it is finished:
-#   HTTP 200 {"ok":true,...}            = the work was done
-#   HTTP 200 {"ok":true,"skipped":true} = another trigger already ran (or is running) a tick: harmless, NOT a failure
-#   anything else                       = this job fails and says why (curl exit code, HTTP status, response text)
+# The endpoint uses next/server after() so it acknowledges immediately and runs ingestion in the background:
+#   HTTP 202 {"ok":true,"status":"accepted",...} = tick accepted, background ingestion started — NOT a failure
+#   HTTP 202 {"ok":true,"skipped":true,...}       = another trigger already ran (or is running) a tick: harmless, NOT a failure
+#   anything else                                 = this job fails and says why (curl exit code, HTTP status, response text)
 # GitHub's `schedule` event is best-effort: runs can be late or dropped. The minutes are offset (3,8,13 ... 58) to stay off the
 # busiest :00/:05 marks. Never print the secret here; GitHub also masks it.
 on:
@@ -48,7 +48,7 @@ jobs:
             echo "Tick FAILED: $why" >> "$summary"
             exit 1
           fi
-          if [ "$code" != "200" ]; then
+          if [ "$code" != "200" ] && [ "$code" != "202" ]; then
             case "$code" in
               401) why="HTTP 401: the GitHub secret CRON_SECRET does not match the one in Vercel." ;;
               500) why="HTTP 500: the tick threw an error or CRON_SECRET is not set on the server (see the response text above)." ;;
@@ -65,8 +65,12 @@ jobs:
             exit 0
           fi
           if ! grep -q '"ok":true' response.txt; then
-            echo "::error title=Tick failed::HTTP 200 but the answer did not contain ok:true."
-            echo "Tick FAILED: HTTP 200 without ok:true." >> "$summary"
+            echo "::error title=Tick failed::HTTP $code but the answer did not contain ok:true."
+            echo "Tick FAILED: HTTP $code without ok:true." >> "$summary"
             exit 1
           fi
-          echo "Tick completed." >> "$summary"
+          if [ "$code" = "202" ]; then
+            echo "Tick accepted (HTTP 202): background ingestion started. Check Admin > Engine > History for results." >> "$summary"
+          else
+            echo "Tick completed." >> "$summary"
+          fi

@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 const TABS = [
   { label: "All", href: "/auctions" },
   { label: "Upcoming", href: "/auctions/upcoming" },
+  { label: "Auction Today", href: "/auctions/today" },
   { label: "Live", href: "/auctions/live" },
   { label: "Completed", href: "/auctions/completed" },
   { label: "Postponed", href: "/auctions/postponed" },

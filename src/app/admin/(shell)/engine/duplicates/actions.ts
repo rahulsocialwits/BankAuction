@@ -21,6 +21,18 @@ export async function markDuplicates(formData: FormData) {
   refresh();
 }
 
+/** Restore a falsely-merged duplicate back to PENDING_REVIEW for human verification (P2.8 remediation). */
+export async function restoreDuplicate(formData: FormData) {
+  await requireMaster();
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return;
+  await prisma.property.update({ where: { id }, data: { status: "PENDING_REVIEW" } });
+  await prisma.propertyChange.create({
+    data: { propertyId: id, field: "dedup_restored", newValue: "PENDING_REVIEW", detectedAt: new Date() },
+  });
+  refresh();
+}
+
 /** Keep the oldest of every group whose titles are clearly alike; hide the rest. */
 export async function cleanObviousDuplicates() {
   await requireMaster();

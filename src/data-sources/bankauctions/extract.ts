@@ -9,6 +9,7 @@ export interface RawAuctionRecord {
   title: string;
   fields: Record<string, string[]>; // label -> one or more raw text values
   documents: RawDocumentRef[];
+  imageUrls: string[];
 }
 
 /**
@@ -43,7 +44,43 @@ export function extractBankAuctionsListing(html: string): RawAuctionRecord | nul
     (fields[label] ??= []).push(value);
   });
 
-  return { title, fields, documents };
+  // Extract property images: WordPress featured image and any inline content images.
+  // Only keep absolute URLs on the same host (bankauctions.in); skip tiny tracking pixels.
+  const BASE_HOST = "bankauctions.in";
+  const imageUrls: string[] = [];
+  const seen = new Set<string>();
+
+  const addImage = (src: string | undefined) => {
+    if (!src) return;
+    const url = src.trim().split(/[\s?#]/)[0]; // strip srcset extras and query strings
+    if (!url || seen.has(url)) return;
+    // Allow relative paths or same-host absolute URLs; block external images
+    const absolute = url.startsWith("http")
+      ? url
+      : url.startsWith("//")
+        ? "https:" + url
+        : null;
+    if (absolute && !absolute.includes(BASE_HOST)) return;
+    seen.add(url);
+    imageUrls.push(absolute ?? url);
+  };
+
+  // WordPress featured image (class "wp-post-image" or inside ".post-thumbnail")
+  $(".wp-post-image, .post-thumbnail img").each((_, el) => {
+    addImage($(el).attr("src"));
+  });
+
+  // Images inside the entry/article body content
+  $(".entry-content img, .post-content img, article img").each((_, el) => {
+    const src = $(el).attr("src");
+    const w = parseInt($(el).attr("width") ?? "9999", 10);
+    const h = parseInt($(el).attr("height") ?? "9999", 10);
+    // Skip images that are explicitly declared tiny (tracking pixels / icons)
+    if (w < 50 || h < 50) return;
+    addImage(src);
+  });
+
+  return { title, fields, documents, imageUrls };
 }
 
 export function firstField(record: RawAuctionRecord, label: string): string | null {
