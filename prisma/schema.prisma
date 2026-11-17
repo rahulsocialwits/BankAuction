@@ -227,6 +227,12 @@ model Property {
   @@index([category, status])
   @@index([cityId])
   @@index([geoCity])
+  // GIN trigram indexes (migration 20261116040000_search_trigram_indexes) — needed for ILIKE keyword search
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([description(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([addressText(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([geoCity(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([geoLocality(ops: raw("gin_trgm_ops"))], type: Gin)
   @@map("properties")
 }
 
