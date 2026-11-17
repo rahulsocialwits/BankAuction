@@ -4,7 +4,7 @@ import { normalizeBankAuctionsRecord } from "../src/data-sources/bankauctions/no
 import type { RawAuctionRecord } from "../src/data-sources/bankauctions/extract";
 
 function makeRecord(fields: Record<string, string[]> = {}): RawAuctionRecord {
-  return { title: "Test Property", fields, documents: [] };
+  return { title: "Test Property", fields, documents: [], imageUrls: [] };
 }
 
 describe("P1.3 sourcePublishedAt extraction", () => {

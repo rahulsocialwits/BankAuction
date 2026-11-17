@@ -25,7 +25,7 @@ describe("P2.1 PDF extraction setup", () => {
 
   it("AI prompt instructs how to find distinguishing attributes", () => {
     const src = readFileSync("src/data-sources/feeds/deepScan.ts", "utf8");
-    assert.match(src, /unit_or_door_number.*flat\/shop\/unit\/door number/s);
+    assert.match(src, /unit_or_door_number[\s\S]*?flat\/shop\/unit\/door number/);
   });
 });
 

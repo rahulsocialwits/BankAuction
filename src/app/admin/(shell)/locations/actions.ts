@@ -18,7 +18,7 @@ export async function bulkAssignCityByText(formData: FormData) {
     data: { geoCity: city, geoCheckedAt: new Date() },
   });
   revalidatePath("/admin/locations");
-  return count;
+  void count;
 }
 
 /** Rename a city across all properties (preserves geoCheckedAt, records the rename). */

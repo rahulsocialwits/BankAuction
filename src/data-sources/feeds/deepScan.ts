@@ -425,7 +425,7 @@ export function toListings(data: unknown, docs: { type: string; title: string; u
       building_name: str(r.building_name, 160) || undefined,
       survey_or_khasra: str(r.survey_or_khasra, 160) || undefined,
       plot_number: str(r.plot_number, 80) || undefined,
-      area_sqft: typeof r.area_sqft === "number" && r.area_sqft > 0 ? r.area_sqft : undefined,
+      area_sqft: typeof r.area_sqft === "number" && r.area_sqft > 0 ? String(r.area_sqft) : undefined,
       area_type: str(r.area_type, 40) || undefined,
       inspection_date: str(r.inspection_date, 30) || undefined,
     });

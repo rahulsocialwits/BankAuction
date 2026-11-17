@@ -7,8 +7,8 @@ function facts(overrides: Partial<IdentityFacts> = {}): IdentityFacts {
     externalId: null,
     tokens: titleTokens("SBI Branch Residential Plot Khasra No 123 Village Rampur"),
     address: "Village Rampur Khasra 123",
-    reservePrice: 500000,
-    auctionDate: new Date("2026-11-01"),
+    reserve: 500000,
+    start: new Date("2026-11-01"),
     ...overrides,
   };
 }
