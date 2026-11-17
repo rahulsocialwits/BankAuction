@@ -11,6 +11,7 @@ export const revalidate = 120;
 const STATUS_MAP: Record<string, AuctionStatus[]> = {
   upcoming: ["UPCOMING"],
   live: ["LIVE", "AUCTION_TODAY"],
+  today: ["AUCTION_TODAY"],
   completed: ["COMPLETED"],
   postponed: ["POSTPONED"],
   cancelled: ["CANCELLED"],
@@ -19,6 +20,7 @@ const STATUS_MAP: Record<string, AuctionStatus[]> = {
 const TABS = [
   { label: "All", href: "/auctions" },
   { label: "Upcoming", href: "/auctions/upcoming" },
+  { label: "Auction Today", href: "/auctions/today" },
   { label: "Live", href: "/auctions/live" },
   { label: "Completed", href: "/auctions/completed" },
   { label: "Postponed", href: "/auctions/postponed" },
