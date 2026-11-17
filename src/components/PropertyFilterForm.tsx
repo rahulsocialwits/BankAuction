@@ -19,6 +19,10 @@ interface Props {
     status?: string;
     priceMin?: string;
     priceMax?: string;
+    pin?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    possession?: string;
     view?: string;
     sort?: string;
   };
@@ -34,7 +38,7 @@ export default function PropertyFilterForm({ localities, places, banks, categori
   const [category, setCategory] = useState(initial.category ?? "");
   const [bank, setBank] = useState(initial.bank ?? "");
   const [status, setStatus] = useState(initial.status ?? "active");
-  const activeCount = [initial.q, initial.state, initial.city, initial.locality, initial.category, initial.bank, initial.priceMin, initial.priceMax].filter(Boolean).length;
+  const activeCount = [initial.q, initial.state, initial.city, initial.locality, initial.category, initial.bank, initial.priceMin, initial.priceMax, initial.pin, initial.dateFrom, initial.dateTo, initial.possession].filter(Boolean).length;
   const [open, setOpen] = useState(activeCount > 0);
   // Choosing a state narrows the city list to that state's cities.
   // The page sends only the areas of the selected city; the areas of another city are fetched when it is chosen (keeps the page light).
@@ -171,6 +175,28 @@ export default function PropertyFilterForm({ localities, places, banks, categori
             <option value="deadline">Auction deadline</option>
             <option value="price_asc">Price: low to high</option>
             <option value="price_desc">Price: high to low</option>
+          </select>
+        </div>
+        <div>
+          <label className={label}>PIN code</label>
+          <input type="text" name="pin" defaultValue={initial.pin} placeholder="6-digit PIN" maxLength={6} pattern="[0-9]{6}" inputMode="numeric" className={field} />
+        </div>
+        <div>
+          <label className={label}>Auction from</label>
+          <input type="date" name="dateFrom" defaultValue={initial.dateFrom} className={field} />
+        </div>
+        <div>
+          <label className={label}>Auction to</label>
+          <input type="date" name="dateTo" defaultValue={initial.dateTo} className={field} />
+        </div>
+        <div>
+          <label className={label}>Possession</label>
+          <select name="possession" defaultValue={initial.possession ?? ""} className={field}>
+            <option value="">Any</option>
+            <option value="immediate">Immediate</option>
+            <option value="vacant">Vacant</option>
+            <option value="tenant">Tenant occupied</option>
+            <option value="mortgagor">Mortgagor occupied</option>
           </select>
         </div>
       </div>
