@@ -13,7 +13,12 @@ export default async function AdminLoginPage({
         <h1 className="text-xl font-semibold text-brand mb-1">Admin sign in</h1>
         <p className="text-sm text-brand-muted mb-6">BankAuction.co internal review dashboard</p>
 
-        {error && (
+        {error === "rate" && (
+          <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2 mb-4">
+            Too many sign-in attempts. Please wait 15 minutes and try again.
+          </div>
+        )}
+        {error && error !== "rate" && (
           <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2 mb-4">
             Incorrect email or password. Try again.
           </div>
@@ -23,12 +28,14 @@ export default async function AdminLoginPage({
           <input type="hidden" name="next" value={next ?? "/admin"} />
           <div>
             <label htmlFor="email" className="block text-sm font-medium mb-1">
-              Email <span className="text-brand-muted font-normal">(leave blank to sign in with the owner password)</span>
+              Email
             </label>
             <input
               id="email"
               name="email"
               type="email"
+              required
+              autoComplete="email"
               className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
             />
           </div>
