@@ -16,6 +16,8 @@ import BorrowerNote from "@/components/BorrowerNote";
 import { qualityOf } from "@/lib/map/mapPins";
 import { toPropertyCardData } from "@/lib/queries/listProperties";
 import { effectiveAuctionStatus } from "@/lib/domain/auctionLifecycle";
+import JsonLd from "@/components/JsonLd";
+import { SITE_URL } from "@/lib/seo";
 
 export const revalidate = 120;
 
@@ -148,8 +150,30 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
     .filter((a) => a.value && !HIDDEN_ATTRS.has(a.key))
     .map((a) => ({ key: a.key, label: a.key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()), value: a.value as string }));
 
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: property.title,
+    description: tidyText(property.description) || undefined,
+    url: `${SITE_URL}/property/${property.slug}`,
+    ...(property.media[0] ? { image: property.media[0].media.sourceUrl } : {}),
+    ...(auction?.reservePrice != null
+      ? { offers: { "@type": "Offer", price: Number(auction.reservePrice), priceCurrency: "INR", availability: "https://schema.org/InStock", seller: { "@type": "Organization", name: auction.bank?.name ?? "Bank" } } }
+      : {}),
+  };
+  const breadcrumbData = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+      { "@type": "ListItem", position: 2, name: "Properties", item: `${SITE_URL}/properties` },
+      { "@type": "ListItem", position: 3, name: property.title, item: `${SITE_URL}/property/${property.slug}` },
+    ],
+  };
+
   return (
     <main className="w-full px-5 lg:px-10 xl:px-16 py-10">
+      <JsonLd data={[structuredData, breadcrumbData]} />
       <nav className="text-xs text-brand-muted mb-4">
         <Link href="/" className="hover:text-brand">Home</Link> / <Link href="/properties" className="hover:text-brand">Properties</Link> / <span>{property.title}</span>
       </nav>

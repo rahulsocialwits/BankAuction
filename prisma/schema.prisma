@@ -881,6 +881,23 @@ model Payment {
   @@map("payments")
 }
 
+// Append-only audit trail for admin writes. Never delete rows.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?  // AdminUser.id; null for system actions
+  actorEmail String?
+  action     String   // e.g. "property.publish", "property.remove", "admin.create"
+  entityType String?  // e.g. "Property", "AdminUser"
+  entityId   String?
+  note       String?  @db.Text // JSON before/after or free text
+  createdAt  DateTime @default(now())
+
+  @@index([action, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@map("audit_logs")
+}
+
 model AiSettings {
   id              String   @id @default("default")
   enabled         Boolean  @default(true)

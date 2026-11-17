@@ -8,6 +8,7 @@ import { requireMaster } from "@/lib/auth/adminAuth";
 import { propertyWhere } from "@/lib/admin/propertyFilter";
 import { deriveAuctionStatusFromDates } from "@/lib/domain/deriveAuctionStatus";
 import { recordAuctionStatusChange } from "@/lib/pipeline/auctionEvents";
+import { writeAuditLog } from "@/lib/admin/auditLog";
 
 function refresh(slug?: string) {
   revalidatePath("/admin/properties");
@@ -25,6 +26,7 @@ export async function approveProperty(formData: FormData) {
   const id = idOf(formData);
   if (!id) return;
   const p = await prisma.property.update({ where: { id }, data: { status: "PUBLISHED" } });
+  await writeAuditLog({ action: "property.publish", entityType: "Property", entityId: id });
   refresh(p.slug);
 }
 
@@ -32,6 +34,7 @@ export async function rejectProperty(formData: FormData) {
   const id = idOf(formData);
   if (!id) return;
   const p = await prisma.property.update({ where: { id }, data: { status: "DRAFT" } });
+  await writeAuditLog({ action: "property.reject", entityType: "Property", entityId: id });
   refresh(p.slug);
 }
 
@@ -43,6 +46,7 @@ export async function removeProperty(formData: FormData) {
   const id = idOf(formData);
   if (!id) return;
   const p = await prisma.property.update({ where: { id }, data: { status: "REMOVED" } });
+  await writeAuditLog({ action: "property.remove", entityType: "Property", entityId: id });
   refresh(p.slug);
 }
 
