@@ -82,9 +82,12 @@ export default async function CityPage({ params, searchParams }: { params: Promi
       <h1 className="text-2xl sm:text-3xl font-bold text-brand mb-1">
         Bank Auction Properties in {match.city}
       </h1>
-      <p className="text-brand-muted text-sm mb-6">
+      <p className="text-brand-muted text-sm mb-1">
         {match.count.toLocaleString("en-IN")} active listing{match.count !== 1 ? "s" : ""}
         {total > match.count ? ` · ${total.toLocaleString("en-IN")} total (including ended)` : ""}
+      </p>
+      <p className="text-xs text-brand-muted mb-6 opacity-70">
+        As of {new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })} IST · updated every 5 min
       </p>
 
       {banks.length > 0 && (

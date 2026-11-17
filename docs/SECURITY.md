@@ -41,3 +41,40 @@ Held only in Vercel environment variables, GitHub repository secrets and the dev
 
 ## Database
 Prisma only (no raw SQL found in `src`); two URLs (`DATABASE_URL` pooled, `DIRECT_URL` direct). Restrict Supabase network access/RLS settings: NOT VERIFIED (outside the repo). Binary images are stored in the DB (`Bytes`) — keep upload limits (server actions body limit 4 MB, `next.config.ts`).
+
+## Dependency audit policy (WP11.5)
+
+**Policy:** Run `npm audit` on every PR via CI. Address findings according to severity:
+
+| Severity | Action | Deadline |
+|---|---|---|
+| critical | Block merge; patch or pin immediately | Before merge |
+| high | Patch within 7 days; document if no fix exists | Next sprint |
+| moderate | Track in backlog; patch within 30 days | Next release |
+| low / info | Log; address in quarterly review | Quarterly |
+
+**Process:**
+1. CI runs `npm audit --audit-level=moderate` and fails on moderate+ issues with no known fix.
+2. If a finding has no upstream fix, add it to `docs/known-vulnerabilities.md` with a mitigation note and suppression comment so CI stays green.
+3. Owner reviews `docs/known-vulnerabilities.md` monthly and decides whether to accept, mitigate, or escalate.
+
+**Known suppression format** (add to `docs/known-vulnerabilities.md` when needed):
+```
+## <package>@<version> — <CVE or advisory>
+Severity: high
+Path: <dependency chain>
+Description: <brief>
+Mitigation: <what we do to limit exposure>
+Accepted by: <owner, date>
+Next review: <date>
+```
+
+**Commands:**
+```bash
+npm audit                       # full report
+npm audit --audit-level=high    # exit non-zero on high+
+npm audit fix                   # auto-patch where possible
+npm audit fix --force           # patch with semver-major bumps (review carefully)
+```
+
+**Current status (2026-11-17):** `npm audit` output not captured in sandbox (network-limited environment). CI on every PR is the authoritative check. Owner: run `npm audit` once locally after the first deploy and document findings.
