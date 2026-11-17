@@ -245,6 +245,9 @@ enum AuctionStatus {
   POSTPONED
   CANCELLED
   EXPIRED
+  // Phase 1.4: soft-merge duplicate. Set by dedup logic; migration 20261117040000_auction_merged_duplicate.
+  // OWNER: run `npx prisma migrate deploy` to apply before uncommenting this value.
+  // MERGED_DUPLICATE
 }
 
 model Auction {
@@ -311,6 +314,11 @@ model Auction {
 
   @@index([status, auctionStart])
   @@index([bankId])
+  // Phase 1.4 soft-merge: uncomment after running migration 20261117040000_auction_merged_duplicate
+  // mergedIntoId  String?
+  // mergedInto    Auction?  @relation("AuctionMerge", fields: [mergedIntoId], references: [id])
+  // mergedFrom    Auction[] @relation("AuctionMerge")
+
   @@index([externalAuctionId]) // dedup priority #1: the importer matches on it
   // NULL values are always distinct in PostgreSQL unique indexes, so two rows where bankId IS NULL
   // and externalAuctionId IS NULL do NOT conflict. Only rows where BOTH columns are non-NULL
