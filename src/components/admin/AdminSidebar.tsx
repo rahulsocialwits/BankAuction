@@ -36,6 +36,7 @@ const NAV: NavItem[] = [
   { href: "/admin/api", label: "API", master: true },
   { href: "/admin/scrap-demo", label: "AI Python Scrap — DEMO", master: true },
   { href: "/admin/admins", label: "Admin Team", master: true },
+  { href: "/admin/support", label: "Support Tickets", master: false },
   { href: "/admin/audit", label: "Audit Log", master: true },
   { href: "/admin/settings", label: "Settings", master: true },
 ];

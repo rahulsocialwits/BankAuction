@@ -18,6 +18,7 @@ import { toPropertyCardData } from "@/lib/queries/listProperties";
 import { effectiveAuctionStatus } from "@/lib/domain/auctionLifecycle";
 import JsonLd from "@/components/JsonLd";
 import { SITE_URL } from "@/lib/seo";
+import { reportPropertyError } from "./actions";
 
 export const revalidate = 120;
 
@@ -105,8 +106,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   };
 }
 
-export default async function PropertyPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
+export default async function PropertyPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ reported?: string }> }) {
+  const [{ slug }, sp] = await Promise.all([params, searchParams]);
+  const reported = sp.reported === "1";
 
   const property = await prisma.property.findUnique({
     where: { slug },
@@ -368,6 +370,45 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
           <PropertyCarousel properties={similar.map(toPropertyCardData)} />
         </section>
       )}
+
+      <section className="mt-8 border border-brand-border rounded-2xl p-5">
+        {reported ? (
+          <p className="text-sm text-green-700 font-medium">Thank you — your report has been submitted. Our team will review it.</p>
+        ) : (
+          <details>
+            <summary className="text-sm text-brand-muted cursor-pointer hover:text-brand">Report an error in this listing</summary>
+            <form
+              action={async (formData: FormData) => {
+                "use server";
+                await reportPropertyError(slug, formData);
+              }}
+              className="mt-4 space-y-3"
+            >
+              <div>
+                <label className="block text-xs font-medium text-brand mb-1">What is wrong? <span className="text-red-500">*</span></label>
+                <select name="subject" required className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand">
+                  <option value="">Select a reason…</option>
+                  <option value="Wrong reserve price">Wrong reserve price</option>
+                  <option value="Wrong auction date">Wrong auction date</option>
+                  <option value="Wrong location / address">Wrong location / address</option>
+                  <option value="Listing already sold or withdrawn">Listing already sold or withdrawn</option>
+                  <option value="Duplicate listing">Duplicate listing</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-brand mb-1">Details</label>
+                <textarea name="body" rows={3} maxLength={2000} placeholder="Describe the error (optional)" className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand resize-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-brand mb-1">Your email (optional — for follow-up)</label>
+                <input name="email" type="email" className="w-full border border-brand-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+              </div>
+              <button type="submit" className="bg-brand text-white text-sm font-medium rounded-lg px-5 py-2 hover:bg-brand-dark">Submit report</button>
+            </form>
+          </details>
+        )}
+      </section>
 
       <section className="mt-10 bg-amber-50 border border-amber-200 rounded-2xl p-5 text-xs text-amber-900 leading-relaxed">
         <p className="font-semibold mb-1">Important Disclaimer</p>

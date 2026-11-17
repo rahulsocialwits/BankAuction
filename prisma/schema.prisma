@@ -220,6 +220,7 @@ model Property {
   sourceRecords    SourceRecord[]
   savedBy          SavedProperty[]
   leads            Lead[]
+  supportTickets   SupportTicket[]
 
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -911,4 +912,35 @@ model AiSettings {
   updatedAt       DateTime @updatedAt
 
   @@map("ai_settings")
+}
+
+// ---------------------------------------------------------------------------
+// Support tickets (WP16.4): users submit error reports from property pages.
+// ---------------------------------------------------------------------------
+
+enum TicketStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+model SupportTicket {
+  id          String        @id @default(cuid())
+  propertyId  String?
+  property    Property?     @relation(fields: [propertyId], references: [id])
+  reporterEmail String?
+  subject     String
+  body        String        @db.Text
+  status      TicketStatus  @default(OPEN)
+  resolvedAt  DateTime?
+  resolvedBy  String?       // AdminUser.id
+  resolution  String?       @db.Text
+  firstResponseAt DateTime? // SLA tracking: time from open to first admin note
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([status, createdAt])
+  @@index([propertyId])
+  @@map("support_tickets")
 }
