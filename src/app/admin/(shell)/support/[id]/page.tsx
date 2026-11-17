@@ -31,7 +31,7 @@ export default async function SupportTicketDetailPage({ params }: { params: Prom
     const updates: Record<string, unknown> = { status, updatedAt: new Date() };
     if ((status === "RESOLVED" || status === "CLOSED") && !ticket.resolvedAt) {
       updates.resolvedAt = new Date();
-      updates.resolvedBy = a.id;
+      updates.resolvedBy = admin?.adminId ?? null;
     }
     if (resolution) updates.resolution = resolution;
     if (!ticket.firstResponseAt && status !== "OPEN") {

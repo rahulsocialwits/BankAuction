@@ -11,7 +11,9 @@ Legend — Safe to share: **No** for every secret. "Public" means the value is e
 | `DIRECT_URL` | Prisma direct connection for `db push` / migrations | Yes for schema changes | `prisma/schema.prisma` `directUrl` | both | database credential | No |
 | `ADMIN_SESSION_SECRET` | HMAC key that signs the `admin_session` cookie (12 h) | **Yes** (admin login throws without it) | `lib/auth/adminSession.ts` | both | authentication secret | No |
 | `USER_SESSION_SECRET` | HMAC key for the visitor `user_session` cookie (30 days). Falls back to `ADMIN_SESSION_SECRET` | optional | `lib/auth/userSession.ts` | both | authentication secret | No |
-| `ADMIN_PASSWORD` | the **master admin password** (login form with an empty e-mail) | Yes (unless every admin is an `AdminUser` row) | `app/admin/login/actions.ts` | both | admin credential | No |
+| `ADMIN_SETUP_SECRET` | One-time secret that gates `POST /api/admin/setup` (the endpoint that creates the first master admin row). Set it once, call the endpoint, then leave it unset or rotate. | Setup only | `app/api/admin/setup/route.ts` | prod | bootstrap secret | No |
+| `MASTER_ADMIN_EMAIL` | Email for the initial master admin account. Used only by `/api/admin/setup` to create the first `admin_users` DB row; not read at runtime after setup. | Setup only | `app/api/admin/setup/route.ts` | local/prod | email (not secret in itself, but keep private) | No |
+| `MASTER_ADMIN_PASSWORD` | Password for the initial master admin. Must be ≥12 chars. Used only by `/api/admin/setup`; the hash is stored in the DB. | Setup only | `app/api/admin/setup/route.ts` | local/prod | admin credential | No |
 | `CRON_SECRET` | authenticates `/api/cron/ingest` (`?secret=`, `x-cron-secret`, or Bearer). Must also be the GitHub Actions secret of the same name | **Yes** for the scheduler | `app/api/cron/ingest/route.ts`; `.github/workflows/tick.yml` | prod + GitHub | cron secret | No |
 | `AI_API_KEY` | key of the AI provider "Relay Models" | Yes for any AI step | `lib/ai/aiConfig.ts` (always supplies the key) | prod (local `.env` may hold a non-working key) | AI key | No |
 | `AI_BASE_URL` | base URL of the OpenAI-compatible API (`<base>/chat/completions`) | Yes for AI | `lib/ai/aiConfig.ts` | both | config (not secret) but keep private | Avoid |
@@ -19,6 +21,10 @@ Legend — Safe to share: **No** for every secret. "Public" means the value is e
 | `RAZORPAY_KEY_ID` | Razorpay key id (fallback to the id saved in `PaymentSettings`) | optional (payments not live) | `admin/(shell)/payments/actions.ts` | prod | payment key id | No |
 | `RAZORPAY_KEY_SECRET` | Razorpay secret (connection test only; no checkout code) | optional | same | prod | payment secret | No |
 | `RAZORPAY_WEBHOOK_SECRET` | referenced by the payments screen (no webhook route exists) | optional | `payments/page.tsx` | prod | payment secret | No |
+| `AI_DAILY_TOKEN_CAP` | Daily token budget (tokens per rolling 24 h). Unset or 0 = default 50,000. When reached, AI calls return an error and are skipped; non-AI ingestion continues. | optional | `lib/ai/dailyBudget.ts` | both | config | Yes |
+| `ADMIN_ALERT_EMAIL` | Destination address for operational email alerts (zero-yield, ingestion anomalies). No alerts are sent unless `RESEND_API_KEY` and `MAIL_FROM` are also set. | optional | `lib/pipeline/zeroYieldAlertMonitor.ts` | prod | email address | No |
+| `RESEND_API_KEY` | API key for Resend email delivery. Required for any outbound email (alerts, etc.) | optional | `lib/mail.ts` | prod | API key | No |
+| `MAIL_FROM` | Sender address used by Resend (must be a verified address in your Resend account) | optional | `lib/mail.ts` | prod | email address | Yes (but keep private) |
 | `RENDER_JS_PAGES` | `0` switches the JavaScript render fallback off (default on) | optional | `feeds/deepScan.ts` | both | switch | Yes |
 | `SCRAP_DEMO_CHROME_PATH` | explicit Chromium/Chrome path for the render fallback (local development) | optional | `lib/scrapDemo/browser.ts` | local | path | Yes |
 | `NODE_ENV` | set by Next/Vercel; `secure` flag of the admin cookie in production | automatic | `admin/login/actions.ts` | both | system | Yes |

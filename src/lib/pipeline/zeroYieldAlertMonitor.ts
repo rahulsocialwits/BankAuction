@@ -15,6 +15,7 @@ import { prisma } from "@/lib/db/prisma";
 import { advanceAlertState, alertStateOf, verdictNote, withAlertState } from "./zeroYieldAlert";
 import { logRun } from "./runLog";
 import { isYieldProblem, type YieldVerdict } from "./zeroYield";
+import { sendMail } from "@/lib/mail";
 
 /**
  * Update the per-source alert suppression state and fire an alert row when warranted.
@@ -50,14 +51,23 @@ export async function notifyZeroYield(feedId: string, sourceName: string, verdic
     // Write the run-log row outside the transaction: logRun reads historical runs and
     // has its own writes; keeping it inside would hold the row lock too long.
     if (shouldFireAlert && firedVerdict && isYieldProblem(firedVerdict)) {
-      // TODO: also send an email to process.env.ADMIN_ALERT_EMAIL when a provider is approved.
+      const alertMsg = `Zero-yield alert: source entered ${firedVerdict}. ${verdictNote(firedVerdict)} Suppression resets on recovery to PRODUCTIVE.`;
       await logRun({
         source: sourceName,
         kind: "alert",
         trigger: "schedule",
         status: "ok",
-        message: `Zero-yield alert: source entered ${firedVerdict}. ${verdictNote(firedVerdict)} Suppression resets on recovery to PRODUCTIVE.`,
+        message: alertMsg,
       });
+      const alertEmail = process.env.ADMIN_ALERT_EMAIL?.trim();
+      if (alertEmail) {
+        // Fire-and-forget; a mail delivery failure must not break a run.
+        sendMail(
+          alertEmail,
+          `[BankAuction] Zero-yield alert: ${sourceName}`,
+          `Source: ${sourceName}\nVerdict: ${firedVerdict}\n\n${alertMsg}\n\nCheck Admin → Engine → History for details.`,
+        ).catch(() => undefined);
+      }
     }
   } catch {
     /* alert delivery must not break a run */
