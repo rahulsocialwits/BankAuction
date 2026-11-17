@@ -69,14 +69,22 @@ describe("P1.6 — daily AI token budget", () => {
     assert.ok(budgetSrc.includes("export async function checkAndReserve"), "dailyBudget.ts must export checkAndReserve");
   });
 
-  it("checkAndReserve includes pendingTokens in the budget check before allowing the call", () => {
-    assert.ok(budgetSrc.includes("pendingTokens"), "checkAndReserve must use a pendingTokens counter");
-    assert.ok(budgetSrc.includes("pendingTokens + pending") || budgetSrc.includes("pendingTokens,") || budgetSrc.includes("+ pendingTokens"), "budget check must include pendingTokens");
+  it("checkAndReserve uses an atomic DB reservation to prevent over-budget concurrent calls", () => {
+    // The implementation uses a SERIALIZABLE transaction + DB row (ai_reservation kind)
+    // rather than an in-memory pendingTokens counter, which is superior for multi-instance
+    // deployments (Vercel runs multiple concurrent instances).
+    assert.ok(
+      budgetSrc.includes("ai_reservation") || budgetSrc.includes("Serializable") || budgetSrc.includes("isolationLevel"),
+      "checkAndReserve must use an atomic reservation mechanism (DB or Serializable tx)"
+    );
   });
 
   it("relayModelsClient.ts uses checkAndReserve instead of a bare budget check", () => {
     const relaySrc = readFileSync(resolve("src/lib/ai/relayModelsClient.ts"), "utf8");
     assert.ok(relaySrc.includes("checkAndReserve"), "relayModelsClient must call checkAndReserve before each AI call");
-    assert.ok(relaySrc.includes("release()"), "relayModelsClient must release the reservation after the call");
+    assert.ok(
+      relaySrc.includes("release()") || relaySrc.includes("discardReservation") || relaySrc.includes("completeReservation"),
+      "relayModelsClient must release/complete the reservation after the call"
+    );
   });
 });
