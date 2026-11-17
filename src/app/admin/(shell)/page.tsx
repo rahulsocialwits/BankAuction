@@ -7,10 +7,11 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
   const master = await isMasterAdmin();
-  const startOfToday = new Date();
+  const now = new Date();
+  const startOfToday = new Date(now);
   startOfToday.setHours(0, 0, 0, 0);
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 3600_000);
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600_000);
+  const twentyFourHoursAgo = new Date(now.getTime() - 24 * 3600_000);
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 3600_000);
 
   const [
     totalProperties,
@@ -82,7 +83,7 @@ export default async function AdminDashboardPage() {
   const pausedSources = (sources as { status: string }[]).filter((s) => s.status === "PAUSED" || s.status === "DISABLED").length;
   const blockedSources = (sources as { status: string }[]).filter((s) => s.status === "BLOCKED" || s.status === "RESTRICTED" || s.status === "FAILED").length;
 
-  const schedulerLate = !lastSuccessfulTick || (Date.now() - new Date(lastSuccessfulTick.startedAt).getTime()) > 60 * 60_000;
+  const schedulerLate = !lastSuccessfulTick || (now.getTime() - new Date(lastSuccessfulTick.startedAt).getTime()) > 60 * 60_000;
 
   const propertyCards = [
     { label: "Total Properties", value: totalProperties, href: "/admin/properties", tone: "text-brand" },
@@ -121,7 +122,7 @@ export default async function AdminDashboardPage() {
 
   function timeAgo(d: Date | null | undefined): string {
     if (!d) return "Never";
-    const mins = Math.floor((Date.now() - new Date(d).getTime()) / 60_000);
+    const mins = Math.floor((now.getTime() - new Date(d).getTime()) / 60_000);
     if (mins < 2) return "Just now";
     if (mins < 60) return `${mins} min ago`;
     const hrs = Math.floor(mins / 60);

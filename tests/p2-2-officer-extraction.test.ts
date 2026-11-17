@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { extractEmail, extractDesignation } from "../src/lib/normalization/parsers";
 
 describe("extractEmail", () => {
@@ -59,7 +60,7 @@ describe("extractDesignation", () => {
 
 describe("normalize.ts wires officer fields", () => {
   it("NormalizedAuctionRecord includes officerDesignation and officerEmail fields", () => {
-    const src = require("fs").readFileSync("src/data-sources/bankauctions/normalize.ts", "utf8");
+    const src = readFileSync("src/data-sources/bankauctions/normalize.ts", "utf8");
     assert.match(src, /officerDesignation\s*:/);
     assert.match(src, /officerEmail\s*:/);
     assert.match(src, /extractDesignation/);
@@ -67,13 +68,13 @@ describe("normalize.ts wires officer fields", () => {
   });
 
   it("adapter.ts writes officerDesignation at every Prisma auction write", () => {
-    const src = require("fs").readFileSync("src/data-sources/bankauctions/adapter.ts", "utf8");
+    const src = readFileSync("src/data-sources/bankauctions/adapter.ts", "utf8");
     const matches = [...src.matchAll(/officerDesignation\s*:/g)];
     assert.ok(matches.length >= 3, `Expected at least 3 officerDesignation writes, found ${matches.length}`);
   });
 
   it("adapter.ts writes officerEmail at every Prisma auction write", () => {
-    const src = require("fs").readFileSync("src/data-sources/bankauctions/adapter.ts", "utf8");
+    const src = readFileSync("src/data-sources/bankauctions/adapter.ts", "utf8");
     const matches = [...src.matchAll(/officerEmail\s*:/g)];
     assert.ok(matches.length >= 3, `Expected at least 3 officerEmail writes, found ${matches.length}`);
   });
