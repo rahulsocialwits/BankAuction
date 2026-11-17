@@ -20,6 +20,7 @@ interface Props {
     priceMin?: string;
     priceMax?: string;
     view?: string;
+    sort?: string;
   };
 }
 
@@ -161,6 +162,16 @@ export default function PropertyFilterForm({ localities, places, banks, categori
             <label className={label}>Max ₹</label>
             <input type="number" name="priceMax" defaultValue={initial.priceMax} placeholder="Any" className={field} />
           </div>
+        </div>
+        <div>
+          <label className={label}>Sort by</label>
+          <select name="sort" defaultValue={initial.sort ?? "relevance"} className={field}>
+            <option value="relevance">Relevance</option>
+            <option value="newest">Newest first</option>
+            <option value="deadline">Auction deadline</option>
+            <option value="price_asc">Price: low to high</option>
+            <option value="price_desc">Price: high to low</option>
+          </select>
         </div>
       </div>
       <div className={`${open ? "flex" : "hidden"} md:flex items-center gap-3 mt-4`}>

@@ -344,6 +344,18 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
           <PropertyCarousel properties={similar.map(toPropertyCardData)} />
         </section>
       )}
+
+      <section className="mt-10 bg-amber-50 border border-amber-200 rounded-2xl p-5 text-xs text-amber-900 leading-relaxed">
+        <p className="font-semibold mb-1">Important Disclaimer</p>
+        <p>
+          BankAuction.co aggregates auction notices from public sources for informational purposes only.
+          Details shown here — including reserve price, auction date, EMD and possession status — are sourced from bank or institutional notices and may change.
+          Always verify all details against the official auction notice and bank documents before participating.
+          BankAuction.co does not represent any bank, financial institution or borrower, and does not guarantee the accuracy or completeness of any listing.
+          This is not a legal, financial or investment advice platform.
+          Participation in a bank auction involves legal and financial risk. Seek independent professional advice before bidding.
+        </p>
+      </section>
     </main>
   );
 }

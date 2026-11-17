@@ -8,15 +8,27 @@ import { publishedWhere, type PropertyFilters } from "@/lib/queries/publishedWhe
 export { publishedWhere };
 export type { PropertyFilters, StatusGroup } from "@/lib/queries/publishedWhere";
 
+export type SortOption = "relevance" | "newest" | "deadline" | "price_asc" | "price_desc";
+
+type PrismaOrderBy = { createdAt?: "asc" | "desc"; id?: "asc" | "desc"; media?: { _count: "asc" | "desc" } } | { auctions?: { _count: "asc" | "desc" } };
+
+function sortOrderBy(sort: SortOption): PrismaOrderBy[] {
+  if (sort === "newest") return [{ createdAt: "desc" }, { id: "desc" }];
+  // deadline / price sorts: Prisma doesn't support ordering by related-row fields directly at the property level,
+  // so fall back to relevance (photos-first, newest) with id tiebreak for these advanced options.
+  // A future migration can add denormalised columns (nextAuctionDate, lowestReservePrice) to Property for these.
+  return [{ media: { _count: "desc" } }, { createdAt: "desc" }, { id: "desc" }];
+}
+
 export function countPublishedProperties(filters: PropertyFilters = {}) {
   return prisma.property.count({ where: publishedWhere(filters) });
 }
 
-export async function listPublishedProperties(filters: PropertyFilters = {}, take = 24, skip = 0) {
+export async function listPublishedProperties(filters: PropertyFilters = {}, take = 24, skip = 0, sort: SortOption = "relevance") {
   return prisma.property.findMany({
     where: publishedWhere(filters),
     // Listings with photos first (a page of grey placeholders looks broken), then newest; `id` makes the order total, so page 2 never repeats page 1.
-    orderBy: [{ media: { _count: "desc" } }, { createdAt: "desc" }, { id: "desc" }],
+    orderBy: sortOrderBy(sort),
     take,
     skip,
     include: { auctions: { include: { bank: true }, orderBy: { createdAt: "desc" }, take: 1 }, media: { include: { media: true }, orderBy: { sortOrder: "asc" }, take: 1 } },
