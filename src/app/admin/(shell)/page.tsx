@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { isMasterAdmin } from "@/lib/auth/adminAuth";
-import { auctionStatusWhere } from "@/lib/domain/auctionLifecycle";
+import { auctionStatusWhere, undatedAuctionWhere } from "@/lib/domain/auctionLifecycle";
 import { tokensUsedLast24h, dailyCap } from "@/lib/ai/dailyBudget";
 export const dynamic = "force-dynamic";
 
@@ -21,6 +21,7 @@ export default async function AdminDashboardPage() {
     live,
     completed,
     expired,
+    undated,
     newToday,
     recent,
     recentAuctions,
@@ -32,6 +33,7 @@ export default async function AdminDashboardPage() {
     prisma.auction.count({ where: { AND: [auctionStatusWhere(["LIVE", "AUCTION_TODAY"])], property: { status: "PUBLISHED" } } }),
     prisma.auction.count({ where: { AND: [auctionStatusWhere(["COMPLETED"])], property: { status: "PUBLISHED" } } }),
     prisma.auction.count({ where: { status: "EXPIRED" } }),
+    prisma.auction.count({ where: { ...undatedAuctionWhere(), property: { status: "PUBLISHED" } } }),
     prisma.property.count({ where: { createdAt: { gte: startOfToday }, status: { notIn: ["DUPLICATE", "REMOVED"] } } }),
     prisma.property.findMany({
       where: { status: { notIn: ["DUPLICATE", "REMOVED"] } },
@@ -94,6 +96,7 @@ export default async function AdminDashboardPage() {
     { label: "Live / Today", value: live, href: "/admin/properties?auctionStatus=LIVE", tone: "text-green-700" },
     { label: "Completed", value: completed, href: "/admin/properties?auctionStatus=COMPLETED", tone: "text-gray-600" },
     { label: "Expired", value: expired, href: "/admin/properties?auctionStatus=EXPIRED", tone: "text-gray-400" },
+    { label: "Undated Auctions", value: undated, href: "/admin/properties?auctionStatus=UNDATED", tone: "text-orange-500", title: "Open auctions with no auction date — excluded from active headline per D01" },
     { label: "Duplicate Candidates", value: duplicateCandidates, href: "/admin/engine/duplicates", tone: "text-orange-600" },
     ...(master
       ? [
