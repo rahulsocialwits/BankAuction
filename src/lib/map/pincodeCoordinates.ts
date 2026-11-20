@@ -23,8 +23,6 @@ const GAP_MS = 1_100;
 const MAX_KM_FROM_CITY = 65;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const norm = (x: string) => x.toLowerCase().replace(/[^a-z]/g, "");
-// The PIN pattern is passed to Postgres as a value (a word-bounded 6-digit number), not typed inside the SQL text.
-const PIN_RE = String.raw`\m[1-9][0-9]{5}\M`;
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 /** The 6-digit Indian PIN in an address (the last one), or null. */
@@ -75,15 +73,39 @@ export async function fillPincodeCoordinates(opts: { maxPins?: number; budgetMs?
   const deadline = Date.now() + (opts.budgetMs ?? 15_000);
   const say = opts.onLog ?? (() => undefined);
   const cityFilter = opts.city ?? null;
-  const groups = await prisma.$queryRaw<{ pin: string; city: string; state: string; n: bigint }[]>`
-    select substring(p."addressText" from ${PIN_RE}::text) as pin, p."geoCity" as city, p."geoState" as state, count(*)::bigint as n
-    from properties p
-    where p.status = 'PUBLISHED' and p."geoCity" is not null and p."geoState" is not null
-      and p."addressText" ~ ${PIN_RE}::text
-      and (${cityFilter}::text is null or p."geoCity" = ${cityFilter})
-      and (p.latitude is null or exists (select 1 from property_attributes a where a."propertyId" = p.id and a.key = 'coord_quality' and a.value = 'city_centroid'))
-      and not exists (select 1 from property_attributes a where a."propertyId" = p.id and a.key = 'pin_geocode')
-    group by 1, 2, 3 order by n desc limit 3000`;
+  // Fetch candidate properties and group by PIN in JavaScript (replaces PostgreSQL-specific $queryRaw).
+  const candidateProps = await prisma.property.findMany({
+    where: {
+      status: "PUBLISHED",
+      geoCity: { not: null },
+      geoState: { not: null },
+      addressText: { not: null },
+      ...(cityFilter ? { geoCity: cityFilter } : {}),
+    },
+    select: {
+      id: true,
+      addressText: true,
+      geoCity: true,
+      geoState: true,
+      latitude: true,
+      attributes: { where: { key: { in: ["coord_quality", "pin_geocode"] } }, select: { key: true, value: true } },
+    },
+  });
+  const pinMap = new Map<string, { pin: string; city: string; state: string; n: number; ids: string[] }>();
+  for (const p of candidateProps) {
+    const pin = extractPin(p.addressText);
+    if (!pin) continue;
+    if (p.attributes.some((a) => a.key === "pin_geocode")) continue;
+    const isLatNull = p.latitude == null;
+    const isCityCentroid = p.attributes.some((a) => a.key === "coord_quality" && a.value === "city_centroid");
+    if (!isLatNull && !isCityCentroid) continue;
+    const key = `${pin}|${p.geoCity}|${p.geoState}`;
+    if (!pinMap.has(key)) pinMap.set(key, { pin, city: p.geoCity!, state: p.geoState!, n: 0, ids: [] });
+    const group = pinMap.get(key)!;
+    group.n++;
+    group.ids.push(p.id);
+  }
+  const groups = [...pinMap.values()].sort((a, b) => b.n - a.n).slice(0, 3000);
   out.pending = groups.length;
   for (const g of groups) {
     if (Date.now() > deadline || out.pinsTried >= (opts.maxPins ?? 8)) break;
@@ -97,11 +119,7 @@ export async function fillPincodeCoordinates(opts: { maxPins?: number; budgetMs?
       say(`lookup failed for ${g.pin}: ${e instanceof Error ? e.message : e}`);
       break; // a provider problem: stop and try again on the next run (nothing is remembered)
     }
-    const ids = (await prisma.$queryRaw<{ id: string }[]>`
-      select p.id from properties p
-      where p.status = 'PUBLISHED' and p."geoCity" = ${g.city} and p."geoState" = ${g.state} and substring(p."addressText" from ${PIN_RE}::text) = ${g.pin}
-        and (p.latitude is null or exists (select 1 from property_attributes a where a."propertyId" = p.id and a.key = 'coord_quality' and a.value = 'city_centroid'))
-        and not exists (select 1 from property_attributes a where a."propertyId" = p.id and a.key = 'pin_geocode')`).map((r) => r.id);
+    const ids = g.ids; // already filtered above, no second query needed
     const word = `propert${ids.length === 1 ? "y" : "ies"}`;
     if ("found" in result) {
       out.placed++;
