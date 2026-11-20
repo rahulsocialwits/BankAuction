@@ -44,11 +44,14 @@ export async function fillCityCoordinates(opts: { maxCities?: number; budgetMs?:
   const deadline = Date.now() + (opts.budgetMs ?? 30_000);
   const say = opts.onLog ?? (() => undefined);
   const out = { cities: 0, resolved: 0, unresolved: 0, propertiesUpdated: 0, pending: 0 };
-  const pairs = await prisma.$queryRaw<{ city: string; state: string; n: bigint }[]>`
-    select "geoCity" as city, "geoState" as state, count(*)::bigint as n
-    from properties
-    where status = 'PUBLISHED' and latitude is null and "geoCity" is not null and "geoState" is not null
-    group by 1, 2 order by n desc limit 4000`;
+  const groups = await prisma.property.groupBy({
+    by: ["geoCity", "geoState"],
+    where: { status: "PUBLISHED", latitude: null, geoCity: { not: null }, geoState: { not: null } },
+    _count: { _all: true },
+    orderBy: { _count: { geoCity: "desc" } },
+    take: 4000,
+  });
+  const pairs = groups.map((g) => ({ city: g.geoCity!, state: g.geoState!, n: BigInt(g._count._all) }));
   out.pending = pairs.length;
   let lookups = 0;
   for (const p of pairs) {

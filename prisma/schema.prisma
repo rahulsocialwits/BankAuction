@@ -1,19 +1,25 @@
 // BankAuction.co — core database schema
-// Postgres via Supabase now, portable to Postgres on Hostinger later.
+// MongoDB Atlas via Prisma (migrated from Supabase PostgreSQL).
 // Design notes:
 // - Fixed columns cover the common, always-relevant fields per the spec.
 // - PropertyAttribute is an EAV table for category-specific fields (Khasra, BHK, vehicle make, etc.)
 //   so we never add a column for a field that only applies to one property type.
 // - Every ingested fact keeps provenance back to a SourceRecord.
+// - MongoDB migration notes:
+//   - All @id fields use @map("_id") to map to MongoDB's _id field.
+//   - Composite @@id join tables converted to @@unique with synthetic id field.
+//   - GIN trigram indexes removed (use Atlas Search for full-text queries).
+//   - @db.Decimal replaced with Float (MongoDB has no SQL Decimal type).
+//   - @db.Text annotations removed (no-op in MongoDB).
+//   - directUrl removed (MongoDB does not use a direct connection URL).
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "mongodb"
+  url      = env("MONGODB_URL")
 }
 
 // ---------------------------------------------------------------------------
@@ -21,7 +27,7 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model State {
-  id        String     @id @default(cuid())
+  id        String     @id @default(cuid()) @map("_id")
   name      String     @unique
   slug      String     @unique
   districts District[]
@@ -32,7 +38,7 @@ model State {
 }
 
 model District {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   name      String
   slug      String
   stateId   String
@@ -45,7 +51,7 @@ model District {
 }
 
 model City {
-  id           String      @id @default(cuid())
+  id           String      @id @default(cuid()) @map("_id")
   name         String
   slug         String      @unique
   stateId      String
@@ -66,10 +72,10 @@ model City {
 // ---------------------------------------------------------------------------
 
 model Bank {
-  id          String       @id @default(cuid())
+  id          String       @id @default(cuid()) @map("_id")
   name        String       @unique
   slug        String       @unique
-  shortCode   String?      // e.g. SBI, PNB, HDFC
+  shortCode   String?
   logoUrl     String?
   website     String?
   branches    BankBranch[]
@@ -81,7 +87,7 @@ model Bank {
 }
 
 model BankBranch {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   bankId    String
   bank      Bank     @relation(fields: [bankId], references: [id])
   name      String
@@ -111,9 +117,9 @@ enum PropertyCategory {
 }
 
 model PropertyType {
-  id        String            @id @default(cuid())
+  id        String            @id @default(cuid()) @map("_id")
   category  PropertyCategory
-  name      String            // e.g. "Apartment / Flat", "Warehouse", "Truck"
+  name      String
   slug      String            @unique
   subtypes  PropertySubtype[]
   properties Property[]
@@ -123,7 +129,7 @@ model PropertyType {
 }
 
 model PropertySubtype {
-  id             String       @id @default(cuid())
+  id             String       @id @default(cuid()) @map("_id")
   propertyTypeId String
   propertyType   PropertyType @relation(fields: [propertyTypeId], references: [id])
   name           String
@@ -136,7 +142,7 @@ model PropertySubtype {
 }
 
 model Amenity {
-  id         String              @id @default(cuid())
+  id         String              @id @default(cuid()) @map("_id")
   name       String              @unique
   slug       String              @unique
   properties PropertyAmenity[]
@@ -144,26 +150,26 @@ model Amenity {
   @@map("amenities")
 }
 
+// Composite @@id converted to synthetic id + @@unique for MongoDB compatibility.
 model PropertyAmenity {
+  id         String   @id @default(cuid()) @map("_id")
   propertyId String
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   amenityId  String
   amenity    Amenity  @relation(fields: [amenityId], references: [id])
 
-  @@id([propertyId, amenityId])
+  @@unique([propertyId, amenityId])
   @@map("property_amenities")
 }
 
-// EAV table for fields that only apply to some categories (Khasra, BHK, vehicle make/model, etc.)
-// value is stored as text; validation/normalization layer is responsible for typed parsing.
 model PropertyAttribute {
-  id             String    @id @default(cuid())
+  id             String    @id @default(cuid()) @map("_id")
   propertyId     String
   property       Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  key            String    // e.g. "bhk", "khasra_number", "vehicle_make"
+  key            String
   value          String?
-  unit           String?   // e.g. "sqft", "bigha"
-  isKnown        Boolean   @default(true) // false => explicitly "Not Available" from source
+  unit           String?
+  isKnown        Boolean   @default(true)
   sourceRecordId String?
   sourceRecord   SourceRecord? @relation(fields: [sourceRecordId], references: [id])
   createdAt      DateTime  @default(now())
@@ -182,14 +188,14 @@ enum PropertyStatus {
   PUBLISHED
   DUPLICATE
   EXPIRED
-  REMOVED // hidden by an admin; re-imports never bring it back
+  REMOVED
 }
 
 model Property {
-  id               String            @id @default(cuid())
+  id               String            @id @default(cuid()) @map("_id")
   slug             String            @unique
   title            String
-  description      String?           @db.Text
+  description      String?
   category         PropertyCategory?
   propertyTypeId   String?
   propertyType     PropertyType?     @relation(fields: [propertyTypeId], references: [id])
@@ -198,14 +204,13 @@ model Property {
 
   cityId           String?
   city             City?             @relation(fields: [cityId], references: [id])
-  addressText      String?           // raw source address, never geocoded/invented
+  addressText      String?
   latitude         Float?
   longitude        Float?
 
   status           PropertyStatus    @default(PENDING_REVIEW)
-  extractionConfidence Float?        // 0..1, null if not AI-derived
+  extractionConfidence Float?
 
-  // AI-verified place, used by the City / Area filters (addressText stays the raw source text)
   geoCity          String?
   geoLocality      String?
   geoState         String?
@@ -220,6 +225,7 @@ model Property {
   sourceRecords    SourceRecord[]
   savedBy          SavedProperty[]
   leads            Lead[]
+  supportTickets   SupportTicket[]
 
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -227,6 +233,8 @@ model Property {
   @@index([category, status])
   @@index([cityId])
   @@index([geoCity])
+  // Full-text search: add Atlas Search index on title, description, addressText, geoCity, geoLocality
+  // via MongoDB Atlas UI (replaces the removed PostgreSQL GIN trigram indexes).
   @@map("properties")
 }
 
@@ -241,7 +249,7 @@ enum AuctionStatus {
 }
 
 model Auction {
-  id                    String        @id @default(cuid())
+  id                    String        @id @default(cuid()) @map("_id")
   propertyId            String
   property              Property      @relation(fields: [propertyId], references: [id])
 
@@ -250,8 +258,8 @@ model Auction {
   branchId              String?
   branch                BankBranch?   @relation(fields: [branchId], references: [id])
 
-  externalAuctionId     String?       // ID as given by the source, used for dedup priority #1
-  noticeNumber          String?       // dedup priority #2
+  externalAuctionId     String?
+  noticeNumber          String?
   auctionType           String?
   auctionMethod         String?
 
@@ -261,9 +269,11 @@ model Auction {
   officerEmail          String?
   borrower              String?
 
-  reservePrice          Decimal?      @db.Decimal(14, 2)
-  emd                   Decimal?      @db.Decimal(14, 2)
-  minimumIncrement      Decimal?      @db.Decimal(14, 2)
+  // Float replaces Decimal @db.Decimal — MongoDB has no SQL Decimal type.
+  // Monetary values stored as Float (precision sufficient for INR auction amounts).
+  reservePrice          Float?
+  emd                   Float?
+  minimumIncrement      Float?
 
   auctionStart          DateTime?
   auctionEnd            DateTime?
@@ -274,6 +284,14 @@ model Auction {
   inspectionLocation    String?
   inspectionContact     String?
 
+  unitOrDoorNumber      String?
+  floorNumber           String?
+  buildingName          String?
+  surveyOrKhasra        String?
+  plotNumber            String?
+  areaSqft              Float?
+  areaType              String?
+
   possessionStatus      String?
   dscRequired           Boolean?
   acceptReserveAsFirstBid Boolean?
@@ -282,7 +300,7 @@ model Auction {
   extensionTrigger      String?
 
   status                AuctionStatus @default(UPCOMING)
-  statusSource          String?       // "source_explicit" | "date_derived"
+  statusSource          String?
 
   sourceUrl             String?
 
@@ -295,18 +313,16 @@ model Auction {
 
   @@index([status, auctionStart])
   @@index([bankId])
-  @@index([externalAuctionId]) // dedup priority #1: the importer matches on it
-  // NULL values are always distinct in PostgreSQL unique indexes, so two rows where bankId IS NULL
-  // and externalAuctionId IS NULL do NOT conflict. Only rows where BOTH columns are non-NULL
-  // and equal trigger a P2002. Re-auction rounds are already blocked at application level
-  // (addReauctionRound returns false when the external ID matches an existing round for the bank).
+  @@index([externalAuctionId])
+  // NOTE: MongoDB nulls participate in uniqueness (unlike PostgreSQL where two NULLs are always distinct).
+  // Rows with bankId=null AND externalAuctionId=null will conflict. The dedup logic ensures at most one
+  // null-null row exists; if that changes this constraint must become a sparse index via Atlas UI.
   @@unique([bankId, externalAuctionId])
   @@map("auctions")
 }
 
-// Discrete status-transition history for an auction (e.g. UPCOMING -> POSTPONED)
 model AuctionEvent {
-  id         String        @id @default(cuid())
+  id         String        @id @default(cuid()) @map("_id")
   auctionId  String
   auction    Auction       @relation(fields: [auctionId], references: [id])
   fromStatus AuctionStatus?
@@ -319,21 +335,19 @@ model AuctionEvent {
   @@map("auction_events")
 }
 
-// Field-level change log (price changed, date changed, document replaced, etc.)
 model PropertyChange {
-  id             String    @id @default(cuid())
+  id             String    @id @default(cuid()) @map("_id")
   propertyId     String?
   property       Property? @relation(fields: [propertyId], references: [id])
   auctionId      String?
   auction        Auction?  @relation(fields: [auctionId], references: [id])
-  field          String    // e.g. "reserve_price", "auction_start", "status"
+  field          String
   oldValue       String?
   newValue       String?
   sourceRecordId String?
   sourceRecord   SourceRecord? @relation(fields: [sourceRecordId], references: [id])
   detectedAt     DateTime  @default(now())
 
-  // Without these two, every provenance read (fieldObservations.latest) scanned the whole table: 71,898 calls, 3,312 s in total (pg_stat_statements, 13 Oct 2026).
   @@index([propertyId, detectedAt(sort: Desc)])
   @@index([auctionId])
   @@map("property_changes")
@@ -348,16 +362,16 @@ enum SourceStatus {
   WARNING
   FAILED
   DISABLED
-  RESTRICTED // access verified as not permitted; adapter exists but does not fetch
+  RESTRICTED
 }
 
 model Source {
-  id               String        @id @default(cuid())
+  id               String        @id @default(cuid()) @map("_id")
   name             String        @unique
   baseUrl          String
   status           SourceStatus  @default(RESTRICTED)
-  robotsAllowed    Boolean?      // result of last robots.txt check
-  accessNotes      String?       @db.Text // why restricted/healthy, ToS notes, etc.
+  robotsAllowed    Boolean?
+  accessNotes      String?
   lastSuccessfulSync DateTime?
   lastAttemptedSync  DateTime?
   records          SourceRecord[]
@@ -376,19 +390,17 @@ enum SourceRecordStatus {
   IGNORED
 }
 
-// One raw fetched page/record from a source. Multiple SourceRecords (from different
-// sources, or re-fetches of the same URL) can point at the same normalized Property/Auction.
 model SourceRecord {
-  id              String             @id @default(cuid())
+  id              String             @id @default(cuid()) @map("_id")
   sourceId        String
   source          Source             @relation(fields: [sourceId], references: [id])
   sourceUrl       String
   externalId      String?
-  contentHash     String?            // hash of fetched content, used to skip unchanged pages
+  contentHash     String?
   etag            String?
   lastModified    String?
-  rawData         Json?              // raw extracted fields prior to normalization
-  extractionMethod String?           // "html_parser" | "ai" | "ocr_ai"
+  rawData         Json?
+  extractionMethod String?
   aiProvider      String?
   aiModel         String?
   extractionConfidence Float?
@@ -405,6 +417,8 @@ model SourceRecord {
   auctionEvents   AuctionEvent[]
   propertyChanges PropertyChange[]
 
+  sourcePublishedAt DateTime?
+
   firstSeenAt     DateTime           @default(now())
   lastSeenAt      DateTime           @default(now())
   lastCheckedAt   DateTime           @default(now())
@@ -415,7 +429,7 @@ model SourceRecord {
 }
 
 model ImportJob {
-  id                String    @id @default(cuid())
+  id                String    @id @default(cuid()) @map("_id")
   sourceId          String
   source            Source    @relation(fields: [sourceId], references: [id])
   startedAt         DateTime  @default(now())
@@ -431,7 +445,7 @@ model ImportJob {
   duplicatesFound   Int       @default(0)
   failures          Int       @default(0)
   errorLog          Json?
-  triggeredBy       String?   // "schedule" | "manual"
+  triggeredBy       String?
 
   @@map("import_jobs")
 }
@@ -456,11 +470,11 @@ enum DocumentType {
 }
 
 model Document {
-  id           String             @id @default(cuid())
+  id           String             @id @default(cuid()) @map("_id")
   type         DocumentType
   title        String?
   sourceUrl    String             @unique
-  storedUrl    String?            // null if copying/storage is not permitted
+  storedUrl    String?
   fileType     String?
   fileSizeBytes Int?
   checksum     String?
@@ -471,18 +485,20 @@ model Document {
   @@map("documents")
 }
 
+// Composite @@id converted to synthetic id + @@unique for MongoDB compatibility.
 model PropertyDocument {
+  id         String   @id @default(cuid()) @map("_id")
   propertyId String
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   documentId String
   document   Document @relation(fields: [documentId], references: [id])
 
-  @@id([propertyId, documentId])
+  @@unique([propertyId, documentId])
   @@map("property_documents")
 }
 
 model SourceDocument {
-  id             String       @id @default(cuid())
+  id             String       @id @default(cuid()) @map("_id")
   sourceRecordId String
   sourceRecord   SourceRecord @relation(fields: [sourceRecordId], references: [id])
   documentId     String
@@ -506,7 +522,7 @@ enum MediaType {
 }
 
 model Media {
-  id         String          @id @default(cuid())
+  id         String          @id @default(cuid()) @map("_id")
   type       MediaType
   sourceUrl  String
   storedUrl  String?
@@ -517,24 +533,25 @@ model Media {
   sourceRefs SourceMedia[]
   createdAt  DateTime        @default(now())
 
-  // attachMedia looks a picture up by its address on every import: 272,207 calls, each a full scan (1,927 s in total, 13 Oct 2026).
   @@index([sourceUrl])
   @@map("media")
 }
 
+// Composite @@id converted to synthetic id + @@unique for MongoDB compatibility.
 model PropertyMedia {
+  id         String   @id @default(cuid()) @map("_id")
   propertyId String
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   mediaId    String
   media      Media    @relation(fields: [mediaId], references: [id])
   sortOrder  Int      @default(0)
 
-  @@id([propertyId, mediaId])
+  @@unique([propertyId, mediaId])
   @@map("property_media")
 }
 
 model SourceMedia {
-  id             String       @id @default(cuid())
+  id             String       @id @default(cuid()) @map("_id")
   sourceRecordId String
   sourceRecord   SourceRecord @relation(fields: [sourceRecordId], references: [id])
   mediaId        String
@@ -554,33 +571,37 @@ enum UserRole {
 }
 
 model User {
-  id             String          @id @default(cuid())
-  email          String          @unique
-  name           String?
-  passwordHash   String
-  role           UserRole        @default(USER)
-  savedProperties SavedProperty[]
-  savedSearches  SavedSearch[]
-  alerts         Alert[]
-  reviews        Review[]
-  createdAt      DateTime        @default(now())
+  id                String          @id @default(cuid()) @map("_id")
+  email             String          @unique
+  name              String?
+  passwordHash      String
+  role              UserRole        @default(USER)
+  marketingConsent  Boolean         @default(false)
+  consentUpdatedAt  DateTime?
+  savedProperties   SavedProperty[]
+  savedSearches     SavedSearch[]
+  alerts            Alert[]
+  reviews           Review[]
+  createdAt         DateTime        @default(now())
 
   @@map("users")
 }
 
+// Composite @@id converted to synthetic id + @@unique for MongoDB compatibility.
 model SavedProperty {
+  id         String   @id @default(cuid()) @map("_id")
   userId     String
   user       User     @relation(fields: [userId], references: [id])
   propertyId String
   property   Property @relation(fields: [propertyId], references: [id])
   savedAt    DateTime @default(now())
 
-  @@id([userId, propertyId])
+  @@unique([userId, propertyId])
   @@map("saved_properties")
 }
 
 model SavedSearch {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   name      String?
@@ -598,7 +619,7 @@ enum AlertType {
 }
 
 model Alert {
-  id        String    @id @default(cuid())
+  id        String    @id @default(cuid()) @map("_id")
   userId    String
   user      User      @relation(fields: [userId], references: [id])
   type      AlertType
@@ -610,7 +631,7 @@ model Alert {
 }
 
 model Lead {
-  id         String    @id @default(cuid())
+  id         String    @id @default(cuid()) @map("_id")
   propertyId String?
   property   Property? @relation(fields: [propertyId], references: [id])
   name       String
@@ -623,23 +644,22 @@ model Lead {
 }
 
 model Review {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])
   rating    Int
-  comment   String?  @db.Text
+  comment   String?
   createdAt DateTime @default(now())
 
   @@map("reviews")
 }
 
 // ---------------------------------------------------------------------------
-// Site-wide settings (singleton row) — admin-editable contact info, social
-// links and policy page content, so none of this is hardcoded in the UI.
+// Site-wide settings (singleton row)
 // ---------------------------------------------------------------------------
 
 model SiteSettings {
-  id                 String   @id @default(cuid())
+  id                 String   @id @default(cuid()) @map("_id")
   phone              String?
   generalEmail       String?
   listingsEmail      String?
@@ -649,15 +669,15 @@ model SiteSettings {
   instagramUrl       String?
   linkedinUrl        String?
   youtubeUrl         String?
-  privacyPolicy      String?  @db.Text
-  termsAndConditions String?  @db.Text
-  disclaimer         String?  @db.Text
-  headerLogoUrl      String?  @db.Text // URL or data: URI
-  footerLogoUrl      String?  @db.Text
-  faviconUrl         String?  @db.Text
+  privacyPolicy      String?
+  termsAndConditions String?
+  disclaimer         String?
+  headerLogoUrl      String?
+  footerLogoUrl      String?
+  faviconUrl         String?
   homeTitle          String?
-  homeDescription    String?  @db.Text
-  homeKeywords       String?  @db.Text
+  homeDescription    String?
+  homeKeywords       String?
   updatedAt          DateTime @updatedAt
 
   @@map("site_settings")
@@ -673,11 +693,11 @@ enum BlogPostStatus {
 }
 
 model BlogPost {
-  id          String         @id @default(cuid())
+  id          String         @id @default(cuid()) @map("_id")
   slug        String         @unique
   title       String
   excerpt     String?
-  body        String         @db.Text
+  body        String
   coverImageUrl String?
   category    String?
   tags        String[]       @default([])
@@ -691,11 +711,11 @@ model BlogPost {
 }
 
 // ---------------------------------------------------------------------------
-// Admin-managed search localities (SEO / search suggestions) and admin users
+// Admin-managed localities and admin users
 // ---------------------------------------------------------------------------
 
 model Locality {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   city      String
   name      String
   slug      String
@@ -708,63 +728,64 @@ model Locality {
 }
 
 enum AdminRole {
-  MASTER // everything, including sources, AI, payments and team
-  ADMIN  // content only: dashboard, properties, add property, blog, locations
+  MASTER
+  ADMIN
 }
 
 model AdminUser {
-  id           String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   email        String    @unique
   name         String?
   passwordHash String
   role         AdminRole @default(ADMIN)
   active       Boolean   @default(true)
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
 
   @@map("admin_users")
 }
 
-// Admin-managed link sources (CSV / Google Sheet) polled every 30 min
 model FeedSource {
-  id          String    @id @default(cuid())
+  id          String    @id @default(cuid()) @map("_id")
   name        String    @unique
   url         String
   active      Boolean   @default(true)
   lastRunAt   DateTime?
-  lastStatus  String?   // ok | error
-  lastMessage String?   @db.Text
-  contentHash String?   // hash of the last scanned page text; unchanged page => no AI call
-  sheetState  String?   @db.Text // JSON: per-tab content hash and the AI column mapping (Google Sheets / CSV)
+  lastStatus  String?
+  lastMessage String?
+  contentHash String?
+  sheetState  String?
   createdAt   DateTime  @default(now())
 
   @@map("feed_sources")
 }
 
-// One row per pipeline run of any source (built-in crawler, link source, CSV import, cron tick).
 model SourceRunLog {
-  id          String    @id @default(cuid())
-  source      String    // display name of the source
-  kind        String    // builtin | feed | csv | cron
-  trigger     String    // schedule | manual | cron | import
-  status      String    // ok | error | skipped | blocked
+  id          String    @id @default(cuid()) @map("_id")
+  source      String
+  kind        String
+  trigger     String
+  status      String
   created     Int       @default(0)
   updated     Int       @default(0)
   duplicates  Int       @default(0)
   rejected    Int       @default(0)
   aiTokens    Int       @default(0)
-  message     String?   @db.Text
+  message     String?
   startedAt   DateTime  @default(now())
   durationMs  Int       @default(0)
+  cursorPage  Int?
+  endedAt     DateTime?
 
   @@index([startedAt])
+  @@index([source, startedAt])
   @@map("source_run_logs")
 }
 
-// Single-row developer settings for the AI (Relay Models) layer. Environment variables are the fallback.
-// Images uploaded by the master admin (home hero, city and property-type tiles). Served by /api/img/[key]
-// with long-lived caching, so a large picture is never embedded in page HTML.
+// NOTE: SiteImage and MediaAsset store binary blobs (Bytes).
+// MongoDB Atlas M0 free tier has a 512 MB storage limit.
+// If media volume grows, move blobs to Vercel Blob or Cloudflare R2 and store only URLs here.
 model SiteImage {
-  key         String   @id // e.g. "hero-desktop", "city-mumbai-d", "type-RESIDENTIAL-m"
+  key         String   @id @map("_id")
   contentType String
   data        Bytes
   sizeBytes   Int      @default(0)
@@ -775,38 +796,35 @@ model SiteImage {
   @@map("site_images")
 }
 
-// Editable public pages (about, privacy, terms, disclaimer, faq). `data` is the page content the master admin edits.
 model SitePage {
-  key       String   @id // about | privacy | terms | disclaimer | faq
+  key       String   @id @map("_id")
   data      Json
   updatedAt DateTime @updatedAt
 
   @@map("site_pages")
 }
 
-// The media library: every image the master admin has uploaded, reusable in any slot without uploading again.
 model MediaAsset {
-  id          String   @id @default(cuid())
+  id          String   @id @default(cuid()) @map("_id")
   name        String
   contentType String
   data        Bytes
-  thumb       Bytes? // small preview (JPEG) so the library page stays light
+  thumb       Bytes?
   sizeBytes   Int      @default(0)
   width       Int?
   height      Int?
-  hash        String   @unique // sha256 of the file: the same picture is never stored twice
+  hash        String   @unique
   createdAt   DateTime @default(now())
 
   @@index([createdAt])
   @@map("media_assets")
 }
 
-// Keys that let another system read our public listing data through /api/v1.
 model ApiKey {
-  id           String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   name         String
-  prefix       String // first characters of the key, shown in the list (the key itself is never stored)
-  keyHash      String    @unique // sha256 of the key
+  prefix       String
+  keyHash      String    @unique
   active       Boolean   @default(true)
   note         String?
   lastUsedAt   DateTime?
@@ -816,44 +834,42 @@ model ApiKey {
   @@map("api_keys")
 }
 
-// Single-row home page content that the master admin edits.
 model HomeConfig {
-  id           String   @id @default("default")
+  id           String   @id @default("default") @map("_id")
   heroTitle    String?
-  heroSubtitle String?  @db.Text
-  cities       String?  @db.Text // JSON array of the 8 city names shown in "Explore by City", in display order
-  typeOrder    String?  @db.Text // JSON array of property-type values, in the order the cards are shown
-  banks        String?  @db.Text // JSON array of bank slugs for the "Promoter Banks" logo grid (max 10), in display order
+  heroSubtitle String?
+  cities       String?
+  typeOrder    String?
+  banks        String?
   updatedAt    DateTime @updatedAt
 
   @@map("home_config")
 }
 
-// Single-row payment gateway settings. Secret keys live in environment variables only, never here.
 model PaymentSettings {
-  id        String   @id @default("default")
+  id        String   @id @default("default") @map("_id")
   provider  String   @default("razorpay")
   enabled   Boolean  @default(false)
-  mode      String   @default("test") // test | live
+  mode      String   @default("test")
   keyId     String?
   currency  String   @default("INR")
-  plans     String?  @db.Text // JSON array of plans
+  plans     String?
   updatedAt DateTime @updatedAt
 
   @@map("payment_settings")
 }
 
 model Payment {
-  id         String    @id @default(cuid())
+  id         String    @id @default(cuid()) @map("_id")
   provider   String    @default("razorpay")
   orderId    String?   @unique
   paymentId  String?
   email      String?
   planId     String?
-  amount     Int       // in paise
+  amount     Int
   currency   String    @default("INR")
-  status     String    @default("created") // created | paid | failed | refunded
-  note       String?   @db.Text
+  status     String    @default("created")
+  note       String?
   createdAt  DateTime  @default(now())
   paidAt     DateTime?
 
@@ -861,15 +877,62 @@ model Payment {
   @@map("payments")
 }
 
+model AuditLog {
+  id         String   @id @default(cuid()) @map("_id")
+  actorId    String?
+  actorEmail String?
+  action     String
+  entityType String?
+  entityId   String?
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@index([action, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@map("audit_logs")
+}
+
 model AiSettings {
-  id              String   @id @default("default")
+  id              String   @id @default("default") @map("_id")
   enabled         Boolean  @default(true)
   extractorModel  String?
   fallbackModel   String?
-  extractionPrompt String? @db.Text
-  rules           String?  @db.Text // standing instructions, one per line, added to every extraction
+  extractionPrompt String?
+  rules           String?
   maxPageChars    Int?
   updatedAt       DateTime @updatedAt
 
   @@map("ai_settings")
+}
+
+// ---------------------------------------------------------------------------
+// Support tickets
+// ---------------------------------------------------------------------------
+
+enum TicketStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+model SupportTicket {
+  id          String        @id @default(cuid()) @map("_id")
+  propertyId  String?
+  property    Property?     @relation(fields: [propertyId], references: [id])
+  reporterEmail String?
+  subject     String
+  body        String
+  status      TicketStatus  @default(OPEN)
+  resolvedAt  DateTime?
+  resolvedBy  String?
+  resolution  String?
+  firstResponseAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([status, createdAt])
+  @@index([propertyId])
+  @@map("support_tickets")
 }
