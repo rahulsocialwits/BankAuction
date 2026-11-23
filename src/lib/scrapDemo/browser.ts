@@ -49,11 +49,10 @@ export class BrowserRenderer {
     if (this.ctx) return null;
     if (this.launchError) return this.launchError;
     try {
-      // Plain string imports (not a variable): the build can then see them and copy these packages AND their own dependencies
-      // (for example tar-fs of @sparticuz/chromium) into the serverless function. Both are listed in serverExternalPackages, so
-      // they are loaded from node_modules at run time and never bundled or sent to the browser.
+      // Use dyn() (webpackIgnore) so webpack/esbuild do not emit static require() calls for these packages.
+      // outputFileTracingIncludes in next.config.ts ensures the files are traced for Vercel serverless functions.
       let pwError = "";
-      const pw: any = await import("playwright-core").catch((e: unknown) => { pwError = e instanceof Error ? e.message.split("\n")[0] : String(e); return null; });
+      const pw: any = await dyn("playwright-core").catch((e: unknown) => { pwError = e instanceof Error ? e.message.split("\n")[0] : String(e); return null; });
       if (!pw) throw new Error(`the browser library (playwright-core) could not be loaded: ${pwError || "not installed"}`);
       const chromium = pw.chromium ?? pw.default?.chromium;
       let executablePath: string | undefined = process.env.SCRAP_DEMO_CHROME_PATH || undefined;
@@ -61,7 +60,7 @@ export class BrowserRenderer {
       if (!executablePath) {
         if (process.platform === "linux") {
           let spError = "";
-          const sp: any = await import("@sparticuz/chromium").catch((e: unknown) => { spError = e instanceof Error ? e.message.split("\n")[0] : String(e); return null; });
+          const sp: any = await dyn("@sparticuz/chromium").catch((e: unknown) => { spError = e instanceof Error ? e.message.split("\n")[0] : String(e); return null; });
           if (!sp) throw new Error(`the serverless Chromium package (@sparticuz/chromium) could not be loaded on this server: ${spError || "unknown"}`);
           const c = sp.default ?? sp;
           executablePath = await c.executablePath();

@@ -1,0 +1,19 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "bankauction",
+	"main": ".open-next/worker.js",
+	// Update this to match Cloudflare's minimum supported date when you deploy
+	"compatibility_date": "2024-09-23",
+	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	// Self-reference needed for internal cache revalidation calls
+	"services": [
+		{
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "bankauction"
+		}
+	]
+}

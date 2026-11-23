@@ -11,7 +11,10 @@
     "eauctions:maharashtra:preview": "tsx scripts/eauctions-maharashtra-bulk.ts --dry-run --check-duplicates",
     "eauctions:maharashtra:import": "tsx scripts/eauctions-maharashtra-bulk.ts --live --confirm-import",
     "test": "tsx --test tests/*.test.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "cloudflare:build": "npx opennextjs-cloudflare build",
+    "cloudflare:preview": "npx wrangler dev",
+    "cloudflare:deploy": "npx wrangler deploy"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -27,7 +30,11 @@
     "robots-parser": "^3.0.1",
     "sharp": "^0.35.5"
   },
+  "optionalDependencies": {
+    "unpdf": "*"
+  },
   "devDependencies": {
+    "@opennextjs/cloudflare": "1.20.7",
     "@tailwindcss/postcss": "^4",
     "@types/leaflet": "^1.9.12",
     "@types/node": "^20",
@@ -38,6 +45,7 @@
     "prisma": "^6.19.3",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.165.0"
   }
 }

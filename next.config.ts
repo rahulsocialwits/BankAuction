@@ -33,7 +33,10 @@ const nextConfig: NextConfig = {
     // Master-admin image uploads (home hero etc.) go through server actions; the default limit is 1 MB.
     serverActions: { bodySizeLimit: "4mb" },
   },
-  serverExternalPackages: ["@sparticuz/chromium", "playwright-core"],
+  // serverExternalPackages intentionally absent: listing playwright-core here causes webpack to emit
+  // require("playwright-core") in compiled server output, which OpenNext's esbuild then follows into
+  // chromium-bidi (not installed) → build failure. All browser access uses dyn() with webpackIgnore.
+  // outputFileTracingIncludes below handles Vercel file tracing independently.
   outputFileTracingIncludes: {
     "/api/cron/*": BROWSER_FILES,
     "/api/me": BROWSER_FILES,

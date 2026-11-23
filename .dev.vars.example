@@ -1,0 +1,39 @@
+# Cloudflare Workers local dev environment variables (.dev.vars)
+# Copy this file to .dev.vars and fill in the values.
+# NEVER commit .dev.vars — it contains secrets.
+# See docs/ENVIRONMENT.md for full descriptions of each variable.
+
+# --- Database ---
+MONGODB_URL=
+
+# --- Authentication ---
+ADMIN_SESSION_SECRET=
+USER_SESSION_SECRET=
+ADMIN_PASSWORD=
+
+# --- Scheduler ---
+CRON_SECRET=
+
+# --- AI extraction ---
+AI_API_KEY=
+AI_BASE_URL=
+AI_EXTRACTOR_MODEL=
+AI_EXTRACTOR_PROVIDER=
+AI_DAILY_TOKEN_CAP=50000
+
+# --- App ---
+NEXT_PUBLIC_SITE_URL=https://auction.bizsocio.com
+
+# --- Payments (optional) ---
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+RAZORPAY_WEBHOOK_SECRET=
+
+# --- Alerts (optional) ---
+ADMIN_ALERT_EMAIL=
+RESEND_API_KEY=
+MAIL_FROM=
+
+# --- Map tiles (optional, defaults to OpenStreetMap) ---
+NEXT_PUBLIC_MAP_TILE_URL=
+NEXT_PUBLIC_MAP_ATTRIBUTION=
