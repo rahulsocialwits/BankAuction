@@ -492,7 +492,9 @@ export function realDeps(o: { onEvent?: (line: string) => void } = {}): DeepDeps
     },
     async pdfToText(bytes) {
       // Optional library: `npm install unpdf`. Without it PDFs are skipped (reported in the run note), never guessed.
-      const dyn = (m: string): Promise<{ getDocumentProxy: (b: Uint8Array) => Promise<unknown>; extractText: (p: unknown, o: { mergePages: true }) => Promise<{ text: string }> }> => import(/* webpackIgnore: true */ /* turbopackIgnore: true */ m);
+      // eslint-disable-next-line no-new-func
+      const dyn = (m: string): Promise<{ getDocumentProxy: (b: Uint8Array) => Promise<unknown>; extractText: (p: unknown, o: { mergePages: true }) => Promise<{ text: string }> }> =>
+        (new Function("m", "return import(m)"))(m) as Promise<any>;
       const { getDocumentProxy, extractText } = await dyn("unpdf");
       const pdf = await getDocumentProxy(bytes);
       return (await extractText(pdf, { mergePages: true })).text;

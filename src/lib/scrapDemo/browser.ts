@@ -24,7 +24,14 @@ export type RenderResult =
 
 const CHALLENGE = /(just a moment|attention required|cf-chl|cf-browser-verification|captcha|are you a human|verify you are human|access denied|request blocked|enable javascript and cookies)/i;
 
-const dyn = (m: string): Promise<any> => import(/* webpackIgnore: true */ /* turbopackIgnore: true */ m);
+// Use new Function so that webpack, Turbopack, AND esbuild cannot statically follow the
+// import path. The webpackIgnore / turbopackIgnore comments prevent those bundlers from
+// analysing the inner `import(m)`, but Turbopack still inlines string literals passed to
+// the wrapper (dyn("playwright-core") → import("playwright-core") in the compiled chunk).
+// new Function creates the import call in a fresh scope; no bundler can introspect it.
+const dyn = (m: string): Promise<any> =>
+  // eslint-disable-next-line no-new-func
+  (new Function("m", "return import(m)"))(m) as Promise<any>;
 
 const LOCAL_BROWSERS = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
@@ -49,11 +56,10 @@ export class BrowserRenderer {
     if (this.ctx) return null;
     if (this.launchError) return this.launchError;
     try {
-      // Plain string imports (not a variable): the build can then see them and copy these packages AND their own dependencies
-      // (for example tar-fs of @sparticuz/chromium) into the serverless function. Both are listed in serverExternalPackages, so
-      // they are loaded from node_modules at run time and never bundled or sent to the browser.
+      // Use dyn() (webpackIgnore) so webpack/esbuild do not emit static require() calls for these packages.
+      // outputFileTracingIncludes in next.config.ts ensures the files are traced for Vercel serverless functions.
       let pwError = "";
-      const pw: any = await import("playwright-core").catch((e: unknown) => { pwError = e instanceof Error ? e.message.split("\n")[0] : String(e); return null; });
+      const pw: any = await dyn("playwright-core").catch((e: unknown) => { pwError = e instanceof Error ? e.message.split("\n")[0] : String(e); return null; });
       if (!pw) throw new Error(`the browser library (playwright-core) could not be loaded: ${pwError || "not installed"}`);
       const chromium = pw.chromium ?? pw.default?.chromium;
       let executablePath: string | undefined = process.env.SCRAP_DEMO_CHROME_PATH || undefined;
@@ -61,7 +67,7 @@ export class BrowserRenderer {
       if (!executablePath) {
         if (process.platform === "linux") {
           let spError = "";
-          const sp: any = await import("@sparticuz/chromium").catch((e: unknown) => { spError = e instanceof Error ? e.message.split("\n")[0] : String(e); return null; });
+          const sp: any = await dyn("@sparticuz/chromium").catch((e: unknown) => { spError = e instanceof Error ? e.message.split("\n")[0] : String(e); return null; });
           if (!sp) throw new Error(`the serverless Chromium package (@sparticuz/chromium) could not be loaded on this server: ${spError || "unknown"}`);
           const c = sp.default ?? sp;
           executablePath = await c.executablePath();
