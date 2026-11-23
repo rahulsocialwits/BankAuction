@@ -31,7 +31,7 @@
     "sharp": "^0.35.5"
   },
   "optionalDependencies": {
-    "unpdf": "*"
+    "unpdf": "^2.2.1"
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "1.20.7",

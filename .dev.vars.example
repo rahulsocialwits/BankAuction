@@ -3,8 +3,11 @@
 # NEVER commit .dev.vars — it contains secrets.
 # See docs/ENVIRONMENT.md for full descriptions of each variable.
 
-# --- Database ---
-MONGODB_URL=
+# --- Database (PostgreSQL via Prisma) ---
+# Pooled connection string — used by the Prisma client at runtime.
+DATABASE_URL=
+# Direct (non-pooled) connection — required for schema pushes / migrations; optional at runtime.
+DIRECT_URL=
 
 # --- Authentication ---
 ADMIN_SESSION_SECRET=
