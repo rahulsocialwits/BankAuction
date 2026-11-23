@@ -28,6 +28,14 @@ function withDependencies(roots: string[]): string[] {
 
 const BROWSER_FILES = withDependencies(["@sparticuz/chromium", "playwright-core"]);
 
+// CF_OPENNEXT_BUILD=1 is set by the cloudflare:build npm script.
+// playwright-core / @sparticuz/chromium cannot run inside a Cloudflare Worker (no native binary
+// support), and including them in the file trace causes OpenNext's esbuild step to copy
+// playwright-core into the bundle directory, where it then tries to follow its dependency on
+// chromium-bidi (not installed) and fails. Suppress the trace for Workers builds; Vercel gets
+// the full trace via the else branch.
+const isCloudflareBuild = process.env.CF_OPENNEXT_BUILD === "1";
+
 const nextConfig: NextConfig = {
   experimental: {
     // Master-admin image uploads (home hero etc.) go through server actions; the default limit is 1 MB.
@@ -37,7 +45,7 @@ const nextConfig: NextConfig = {
   // require("playwright-core") in compiled server output, which OpenNext's esbuild then follows into
   // chromium-bidi (not installed) → build failure. All browser access uses dyn() with webpackIgnore.
   // outputFileTracingIncludes below handles Vercel file tracing independently.
-  outputFileTracingIncludes: {
+  outputFileTracingIncludes: isCloudflareBuild ? {} : {
     "/api/cron/*": BROWSER_FILES,
     "/api/me": BROWSER_FILES,
     "/admin/*": BROWSER_FILES,

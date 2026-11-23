@@ -24,7 +24,14 @@ export type RenderResult =
 
 const CHALLENGE = /(just a moment|attention required|cf-chl|cf-browser-verification|captcha|are you a human|verify you are human|access denied|request blocked|enable javascript and cookies)/i;
 
-const dyn = (m: string): Promise<any> => import(/* webpackIgnore: true */ /* turbopackIgnore: true */ m);
+// Use new Function so that webpack, Turbopack, AND esbuild cannot statically follow the
+// import path. The webpackIgnore / turbopackIgnore comments prevent those bundlers from
+// analysing the inner `import(m)`, but Turbopack still inlines string literals passed to
+// the wrapper (dyn("playwright-core") → import("playwright-core") in the compiled chunk).
+// new Function creates the import call in a fresh scope; no bundler can introspect it.
+const dyn = (m: string): Promise<any> =>
+  // eslint-disable-next-line no-new-func
+  (new Function("m", "return import(m)"))(m) as Promise<any>;
 
 const LOCAL_BROWSERS = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
